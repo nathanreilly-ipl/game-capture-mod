@@ -1,0 +1,9 @@
+[project]
+name = "capture-mod"
+version = "0.1.0"
+description = "Synchronized multi-view capture of camera rigs in games"
+requires-python = ">=3.11"
+dependencies = ["numpy", "pillow"]
+
+[tool.uv]
+package = false

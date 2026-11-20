@@ -1,0 +1,14 @@
+# capture outputs: locations, previews, queue, takes (CAPTURE_OUT moves them elsewhere)
+out/
+# test and research reports
+reports/
+# RDR2 add-on build and fetched headers
+build/
+deps/
+*.addon64
+*.bmp
+# Python
+.venv/
+__pycache__/
+# the game-side exchange folder, if ever placed in the repo
+captures/
