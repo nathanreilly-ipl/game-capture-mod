@@ -4,7 +4,7 @@
 --   the nearest saved location (or the n-th nearest, F8): id, place name, distance, position;
 --   red when it is closer than 25 m, so a near-duplicate is not scouted twice
 -- Keys:
---   F6  show / hide the overlay
+--   F11 show / hide the overlay
 --   F8  next saved location (by distance)
 --   F9  view that location: front, right, back, left of its facing at eye height, then off
 --   F10 teleport there (facing its facing)
@@ -13,8 +13,8 @@
 -- screen while a capture session runs (captures\session_active.txt is fresh).
 
 local DIR = (os.getenv('USERPROFILE') or 'C:') .. '\\Documents\\RDR2Modding\\captures'
--- F4 and F5 belong to Native Trainer, F7 to RedLua.
-local KEY_TOGGLE, KEY_NEXT, KEY_VIEW, KEY_TP = 0x75, 0x77, 0x78, 0x79 -- F6, F8, F9, F10
+-- F4 and F5 belong to Native Trainer, F6 to the game's camera mode, F7 to RedLua.
+local KEY_TOGGLE, KEY_NEXT, KEY_VIEW, KEY_TP = 0x7A, 0x77, 0x78, 0x79 -- F11, F8, F9, F10
 local NEAR_WARN_M = 25.0
 local EYE_HEIGHT = 1.6
 local VIEW_FOV = 60.0
@@ -229,9 +229,12 @@ local function step_tp()
 	end
 	call('STREAMING', 'LOAD_SCENE_STOP')
 	local gz = native.new('float', 1)
+	call('ENTITY', 'SET_ENTITY_COLLISION', tp.ped, false, false) -- the probe would hit the player
 	if call('MISC', 'GET_GROUND_Z_FOR_3D_COORD', loc.x, loc.y, loc.z + 2.0, gz, false) then
-		call('ENTITY', 'SET_ENTITY_COORDS', tp.ped, loc.x, loc.y, gz[0] + 1.0, false, false, false, false)
+		-- a ped set to z stands with its feet at z (it reads back at z + 1)
+		call('ENTITY', 'SET_ENTITY_COORDS', tp.ped, loc.x, loc.y, gz[0], false, false, false, false)
 	end
+	call('ENTITY', 'SET_ENTITY_COLLISION', tp.ped, true, true)
 	call('ENTITY', 'SET_ENTITY_HEADING', tp.ped, loc.facing)
 	call('TASK', 'CLEAR_PED_TASKS_IMMEDIATELY', tp.ped, false, true)
 	call('ENTITY', 'FREEZE_ENTITY_POSITION', tp.ped, false)
@@ -250,7 +253,7 @@ local function draw(p, heading)
 		text(s, x0, y, sc, r or 235, g or 235, b or 235)
 		y = y + dy
 	end
-	line('CAPTURE SCOUT  (F6 hide)', 200, 200, 120)
+	line('CAPTURE SCOUT  (F11 hide)', 200, 200, 120)
 	line(string.format('You  %s   heading %.0f', fmt(p.x, p.y, p.z), heading or 0))
 	line('     ' .. (S.title ~= '' and S.title or '(no place name)'), 200, 200, 200)
 	local loc = target()

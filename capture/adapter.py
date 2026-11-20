@@ -5,8 +5,10 @@ conventions (rig_rotation, heading_basis), so nothing else needs to know the gam
 A shot (capture/shots.py) carries world-frame pos, right, fwd, up and vfov_deg.
 
 Capabilities are optional features the generic code only uses when listed:
+    "obstacles"   obstacles()/remove_obstacles(): moving things near the rig (capture/obstacles.py)
+    "raycast"     raycast(): line probes against the static scene, for solving rigs per location
+                  (capture/scene.py, capture/solver.py)
     "snapshot"    snapshot()/restore() of the world state (BACKLOG.md: shot reuse)
-    "scene_mesh"  scene_mesh() around a point (BACKLOG.md: rig solver format)
 """
 
 
@@ -96,6 +98,9 @@ class Adapter:
         """Advance the frozen world by exactly `seconds` and freeze it again."""
         raise NotImplementedError
 
+    def wait_frames(self, n):
+        """Let n rendered frames pass (e.g. after deleting something, before capturing)."""
+
     def instant(self):
         """A value that changes whenever the frozen world moves (e.g. the game timer)."""
         raise NotImplementedError
@@ -112,11 +117,24 @@ class Adapter:
         raise NotImplementedError
 
     # --- optional ----------------------------------------------------------------------------
+    def obstacles(self, center, radius):
+        """Moving things (people, animals, vehicles) within radius as oriented boxes:
+        [{"id", "kind", "owned", "center", "axes", "half"}] (capture/obstacles.py)."""
+        raise NotImplementedError("obstacles is not a capability of %s" % self.name)
+
+    def remove_obstacles(self, ids):
+        """Delete obstacles by id (from the last obstacles() call), never script-owned ones.
+        {"removed": count, "skipped": [ids not deleted]}"""
+        raise NotImplementedError("obstacles is not a capability of %s" % self.name)
+
     def snapshot(self):
         raise NotImplementedError("snapshot is not a capability of %s" % self.name)
 
     def restore(self, state):
         raise NotImplementedError("restore is not a capability of %s" % self.name)
 
-    def scene_mesh(self, centre, radius):
-        raise NotImplementedError("scene_mesh is not a capability of %s" % self.name)
+    def raycast(self, starts, ends):
+        """Line probes from starts to ends (N x 3 each) against the static scene (terrain,
+        buildings, objects, foliage; not people, animals, vehicles).
+        Returns (hit bool N, points N x 3, normals N x 3)."""
+        raise NotImplementedError("raycast is not a capability of %s" % self.name)

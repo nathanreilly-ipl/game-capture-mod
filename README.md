@@ -12,7 +12,8 @@ adapters/rdr2/      everything RDR2: the adapter, Lua jobs, the ReShade add-on, 
                     recovery scripts, the render camera writer, research probes
 tools/              generic helpers (frame reports, documentation media)
 out/                all capture outputs (gitignored; CAPTURE_OUT moves it)
-BACKLOG.md          designed-for but not built: shot reuse, solved rigs
+BACKLOG.md          designed-for but not built: per-game mod sets and an install CLI, shot reuse
+tests/              checks that need no game (the obstacle policy)
 ```
 
 ## Workflow
@@ -30,6 +31,7 @@ the same machine one after the other (the worker teleports to each location).
 .\capture.ps1 submit --rig <rig_yiming_stdm.json> --location rdr2-lakeshore-001
 .\capture.ps1 submit --rig <rig.json> --all --last-frame 3 --sweep-stride 30   # a quick sample
 .\capture.ps1 submit --rig <rig.json> --location <id> --cameras "?_near_sweep_t000"   # only some cameras
+.\capture.ps1 submit --rig <rig.json> --location <id> --park-height 0   # hidden player stays at the spot (default 10 m up)
 .\capture.ps1 queue
 
 # 3. worker: claim jobs until none are left (--once: one job)
@@ -41,9 +43,9 @@ Nwa"), warns when a saved location is within 25 m and refuses within 5 m (`--for
 anyway).
 
 **In-game overlay (RDR2)** while scouting by hand: your position and place name, and the nearest
-saved location with its title, position and distance (red within 25 m). F6 hide, F8 next saved
+saved location with its title, position and distance (red within 25 m). F11 hide, F8 next saved
 location, F9 view it (front, right, back, left, off), F10 teleport there. F4 and F5 are left to
-Native Trainer, F7 to RedLua. It hides itself while a take runs.
+Native Trainer, F6 to the game's camera mode, F7 to RedLua. It hides itself while a take runs.
 
 `capture.ps1` runs `python -m capture` through uv with this project's Python. The rig files
 are in the rig repository, e.g. `~/repos/gamecapture-camera-rigs-huixin/web/data/demo/rig_yiming_stdm.json`.
@@ -52,6 +54,33 @@ Tested 2026-11-20 on one machine: two locations scouted (one where the player st
 reached with `--at`), then a worker took a 3-frame sample job, teleported back to the first
 location and captured it: 480 shots in 2.2 min, none recaptured, 275 cameras packaged, read
 by the rig repository's `qc/stdm_view.py` (275 cameras, 18 groups, Diverse).
+
+### Rigs solved per location
+
+Instead of a fixed rig file, a job can name a rig of the camera-rig repository to be solved at
+each location against the scene there, with the repository's own rules (lift or shrink a ring,
+drop a blocked group, decline the location; its `docs/SCENE_FIT.md`):
+
+```powershell
+.\capture.ps1 solve --location rdr2-rhodes-001                         # scene + solved rig + a plan image, no take
+.\capture.ps1 submit --solver yiming_stdm --location rdr2-rhodes-001   # a job with the solved rig
+```
+
+- **Scene** (`capture/scene.py`, adapters with `raycast`): 66,000 rays from 11 points around the
+  location (the ground point at 0.5, 1.6 and 3 m, rings of 4 at 3 m and 7 m), 14 m long, against
+  terrain, buildings, objects, glass and foliage; each hit becomes a 0.3 m patch facing its normal.
+  Cached per location in `out/locations/scenes/` (.npz, and .obj to look at). About 30 s.
+- **Solve** (`capture/solver.py`): the repository's `rigs.get(<key>).solve()` in a scene made
+  from those patches, moved into the rig's frame. No-performer captures need no SMPL-X model:
+  the ST-DM and Diverse rules read only the performer's bounding box and pelvis, so the subject
+  is a static stand-in box of the demo performer's size; on an open floor this reproduces the
+  demo rig file exactly (poses within 1e-5). The Diverse trajectory (`zehao_traj`) is folded in
+  as the demo file does. A declined location fails the job with the rules' reason.
+- The solved rig is written to `out/solved/<rig id>/<location>.json` (+ `_plan.png`) and reused.
+  The spec records the rig repository's commit; a worker refuses to solve with another commit.
+- Measured at the Rhodes location: 28,492 of 66,000 rays hit; the far ring went from 4.57 m (open
+  floor) to 4.37 m to clear a porch, 8 s to solve. A wall 5 m away in a test scene shrinks it to
+  3.47 m; a 7 x 7 x 3 m room drops it and caps the higher groups.
 
 A changed rig (for example ten cameras raised by 0.5 m) is a new rig file, so a new rig id
 and a new job; it is captured again in full. Reusing the unchanged shots needs a restorable
@@ -97,6 +126,23 @@ Every shot is checked before it is accepted:
 A failed shot gets a recovery attempt (refocus the window, wait for the pause menu to close,
 hide the player again, settle) and is captured again, up to 3 times. The take fails if the
 frozen instant moved (the game timer changed), since a frozen world cannot be resumed.
+
+### People, animals and vehicles in the cameras
+
+For adapters with the `obstacles` capability (`capture/obstacles.py`), every person, animal
+and vehicle near the rig is an oriented box; a camera position inside the box, or within
+`--obstacle-margin` of it (0.15 m), is a hit.
+
+- **Start of a take**, frozen at its first clip frame: anything holding any camera position of
+  this take is deleted, with its rider, mount, vehicle occupants or draft horses. Nothing a game
+  script owns is ever deleted; if such a thing holds a camera, the take is retaken.
+- **No deletions after that.** Before each clip frame's shots, the frame's cameras are checked
+  again. A hit before `--retake-before` (2/3) of the shots stops the take and the worker starts
+  it again (up to `--max-retakes`, 3; the aborted attempt keeps its logs in `<take>_retakeN`, its
+  frames are deleted). A later hit lets the take finish; the shots are marked `camera_inside` in
+  the capture log and listed under `obstructions` in `take.json`.
+- `--no-obstacle-check` turns both off. `tests/test_obstacle_policy.py` checks the policy
+  against a fake game.
 
 ## Adding a game
 
@@ -176,11 +222,21 @@ foreground during a take (a lost focus is detected and recovered, see Per-shot c
   not affect the scene: an invisible player still has collision (traffic piled up on the spot
   in Saint Denis) and NPCs still respond to its wanted status. Hiding the subject therefore also
   turns on the `ghost` natives: everyone ignores the player, law off, wanted score cleared,
-  silent, invincible, no collision; all undone when the session ends. Option `park_height`
-  (adapter setting) parks the player that high above with streaming focus kept at the
-  location: at 200 m no render detail is lost (`probes/ghost_probe.py`), but fewer NPCs appear
-  near the spot (`probes/npc_probe.py`), so it is off by default. An area already in a fight
-  stays in it.
+  silent, invincible, no collision; all undone when the session ends. During a take the player
+  is also parked 10 m above the spot (`submit --park-height`, 0 to stay at the spot), with
+  streaming focus kept at the location; each shot's log line records where the player was.
+  At 200 m no render detail is lost (`probes/ghost_probe.py`), and in Rhodes neither 10, 30
+  nor 200 m changed how many people were near the spot (`probes/npc_probe.py`, counts within
+  15/30/60 m; two runs at the spot differed more than any parked run). An area already in a
+  fight stays in it.
+- **Obstacle boxes.** `GET_MODEL_DIMENSIONS` returns zeros here; `_GET_ENTITY_WORLD_POSITION_OF_DIMENSIONS`
+  gives the entity's world-axis-aligned box, and the oriented box is recovered from it and the
+  entity's heading (falls back to the axis-aligned box near 45 degrees, where it cannot be
+  separated). Deleting works while the world is frozen (checked 2026-11-20: a passer-by is gone
+  from the next frame, the frozen instant unchanged).
+- **Ped heights.** A ped set to height z reads back at z + 1 (its origin is about 1 m above
+  its feet), and the ground probe hits the player's own collision; the teleport probes with
+  collision off and sets the ground height itself, so a held player stands on the ground.
 - **Frame rate.** RDR2's VSync setting holds the game at 60 fps, which makes a shot take 0.75 s
   (40 ticks of settle); without the cap it ran at about 210 fps, 0.20 s per shot. Turn VSync off
   in the game's graphics settings for capture machines.
@@ -207,8 +263,9 @@ orbit, geometry and step checks). They are not part of the pipeline.
   chain's own BGRA layout, not RGBA as documented. The add-on now orders channels by the back
   buffer's format (checked against a screen grab: mean difference 1.5).
 - At 1600x900 the portrait crops (768x1344) are upscaled; delivery needs a render at least 1344 high.
-- Rigs are placed as solved on an open floor: nothing stops a camera standing inside a rock.
-  Scouting picks open spots for now (BACKLOG.md: rig solver format).
+- A fixed rig file (`--rig`) is placed as solved on an open floor: nothing stops a camera
+  standing inside a rock. Solved rigs (`--solver`) fit the scene, within what the rays reach
+  (BACKLOG.md: solved rigs).
 - No resume: a take runs in one go.
 - Raw frames are uncompressed BMP; depth is not captured.
 - The full take of 2026-11-20 (`out/takes/_before_queue/full_20261120_102239`, before the

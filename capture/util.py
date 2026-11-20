@@ -36,12 +36,21 @@ def read_json(path):
         return json.load(f)
 
 
+def _json_default(o):
+    """numpy arrays and scalars (e.g. in a solved rig's record) as plain JSON."""
+    if hasattr(o, "tolist"):
+        return o.tolist()
+    if hasattr(o, "item"):
+        return o.item()
+    raise TypeError("Object of type %s is not JSON serializable" % type(o).__name__)
+
+
 def write_json(path, obj, indent=1):
     """Writes through a temp file so a reader never sees a partial file."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=indent)
+        json.dump(obj, f, indent=indent, default=_json_default)
     for _ in range(100):
         try:
             os.replace(tmp, path)

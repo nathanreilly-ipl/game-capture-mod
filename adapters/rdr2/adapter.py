@@ -9,8 +9,9 @@ Settings (job settings "adapter"):
     step_scale    time scale while stepping the frozen world (0.1)
     first_settle  ticks on the first shot before exposure is locked (90)
     clock_settle  ticks after setting the clock (240)
-    park_height   metres to park the hidden player above the location (0 = stay there;
-                  measured 2026-11-20: 200 m costs no render detail, but fewer NPCs nearby)
+    park_height   metres to park the hidden player above the location during a take (10; 0 =
+                  stay at the spot). Measured 2026-11-20: 200 m costs no render detail; in Rhodes
+                  10, 30 and 200 m did not change the number of people near the spot
 """
 import math
 import os
@@ -20,6 +21,7 @@ import time
 
 import numpy as np
 
+from capture import obstacles as obstacles_geom
 from capture.adapter import Adapter, AdapterError
 
 from . import render_camera as rc
@@ -33,7 +35,7 @@ GAME_DIR = os.environ.get("RDR2_DIR", r"C:\Program Files (x86)\Steam\steamapps\c
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
-DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 0.0}
+DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 10.0}
 
 
 def _rz(deg):
@@ -67,7 +69,7 @@ def _reshade_preset():
 
 class RDR2Adapter(Adapter):
     name = "rdr2"
-    capabilities = frozenset()
+    capabilities = frozenset({"obstacles", "raycast"})
 
     def __init__(self, settings=None):
         super().__init__(dict(DEFAULTS, **(settings or {})))
@@ -123,7 +125,8 @@ class RDR2Adapter(Adapter):
 
     def render_settings(self):
         return {"window_client_size": window.client_size(self.hwnd), "frame_size": self.last_size,
-                "reshade_preset": _reshade_preset(), "settle_ticks": self.settings["settle"]}
+                "reshade_preset": _reshade_preset(), "settle_ticks": self.settings["settle"],
+                "park_height_m": float(self.settings.get("park_height") or 0)}
 
     # --- conventions -----------------------------------------------------------------------
     def rig_rotation(self, facing_deg):
@@ -201,9 +204,11 @@ class RDR2Adapter(Adapter):
         h = float(self.settings.get("park_height") or 0)
         if hidden and h > 0:
             x, y, z = vec(self.sess.cmd("state")["player"])
-            self._parked_from = (x, y, z)
-            self.sess.cmd("park", "%.3f %.3f %.3f" % (x, y, z + h))
-            self.sess.cmd("focus", "%.3f %.3f %.3f" % (x, y, z))
+            gz = self.ground_point((x, y, z))[2]
+            self._parked_from = (x, y, gz + 1.0)   # as the player's position reads when standing there
+            # a ped set to z reads back at z + 1, so this reads ground + 1 + h: h above standing
+            self.sess.cmd("park", "%.3f %.3f %.3f" % (x, y, gz + h))
+            self.sess.cmd("focus", "%.3f %.3f %.3f" % (x, y, gz))
         elif not hidden and getattr(self, "_parked_from", None):
             x, y, z = self._parked_from
             self.sess.cmd("focus", "clear")
@@ -247,7 +252,7 @@ class RDR2Adapter(Adapter):
         shutil.move(r["file"], path)
         self.last_size = [int(r["width"]), int(r["height"])]
         return {"width": int(r["width"]), "height": int(r["height"]), "rendered_pos": r["rendered_pos"],
-                "rendered_fov": r["rendered_fov"], "game_timer": int(r["game_timer"]),
+                "rendered_fov": r["rendered_fov"], "game_timer": int(r["game_timer"]), "player_pos": r["player"],
                 "health": {"problems": self._problems(r)}}
 
     def advance(self, seconds):
@@ -256,6 +261,9 @@ class RDR2Adapter(Adapter):
 
     def instant(self):
         return int(self.sess.cmd("state")["game_timer"])
+
+    def wait_frames(self, n):
+        self.sess.cmd("wait", int(n))
 
     def _problems(self, st):
         problems = []
@@ -287,6 +295,47 @@ class RDR2Adapter(Adapter):
                 return True
             time.sleep(0.5)
         return False
+
+    # --- the scene ------------------------------------------------------------------------------
+    def raycast(self, starts, ends):
+        """Line probes against terrain, buildings, objects, glass and foliage (not people, animals
+        or vehicles). Returns (hit bool N, points N x 3, normals N x 3); about 7,500 rays/s."""
+        starts, ends = np.asarray(starts, float), np.asarray(ends, float)
+        inp, outp = os.path.join(CAPTURES, "rays_in.txt"), os.path.join(CAPTURES, "rays_out.txt")
+        with open(inp, "w", encoding="utf-8") as f:
+            for s, e in zip(starts, ends):
+                f.write("%.3f %.3f %.3f %.3f %.3f %.3f\n" % (s[0], s[1], s[2], e[0], e[1], e[2]))
+        self.sess.cmd("raycast", timeout=60 + len(starts) / 2000.0)
+        hit = np.zeros(len(starts), bool)
+        pts, nrm = np.zeros((len(starts), 3)), np.zeros((len(starts), 3))
+        with open(outp, encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                v = line.split()
+                if v and v[0] == "1":
+                    hit[i] = True
+                    pts[i] = [float(x) for x in v[1:4]]
+                    nrm[i] = [float(x) for x in v[4:7]]
+        return hit, pts, nrm
+
+    # --- moving things near the rig ------------------------------------------------------------
+    def obstacles(self, center, radius):
+        """People, animals and vehicles within radius, as oriented boxes (capture/obstacles.py)."""
+        st = self.sess.cmd("obstacles", "%.3f %.3f %.3f %.3f" % (center[0], center[1], center[2], radius), timeout=60)
+        out = []
+        for n in range(1, int(st.get("obstacle_count", 0)) + 1):
+            kind, owned, mn, mx, fwd = st["o%d" % n].split("|")
+            box = obstacles_geom.obb_from_aabb([float(v) for v in mn.split()], [float(v) for v in mx.split()],
+                                               [float(v) for v in fwd.split()])
+            out.append(dict(box, id=n, kind=kind, owned=owned == "1"))
+        return out
+
+    def remove_obstacles(self, ids):
+        """Deletes the listed obstacles (from the last obstacles() call) with their riders, mounts,
+        occupants and draft horses; never anything a game script owns. {"removed": n, "skipped": [ids]}"""
+        if not ids:
+            return {"removed": 0, "skipped": []}
+        r = self.sess.cmd("remove", " ".join(str(i) for i in ids))
+        return {"removed": int(r.get("removed", 0)), "skipped": [int(v) for v in r.get("skipped", "").split(",") if v]}
 
     def end_frozen(self):
         try:

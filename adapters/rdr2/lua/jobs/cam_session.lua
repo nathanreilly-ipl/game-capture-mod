@@ -182,9 +182,202 @@ return function(ctx)
 		frozen = true
 	end
 
+	-- A time step (advance) runs the world at a reduced time scale; back to normal speed here
+	-- and when the session ends, or the game is left in slow motion.
 	function handlers.unfreeze()
 		ctx.call('ANIMSCENE', '_REQUEST_PHOTO_MODE_DEFREEZE')
+		ctx.call('MISC', 'SET_TIME_SCALE', 1.0)
 		frozen = false
+	end
+	ctx.defer(function() pcall(native.call, 'MISC', 'SET_TIME_SCALE', 1.0) end)
+
+	-- obstacles x y z radius: every ped (people, animals; not the player) and vehicle within
+	-- radius, one answer line each:  o<n>=<kind>|<mission 0/1>|<min x y z>|<max x y z>|<fwd x y>
+	-- min/max: the entity's world-axis-aligned box (_GET_ENTITY_WORLD_POSITION_OF_DIMENSIONS;
+	-- GET_MODEL_DIMENSIONS returns zeros here); fwd: its heading, for recovering the oriented box.
+	-- The entities are kept for `remove` until the next obstacles call.
+	local listed = {}
+	local obs_pool = nil
+	local function v3s(v) return string.format('%.3f %.3f %.3f', v[0].x, v[0].y, v[0].z) end
+	function handlers.obstacles(args)
+		local a = numbers(args)
+		local r2 = (a[4] or 30) ^ 2
+		obs_pool = obs_pool or native.new('Entity', 2048)
+		local pool = obs_pool
+		listed = {}
+		local out = {}
+		local mn, mx = native.new('Vector3', 1), native.new('Vector3', 1)
+		local vr, vf, vu, vp = native.new('Vector3', 1), native.new('Vector3', 1), native.new('Vector3', 1), native.new('Vector3', 1)
+		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local n = kind == 'peds' and native.allpeds(pool) or native.allvehicles(pool)
+			for i = 0, n - 1 do
+				local e = pool[i]
+				local skip = kind == 'peds' and select(2, ctx.try('PED', 'IS_PED_A_PLAYER', e))
+				local okp, p = ctx.try('ENTITY', 'GET_ENTITY_COORDS', e, true, true)
+				if not skip and okp and p and (p.x - a[1]) ^ 2 + (p.y - a[2]) ^ 2 + (p.z - a[3]) ^ 2 <= r2 then
+					local okd = ctx.try('ENTITY', '_GET_ENTITY_WORLD_POSITION_OF_DIMENSIONS', e, mn, mx)
+					local okm = ctx.try('ENTITY', 'GET_ENTITY_MATRIX', e, vr, vf, vu, vp)
+					if okd and okm then
+						local label = 'vehicle'
+						if kind == 'peds' then
+							label = select(2, ctx.try('PED', 'IS_PED_HUMAN', e)) and 'human' or 'animal'
+						end
+						local mission = select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e))
+						listed[#listed + 1] = { e = e, kind = label }
+						out[#out + 1] = string.format('o%d=%s|%d|%s|%s|%.4f %.4f', #listed, label, mission and 1 or 0,
+							v3s(mn), v3s(mx), vf[0].x, vf[0].y)
+					end
+				end
+			end
+		end
+		out[#out + 1] = 'obstacle_count=' .. #listed
+		return out
+	end
+
+	-- remove n n ...: delete listed obstacles with what belongs to them (rider and mount, vehicle
+	-- occupants and draft horses). Entities a game script owns (mission entities) are never
+	-- deleted; answer lines removed=<count>, skipped=<n,n,...> (the listed numbers kept).
+	local function linked(e, kind, acc, seen)
+		if not e or seen[tostring(e)] then
+			return
+		end
+		local ok_exists, exists = ctx.try('ENTITY', 'DOES_ENTITY_EXIST', e)
+		if not ok_exists or not exists then
+			return
+		end
+		seen[tostring(e)] = true
+		acc[#acc + 1] = e
+		if kind == 'vehicle' then
+			for seat = -1, 6 do
+				local ok, occ = ctx.try('VEHICLE', 'GET_PED_IN_VEHICLE_SEAT', e, seat)
+				if ok and occ then linked(occ, 'ped', acc, seen) end
+			end
+			for h = 0, 5 do
+				local ok, horse = ctx.try('VEHICLE', '_GET_PED_IN_DRAFT_HARNESS', e, h)
+				if ok and horse then linked(horse, 'ped', acc, seen) end
+			end
+		else
+			if select(2, ctx.try('PED', 'IS_PED_ON_MOUNT', e)) then
+				linked(select(2, ctx.try('PED', 'GET_MOUNT', e)), 'ped', acc, seen)
+			end
+			local okr, rider = ctx.try('PED', '_GET_RIDER_OF_MOUNT', e, false)
+			if okr and rider then linked(rider, 'ped', acc, seen) end
+			if select(2, ctx.try('PED', 'IS_PED_IN_ANY_VEHICLE', e, false)) then
+				linked(select(2, ctx.try('PED', 'GET_VEHICLE_PED_IS_IN', e, false)), 'vehicle', acc, seen)
+			end
+			local okv, draft = ctx.try('PED', '_GET_VEHICLE_DRAFT_HORSE_IS_ATTACHED_TO', e)
+			if okv and draft then linked(draft, 'vehicle', acc, seen) end
+		end
+	end
+	function handlers.remove(args)
+		local removed, skipped = 0, {}
+		for _, n in ipairs(numbers(args)) do
+			local item = listed[n]
+			if item then
+				local group, seen = {}, {}
+				linked(item.e, item.kind == 'vehicle' and 'vehicle' or 'ped', group, seen)
+				local owned = false
+				for _, e in ipairs(group) do
+					if select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e)) and e ~= ped then
+						owned = true
+					end
+				end
+				-- never the player, and never a group containing a script-owned entity
+				for _, e in ipairs(group) do
+					if select(2, ctx.try('PED', 'IS_PED_A_PLAYER', e)) then owned = true end
+				end
+				if owned then
+					skipped[#skipped + 1] = tostring(n)
+				else
+					for _, e in ipairs(group) do
+						ctx.try('ENTITY', 'SET_ENTITY_AS_MISSION_ENTITY', e, true, true)
+						local ref = native.new('Entity', 1)
+						ref[0] = e
+						ctx.try('ENTITY', 'DELETE_ENTITY', ref)
+						removed = removed + 1
+					end
+				end
+			end
+		end
+		return { 'removed=' .. removed, 'skipped=' .. table.concat(skipped, ',') }
+	end
+
+	-- raycast [flags] [per_tick]: line probes for the scene around a location. Reads rays_in.txt in
+	-- the exchange folder, one ray per line "x1 y1 z1 x2 y2 z2"; writes rays_out.txt, one line per
+	-- ray, "1 x y z nx ny nz" (hit point, surface normal) or "0". flags: what the rays stop at
+	-- (default 1|16|64|256: map collision, objects, glass, foliage; not people, animals or
+	-- vehicles, which the obstacle check handles). per_tick rays between yields, so the game runs.
+	function handlers.raycast(args)
+		local a0 = numbers(args)
+		local flags = math.floor(a0[1] or 337)
+		local per_tick = math.floor(a0[2] or 400)
+		local inp, outp = ctx.out_dir .. '\\rays_in.txt', ctx.out_dir .. '\\rays_out.txt'
+		local fin = assert(io.open(inp, 'r'))
+		local fout = assert(io.open(outp .. '.tmp', 'w'))
+		local hit, endc, norm, ent = native.new('BOOL', 1), native.new('Vector3', 1), native.new('Vector3', 1), native.new('Entity', 1)
+		local n, nhit, t0 = 0, 0, os.clock()
+		for line in fin:lines() do
+			local a = numbers(line)
+			if #a >= 6 then
+				local h = native.call('SHAPETEST', 'START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE',
+					a[1], a[2], a[3], a[4], a[5], a[6], flags, ped, 7)
+				local status = native.call('SHAPETEST', 'GET_SHAPE_TEST_RESULT', h, hit, endc, norm, ent)
+				-- The BOOL* hit reads back 0 through RedLua (probed 2026-11-20); a hit is an end point
+				-- on this ray instead (which also rejects a stale point from an earlier ray).
+				local dx, dy, dz = a[4] - a[1], a[5] - a[2], a[6] - a[3]
+				local ex, ey, ez = endc[0].x - a[1], endc[0].y - a[2], endc[0].z - a[3]
+				local len2 = dx * dx + dy * dy + dz * dz
+				local t = len2 > 0 and (ex * dx + ey * dy + ez * dz) / len2 or -1
+				local px, py, pz = ex - t * dx, ey - t * dy, ez - t * dz
+				local on_ray = t >= 0 and t <= 1.0001 and (px * px + py * py + pz * pz) < 0.0025
+				if status == 2 and on_ray and (endc[0].x ~= 0 or endc[0].y ~= 0 or endc[0].z ~= 0) then
+					fout:write(string.format('1 %.4f %.4f %.4f %.4f %.4f %.4f\n', endc[0].x, endc[0].y, endc[0].z,
+						norm[0].x, norm[0].y, norm[0].z))
+					nhit = nhit + 1
+				else
+					fout:write('0\n')
+				end
+				n = n + 1
+				if n % per_tick == 0 then
+					ctx.wait(1)
+				end
+			end
+		end
+		fin:close()
+		fout:close()
+		os.remove(outp)
+		os.rename(outp .. '.tmp', outp)
+		return { 'rays=' .. n, 'hits=' .. nhit, string.format('cpu_s=%.2f', os.clock() - t0) }
+	end
+
+	-- population x y z: people and vehicles near a point, within 15, 30 and 60 m
+	-- (answer lines peds=<total> <15> <30> <60>, vehicles=...; the player is not counted)
+	local pool = nil
+	function handlers.population(args)
+		local a = numbers(args)
+		pool = pool or native.new('Entity', 2048)
+		local out = {}
+		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local n = kind == 'peds' and native.allpeds(pool) or native.allvehicles(pool)
+			local c = { 0, 0, 0 }
+			for i = 0, n - 1 do
+				local e = pool[i]
+				local is_player = kind == 'peds' and select(2, ctx.try('PED', 'IS_PED_A_PLAYER', e))
+				if not is_player then
+					local okp, p = ctx.try('ENTITY', 'GET_ENTITY_COORDS', e, true, true)
+					if okp and p then
+						local d = math.sqrt((p.x - a[1]) ^ 2 + (p.y - a[2]) ^ 2 + (p.z - a[3]) ^ 2)
+						for k, r in ipairs({ 15, 30, 60 }) do
+							if d <= r then
+								c[k] = c[k] + 1
+							end
+						end
+					end
+				end
+			end
+			out[#out + 1] = string.format('%s=%d %d %d %d', kind, n, c[1], c[2], c[3])
+		end
+		return out
 	end
 
 	function handlers.wait(args)
@@ -349,10 +542,18 @@ return function(ctx)
 			end
 		end
 		ctx.try('STREAMING', 'LOAD_SCENE_STOP')
+		-- The ground probe would hit the frozen player itself (found ~1 m too high, measured
+		-- 2026-11-20), so the player has no collision while it runs.
+		ctx.call('ENTITY', 'SET_ENTITY_COLLISION', ped, false, false)
 		local gz = native.new('float', 1)
 		local found = ctx.call('MISC', 'GET_GROUND_Z_FOR_3D_COORD', x, y, z + 2.0, gz, false)
 		if found then
-			ctx.call('ENTITY', 'SET_ENTITY_COORDS', ped, x, y, gz[0] + 1.0, false, false, false, false)
+			-- A ped set to z reads back at z + 1 (its origin is about 1 m above its feet), so z is
+			-- the ground itself; gz + 1 left the frozen player hovering 1 m (measured 2026-11-20).
+			ctx.call('ENTITY', 'SET_ENTITY_COORDS', ped, x, y, gz[0], false, false, false, false)
+		end
+		if not ghost then
+			ctx.call('ENTITY', 'SET_ENTITY_COLLISION', ped, true, true)
 		end
 		ctx.call('ENTITY', 'SET_ENTITY_HEADING', ped, h)
 		-- Stand still: no landing stumble or leftover movement from before the teleport.

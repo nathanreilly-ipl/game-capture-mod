@@ -54,6 +54,12 @@ class Queue:
             shutil.copyfile(rig_path, dst)
         return dict(src, path=os.path.relpath(dst, self.root))
 
+    def add_solver(self, spec):
+        """A solver spec (capture/solver.py) as a rig source: solved per location by the worker."""
+        from .solver import spec_id
+        rid = spec_id(spec)
+        return dict(spec, rig_id=rid, digest=digest_json({k: v for k, v in spec.items() if k != "repo"}))
+
     def submit(self, game, location, rig_source, settings, force=False):
         key = {"game": game, "location": location["id"], "position": location["position"],
                "facing_deg": location.get("facing_deg"), "rig": rig_source["digest"], "settings": settings}

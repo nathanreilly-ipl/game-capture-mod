@@ -36,7 +36,8 @@ def main():
     ap.add_argument("--location", required=True)
     ap.add_argument("--height", type=float, default=200.0)
     ap.add_argument("--run-s", type=float, default=30.0)
-    ap.add_argument("--conditions", default=",".join(CONDITIONS))
+    ap.add_argument("--conditions", default=",".join(CONDITIONS),
+                    help="comma-separated; sky<metres>[_ghost] parks at that height, e.g. sky30_ghost")
     args = ap.parse_args()
     conditions = [c for c in args.conditions.split(",") if c]
     out = os.path.join(paths.OUT, "probes", "npc", args.location, "_".join(conditions))
@@ -56,32 +57,50 @@ def main():
         x, y, z = origin
         shots = select_cameras(build(rig, Placement(origin, ad.rig_rotation(loc["facing_deg"]))), CAMERAS)
         shots = shots["steps"][0]["shots"]
-        for cond in conditions:
-            ad.sess.cmd("ghost", 1 if cond.endswith("ghost") else 0)
+        for run, cond in enumerate(conditions):
+            label = "%d_%s" % (run, cond)  # a condition may repeat; keep each run's files and numbers
+            ghost = cond.endswith("ghost")
+            ad.sess.cmd("ghost", 1 if ghost else 0)
             if cond.startswith("sky"):
-                ad.sess.cmd("park", "%.3f %.3f %.3f" % (x, y, z + args.height))
+                digits = cond[3:].split("_")[0]
+                height = float(digits) if digits else args.height
+                ad.sess.cmd("park", "%.3f %.3f %.3f" % (x, y, z + height))
                 ad.sess.cmd("focus", "%.3f %.3f %.3f" % (x, y, z))
             else:
                 ad.sess.cmd("focus", "clear")
                 ad.go_to(loc["position"], loc["facing_deg"])
-                if cond == "ghost":
-                    ad.sess.cmd("ghost", 1)  # teleport restores collision; apply again
-            ad.hide_subject(True)
-            ad.sess.cmd("wait", int(args.run_s * 60), timeout=args.run_s * 4 + 60)
+                ad.sess.cmd("ghost", 1 if ghost else 0)  # after the teleport, so collision follows the condition
+            # invisible only; the conditions decide the natives (adapter.hide_subject would add them)
+            ad.sess.cmd("player_visible", 0)
+            ad.subject_hidden = True
+            samples = []
+            steps = max(1, int(args.run_s / 5))
+            for _ in range(steps):
+                ad.sess.cmd("wait", 300, timeout=60)
+                pop = ad.sess.cmd("population", "%.3f %.3f %.3f" % (x, y, z))
+                samples.append({"peds": [int(v) for v in pop["peds"].split()],
+                                "vehicles": [int(v) for v in pop["vehicles"].split()]})
             law = ad.sess.cmd("law")
             ad.begin_frozen(shots[0])
             files = []
             for s in shots:
-                dst = os.path.join(out, "%s_%s.bmp" % (cond, s["name"]))
+                dst = os.path.join(out, "%s_%s.bmp" % (label, s["name"]))
                 ad.set_camera(s)
                 ad.capture(dst, 60)
                 files.append(dst)
             ad.end_frozen()
-            report[cond] = {"player": ad.sess.cmd("state")["player"], "wanted_score": law.get("wanted_score"),
-                            "law_incident": law.get("law_incident"), "bounty": law.get("bounty"), "files": files}
-            print("%-10s player %s  wanted %s  incident %s" % (cond, report[cond]["player"], law.get("wanted_score"),
-                                                               law.get("law_incident")), flush=True)
-            rows.append((cond, files))
+            mean = lambda kind, k: round(sum(s[kind][k] for s in samples) / len(samples), 1)  # noqa: E731
+            report[label] = {"player": ad.sess.cmd("state")["player"], "wanted_score": law.get("wanted_score"),
+                            "law_incident": law.get("law_incident"), "bounty": law.get("bounty"),
+                            "population_samples": samples,
+                            "peds_mean_15_30_60": [mean("peds", k) for k in (1, 2, 3)],
+                            "vehicles_mean_15_30_60": [mean("vehicles", k) for k in (1, 2, 3)],
+                            "peds_loaded_mean": mean("peds", 0), "files": files}
+            print("%-13s player z %-9s incident %-5s  people within 15/30/60 m %s  vehicles %s  loaded %s" % (
+                label, report[label]["player"].split()[2][:8], law.get("law_incident"),
+                report[label]["peds_mean_15_30_60"], report[label]["vehicles_mean_15_30_60"],
+                report[label]["peds_loaded_mean"]), flush=True)
+            rows.append((label, files))
         ad.sess.cmd("ghost", 0)
         ad.sess.cmd("focus", "clear")
         ad.go_to(loc["position"], loc["facing_deg"])

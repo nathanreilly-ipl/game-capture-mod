@@ -8,6 +8,13 @@ Every shot is checked twice: the adapter's health (focus, subject hidden, paused
 and the picture itself (capture/checks.py). A failed shot gets adapter.recover() and is
 captured again, but only while the frozen instant is unchanged (adapter.instant()); a
 take whose instant moved cannot be continued and fails.
+
+Moving things in the cameras (adapters with the "obstacles" capability, capture/obstacles.py):
+at the start of the take, frozen at its first clip frame, anything holding a camera position of
+this take is deleted; nothing is deleted after that. Before each clip frame's shots, a camera of
+that frame inside or right against something raises Retake while fewer than retake_before of
+the shots are captured (the worker starts the take again); after that the take is finished
+and the shots are marked in the capture log and take.json.
 """
 import json
 import os
@@ -15,6 +22,9 @@ import shutil
 import time
 import uuid
 
+import numpy as np
+
+from . import obstacles
 from .checks import PictureCheck
 from .placement import Placement
 from .shots import build, select_cameras, subset
@@ -25,6 +35,14 @@ class TakeFailed(RuntimeError):
     pass
 
 
+class Retake(RuntimeError):
+    """The take must be captured again from the start (a camera ended up inside something)."""
+
+    def __init__(self, reason, progress):
+        super().__init__("%s (at %.0f%% of the shots)" % (reason, 100 * progress))
+        self.reason, self.progress = reason, progress
+
+
 DEFAULT_SETTINGS = {
     "clock": "12:00",        # time of day; None keeps the game's
     "last_frame": 0,         # 0 = every clip frame (a sample stops earlier)
@@ -32,6 +50,10 @@ DEFAULT_SETTINGS = {
     "cameras": None,         # rig camera name patterns to capture (None = all)
     "shot_attempts": 3,      # captures of one shot before the take fails
     "keep_raw": True,        # keep raw frames after packaging
+    "obstacle_check": True,  # clear and check moving things in the cameras (adapter capability)
+    "obstacle_margin": 0.15, # metres around a person/animal/vehicle box that count as inside
+    "retake_before": 2 / 3,  # a camera inside something before this share of shots: retake
+    "max_retakes": 3,        # retakes of one job before it fails
     "adapter": {},           # passed to the adapter (e.g. settle ticks)
 }
 
@@ -86,11 +108,19 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     settle = settings["adapter"].get("settle")
     done = retries = 0
     t_shots = None
+    use_obstacles = settings.get("obstacle_check") and "obstacles" in adapter.capabilities
+    margin = float(settings.get("obstacle_margin") or 0.0)
+    all_pos = np.array([s["pos"] for st in shots["steps"] for s in st["shots"]])
+    centre = shots["placement"]["rig_center_world"]
+    reach_m = obstacles.reach(all_pos, centre) + 6.0  # + the size of a wagon and its horses
+    take["obstructions"] = []
     try:
         adapter.hide_subject(True)
         first = shots["steps"][0]["shots"][0]
         adapter.begin_frozen(first)
         take["render"] = adapter.render_settings()
+        if use_obstacles:
+            _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take)
         t_shots = time.time()
         prev = None
         for st in shots["steps"]:
@@ -100,9 +130,22 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
                     steps_log.write(json.dumps(dict(r, to_frame=st["frame"])) + "\n")
             prev = st["frame"]
             instant = adapter.instant()
+            blocked = {}
+            if use_obstacles:
+                blocked = _check_frame(adapter, st, centre, reach_m, margin)
+                if blocked:
+                    progress = done / total
+                    what = sorted({b["kind"] for b in blocked.values()})
+                    if progress < float(settings.get("retake_before", 2 / 3)):
+                        raise Retake("clip frame %d: %d cameras inside or against a %s" % (
+                            st["frame"], len(blocked), "/".join(what)), progress)
+                    take["obstructions"].append({"frame": st["frame"], "shots": sorted(blocked),
+                                                 "kinds": what, "progress": round(progress, 3)})
+                    log("clip frame %d: %d cameras inside or against a %s; past %.0f%%, finishing the take" % (
+                        st["frame"], len(blocked), "/".join(what), 100 * progress))
             for shot in st["shots"]:
                 retries += _capture_shot(adapter, shot, st["frame"], raw_dir, take_dir, settle, check, instant,
-                                         settings["shot_attempts"], cap_log, log)
+                                         settings["shot_attempts"], cap_log, log, blocked.get(shot["id"]))
                 done += 1
                 if done % 250 == 0 or done == total:
                     el = time.time() - t_shots
@@ -114,8 +157,12 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         adapter.end_frozen()
         take["status"] = "captured"
     except Exception as e:
-        take["status"] = "failed"
+        take["status"] = "retake" if isinstance(e, Retake) else "failed"
         take["error"] = "%s: %s" % (type(e).__name__, e)
+        try:
+            adapter.end_frozen()
+        except Exception:
+            pass
         raise
     finally:
         cap_log.close()
@@ -132,7 +179,40 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     return take
 
 
-def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instant, attempts, cap_log, log):
+def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take):
+    """At the start of a take: deletes everything holding any camera position of the take.
+    Records what it found in take["cleared"] (also when it raises Retake)."""
+    obs = adapter.obstacles(centre, reach_m)
+    hit = obstacles.hits(obs, positions, margin)
+    ids = [obs[k]["id"] for k in hit]
+    res = adapter.remove_obstacles(ids)
+    record = {"near": len(obs), "in_cameras": [{"kind": obs[k]["kind"], "cameras": len(v), "box": obs[k]["approx"]}
+                                                for k, v in hit.items()],
+              "removed": res["removed"], "skipped": res["skipped"]}
+    log("start of take: %d people/animals/vehicles near the rig, %d hold cameras; %d entities deleted%s" % (
+        len(obs), len(hit), res["removed"], ", %d not (owned by a game script)" % len(res["skipped"])
+        if res["skipped"] else ""))
+    take["cleared"] = record
+    if res["skipped"]:
+        raise Retake("a camera is inside something a game script owns, which is never deleted", 0.0)
+    if ids:
+        adapter.wait_frames(10)  # let the deletion reach the rendered frame
+    return record
+
+
+def _check_frame(adapter, step, centre, reach_m, margin):
+    """{shot id: {"kind": ...}} for this clip frame's cameras inside or against something."""
+    obs = adapter.obstacles(centre, reach_m)
+    pos = [s["pos"] for s in step["shots"]]
+    out = {}
+    for k, idx in obstacles.hits(obs, pos, margin).items():
+        for i in idx:
+            out[step["shots"][i]["id"]] = {"kind": obs[k]["kind"]}
+    return out
+
+
+def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instant, attempts, cap_log, log,
+                  obstructed=None):
     """Captures one shot, retrying after a failed check. Returns the number of retries."""
     for attempt in range(attempts):
         dst = os.path.join(raw_dir, "%s.bmp" % shot["id"])
@@ -148,6 +228,8 @@ def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instan
         rec = {"id": shot["id"], "name": shot["name"], "frame": frame, "file": os.path.relpath(kept, take_dir),
                "attempt": attempt, "accepted": not problems, "problems": problems, "picture": stats,
                **{k: v for k, v in info.items() if k != "health"}}
+        if obstructed:
+            rec["camera_inside"] = obstructed["kind"]  # captured anyway: the take was past retake_before
         cap_log.write(json.dumps(rec) + "\n")
         if not problems:
             return attempt

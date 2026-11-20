@@ -74,16 +74,62 @@ def cmd_submit(a):
     if not chosen:
         raise SystemExit("no locations chosen (use --location ID or --all)")
     q = Queue(a.queue)
-    rig = q.add_rig(a.rig)
+    if bool(a.rig) == bool(a.solver):
+        raise SystemExit("give either --rig (a camrig/v1 file) or --solver (a rig solved per location)")
+    if a.rig:
+        rig = q.add_rig(a.rig)
+    else:
+        from .solver import make_spec
+        subject = {k: v for k, v in (("height_m", a.subject_height), ("radius_m", a.subject_radius)) if v is not None}
+        rig = q.add_solver(make_spec(a.solver, seed=a.solver_seed, key=a.solver_key, subject=subject,
+                                     repo=a.rig_repo))
+        print("solver rig %s (rig repository at %s)" % (rig["rig_id"], rig["commit"][:10]))
     settings = {"clock": None if a.clock == "keep" else a.clock, "last_frame": a.last_frame,
                 "sweep_stride": a.sweep_stride, "keep_raw": not a.no_keep_raw, "adapter": {}}
     if a.cameras:
         settings["cameras"] = [p for p in a.cameras.split(",") if p]
     if a.settle is not None:
         settings["adapter"]["settle"] = a.settle
+    if a.park_height is not None:
+        settings["adapter"]["park_height"] = a.park_height
+    for key in ("obstacle_margin", "retake_before", "max_retakes"):
+        if getattr(a, key) is not None:
+            settings[key] = getattr(a, key)
+    if a.no_obstacle_check:
+        settings["obstacle_check"] = False
     for loc in chosen:
         job_id, state, new = q.submit(loc["game"], loc, rig, settings, force=a.force)
         print("%s %s" % ("queued " if new else "exists (%s)" % state, job_id))
+
+
+def cmd_solve(a):
+    """Capture a location's scene, solve a rig there and draw its plan, without capturing a take."""
+    import numpy as np
+    from . import rigplot, scene
+    from .rigs import resolve
+    from .solver import make_spec
+    from .queue import Queue
+    loc = locs.get(a.locations, a.location)
+    adapter = adapters_registry.get(loc["game"])()
+    adapter.ensure_ready(restart=False)
+    adapter.open()
+    try:
+        src = Queue(a.queue).add_solver(make_spec(a.solver, seed=a.solver_seed, key=a.solver_key, repo=a.rig_repo))
+        rig, path = resolve(src, location=loc, adapter=adapter, out_dir=os.path.join(paths.OUT, "solved"),
+                            scene_dir=os.path.join(os.path.dirname(a.locations), "scenes"))
+        sc = np.load(rig["record"]["solved_for"]["scene_file"])
+        origin = adapter.ground_point(loc["position"])
+        R = adapter.rig_rotation(loc.get("facing_deg", 0.0))
+    finally:
+        adapter.close()
+    st = rig["record"].get("stdm", {})
+    title = "%s, near %.2f m, far %s" % (loc["id"], st.get("near", {}).get("radius_m", 0),
+                                          "%.2f m" % st["far"]["radius_m"] if st.get("far", {}).get("supported") else "dropped")
+    out = path[:-5] + "_plan.png"
+    rigplot.plan(scene.to_rig_frame(sc["points"], origin, R), rig, title).save(out)
+    print("%d cameras; effects: %s" % (len(rig["cameras"]), rig["record"]["scene_fit"]["effects"] or "none"))
+    print("rig:", path)
+    print("plan:", out)
 
 
 def cmd_queue(a):
@@ -138,7 +184,14 @@ def main(argv=None):
     s.set_defaults(fn=cmd_locations)
 
     s = sub.add_parser("submit", help="queue a rig for locations")
-    s.add_argument("--rig", required=True, help="a camrig/v1 file")
+    s.add_argument("--rig", help="a camrig/v1 file, used as it is")
+    s.add_argument("--solver", help="a rig of the camera-rig repository solved per location against its "
+                                    "scene, e.g. yiming_stdm (with its Diverse trajectory)")
+    s.add_argument("--solver-seed", type=int, default=1234)
+    s.add_argument("--solver-key", default="demo", help="the rig repository's take key (seeds some draws)")
+    s.add_argument("--subject-height", type=float, help="stand-in subject height, m (default: the demo performer, 1.996)")
+    s.add_argument("--subject-radius", type=float, help="stand-in subject half width, m (default 0.534)")
+    s.add_argument("--rig-repo", help="path to gamecapture-camera-rigs-huixin (default ~/repos/..., or CAMRIGS_REPO)")
     s.add_argument("--location", action="append", default=[], help="location id (repeatable)")
     s.add_argument("--all", action="store_true", help="every location (of --game, if given)")
     s.add_argument("--game")
@@ -148,9 +201,27 @@ def main(argv=None):
     s.add_argument("--cameras", help="only these rig cameras, comma-separated name patterns "
                                      "(e.g. '?_near_sweep_t000' = the near frozen sweep)")
     s.add_argument("--settle", type=int, help="game-specific settle after each camera move (RDR2: ticks, 40)")
+    s.add_argument("--park-height", type=float,
+                   help="park the hidden player this many metres above the location during the take "
+                        "(RDR2; default 10, 0 = stay at the spot)")
+    s.add_argument("--obstacle-margin", type=float,
+                   help="metres around a person/animal/vehicle that count as inside it (default 0.15)")
+    s.add_argument("--retake-before", type=float,
+                   help="a camera inside something before this share of the shots: retake (default 0.667)")
+    s.add_argument("--max-retakes", type=int, help="retakes of one job before it fails (default 3)")
+    s.add_argument("--no-obstacle-check", action="store_true",
+                   help="neither clear nor check people/animals/vehicles in the cameras")
     s.add_argument("--no-keep-raw", action="store_true", help="delete raw frames after packaging")
     s.add_argument("--force", action="store_true", help="queue again even if the same job exists")
     s.set_defaults(fn=cmd_submit)
+
+    s = sub.add_parser("solve", help="solve a rig at a location against its scene and draw its plan (no take)")
+    s.add_argument("--location", required=True)
+    s.add_argument("--solver", default="yiming_stdm")
+    s.add_argument("--solver-seed", type=int, default=1234)
+    s.add_argument("--solver-key", default="demo")
+    s.add_argument("--rig-repo")
+    s.set_defaults(fn=cmd_solve)
 
     s = sub.add_parser("queue", help="show or manage the queue")
     s.add_argument("action", nargs="?", default="status", choices=("status", "retry", "requeue"))
