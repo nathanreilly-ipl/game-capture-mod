@@ -87,6 +87,30 @@ def build(rig, placement):
     }
 
 
+def select_cameras(shots, patterns):
+    """Keeps only the rig cameras whose names match one of the patterns (fnmatch, e.g.
+    "?_near_sweep_t000" for the near frozen sweep, landscape and portrait)."""
+    if not patterns:
+        return shots
+    from fnmatch import fnmatchcase
+    steps = []
+    for st in shots["steps"]:
+        kept = []
+        for s in st["shots"]:
+            uses = [u for u in s["uses"] if any(fnmatchcase(u["camera"], p) for p in patterns)]
+            if uses:
+                kept.append(dict(s, uses=uses))
+        if kept:
+            steps.append({"frame": st["frame"], "shots": kept})
+    if not steps:
+        raise ValueError("no rig camera matches %s" % ", ".join(patterns))
+    out = dict(shots, steps=steps)
+    out["n_shots"] = sum(len(st["shots"]) for st in steps)
+    out["n_camera_frames"] = sum(len(s["uses"]) for st in steps for s in st["shots"])
+    out["cameras"] = list(patterns)
+    return out
+
+
 def subset(shots, last_frame=0, sweep_stride=1):
     """Keeps clip frames up to last_frame (0 = all) and every sweep_stride-th pose of the
     frozen sweeps and trajectories. For samples and tests."""

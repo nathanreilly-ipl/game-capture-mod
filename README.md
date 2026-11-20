@@ -29,6 +29,7 @@ the same machine one after the other (the worker teleports to each location).
 # 2. submit: one job per location for a rig file (copied into the queue, never changed)
 .\capture.ps1 submit --rig <rig_yiming_stdm.json> --location rdr2-lakeshore-001
 .\capture.ps1 submit --rig <rig.json> --all --last-frame 3 --sweep-stride 30   # a quick sample
+.\capture.ps1 submit --rig <rig.json> --location <id> --cameras "?_near_sweep_t000"   # only some cameras
 .\capture.ps1 queue
 
 # 3. worker: claim jobs until none are left (--once: one job)
@@ -174,7 +175,12 @@ orbit, geometry and step checks). They are not part of the pipeline.
 
 ## Known gaps
 
-- The ReShade preset is in every frame: the add-on reads the frame after ReShade's effects.
+- The ReShade preset's effects (sharpening, chromatic aberration, colour matrix, fake HDR) are in
+  every frame: the add-on reads the frame after them.
+- Frames saved before 2026-11-20 12:07 (every take in `out/takes/_before_queue/` and the
+  lakeshore sample) have red and blue swapped: ReShade's `capture_screenshot` returns the swap
+  chain's own BGRA layout, not RGBA as documented. The add-on now orders channels by the back
+  buffer's format (checked against a screen grab: mean difference 1.5).
 - At 1600x900 the portrait crops (768x1344) are upscaled; delivery needs a render at least 1344 high.
 - Rigs are placed as solved on an open floor: nothing stops a camera standing inside a rock.
   Scouting picks open spots for now (BACKLOG.md: rig solver format).

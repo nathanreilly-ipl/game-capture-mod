@@ -61,6 +61,8 @@ def cmd_submit(a):
     rig = q.add_rig(a.rig)
     settings = {"clock": None if a.clock == "keep" else a.clock, "last_frame": a.last_frame,
                 "sweep_stride": a.sweep_stride, "keep_raw": not a.no_keep_raw, "adapter": {}}
+    if a.cameras:
+        settings["cameras"] = [p for p in a.cameras.split(",") if p]
     if a.settle is not None:
         settings["adapter"]["settle"] = a.settle
     for loc in chosen:
@@ -124,6 +126,8 @@ def main(argv=None):
     s.add_argument("--clock", default=DEFAULT_SETTINGS["clock"], help="HH:MM or 'keep'")
     s.add_argument("--last-frame", type=int, default=0, help="stop after this clip frame (a sample)")
     s.add_argument("--sweep-stride", type=int, default=1, help="every n-th sweep pose (a sample)")
+    s.add_argument("--cameras", help="only these rig cameras, comma-separated name patterns "
+                                     "(e.g. '?_near_sweep_t000' = the near frozen sweep)")
     s.add_argument("--settle", type=int, help="game-specific settle after each camera move (RDR2: ticks, 40)")
     s.add_argument("--no-keep-raw", action="store_true", help="delete raw frames after packaging")
     s.add_argument("--force", action="store_true", help="queue again even if the same job exists")

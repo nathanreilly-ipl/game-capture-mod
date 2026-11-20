@@ -112,8 +112,38 @@ namespace
 		return true;
 	}
 
-	// Writes RGBA8 pixels (top row first) as a 24-bit BMP.
-	bool write_bmp(const fs::path &path, const uint8_t *rgba, uint32_t width, uint32_t height)
+	// Byte offsets of red, green, blue in each 4-byte pixel that capture_screenshot returns.
+	// Despite its documentation ("RGBA"), capture_screenshot returns the back buffer's own
+	// layout (runtime.hpp passes _back_buffer_format as the output format): BGRA for
+	// RDR2's VK_FORMAT_B8G8R8A8_UNORM swap chain. Measured 2026-11-20: assuming RGBA there
+	// swapped red and blue in every saved frame.
+	struct channel_order { int r, g, b; };
+
+	bool channel_order_of(reshade::api::effect_runtime *runtime, channel_order &order, std::string &format_name)
+	{
+		using reshade::api::format;
+		const reshade::api::resource back_buffer = runtime->get_current_back_buffer();
+		const format f = reshade::api::format_to_default_typed(runtime->get_device()->get_resource_desc(back_buffer).texture.format, 0);
+		switch (f)
+		{
+		case format::r8g8b8a8_unorm:
+		case format::r8g8b8x8_unorm:
+			order = { 0, 1, 2 };
+			format_name = "rgba8";
+			return true;
+		case format::b8g8r8a8_unorm:
+		case format::b8g8r8x8_unorm:
+			order = { 2, 1, 0 };
+			format_name = "bgra8";
+			return true;
+		default:
+			format_name = "format " + std::to_string(static_cast<uint32_t>(f));
+			return false; // 10-bit and float back buffers are packed differently; not handled
+		}
+	}
+
+	// Writes 8-bit 4-channel pixels (top row first, channel order as given) as a 24-bit BMP.
+	bool write_bmp(const fs::path &path, const uint8_t *pixels, const channel_order &order, uint32_t width, uint32_t height)
 	{
 		const uint32_t row_size = (width * 3 + 3) & ~3u;
 		const uint32_t data_size = row_size * height;
@@ -142,12 +172,13 @@ namespace
 		std::vector<uint8_t> row(row_size, 0);
 		for (uint32_t y = 0; y < height; ++y)
 		{
-			const uint8_t *src = rgba + static_cast<size_t>(height - 1 - y) * width * 4;
+			const uint8_t *src = pixels + static_cast<size_t>(height - 1 - y) * width * 4;
 			for (uint32_t x = 0; x < width; ++x)
 			{
-				row[x * 3 + 0] = src[x * 4 + 2]; // B
-				row[x * 3 + 1] = src[x * 4 + 1]; // G
-				row[x * 3 + 2] = src[x * 4 + 0]; // R
+				// BMP stores blue, green, red.
+				row[x * 3 + 0] = src[x * 4 + order.b];
+				row[x * 3 + 1] = src[x * 4 + order.g];
+				row[x * 3 + 2] = src[x * 4 + order.r];
 			}
 			file.write(reinterpret_cast<const char *>(row.data()), row_size);
 		}
@@ -208,6 +239,15 @@ namespace
 			return;
 		}
 
+		channel_order order;
+		std::string format_name;
+		if (!channel_order_of(runtime, order, format_name))
+		{
+			log_message(reshade::log::level::error, "unsupported back buffer " + format_name);
+			write_ack(id, false, "unsupported back buffer " + format_name, "", width, height);
+			return;
+		}
+
 		std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
 		if (!runtime->capture_screenshot(pixels.data()))
 		{
@@ -216,7 +256,7 @@ namespace
 			return;
 		}
 
-		if (!write_bmp(image_path, pixels.data(), width, height))
+		if (!write_bmp(image_path, pixels.data(), order, width, height))
 		{
 			log_message(reshade::log::level::error, "could not write " + image_path.u8string());
 			write_ack(id, false, "could not write image file", "", width, height);

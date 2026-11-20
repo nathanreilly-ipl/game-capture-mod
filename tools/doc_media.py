@@ -142,9 +142,10 @@ def demo(args):
     take = args.take
     p = args.prefix
 
-    # sheets as JPEG
+    # sheets as JPEG (default: the take's own sheets/ folder)
+    sheets = args.sheets or os.path.join(take, "sheets")
     for name in ("ring", "far_ring", "sweep", "portrait", "time", "diverse"):
-        src = os.path.join(args.sheets, name + ".png")
+        src = os.path.join(sheets, name + ".png")
         if os.path.exists(src):
             save_jpg(Image.open(src), os.path.join(args.out, "%s_%s.jpg" % (p, name)), 2400)
 
@@ -155,37 +156,37 @@ def demo(args):
     labels = {c["name"]: c["meta"].get("production_label", c["name"]) for c in rig["cameras"]}
 
     def cam_video(name):
-        v = os.path.join(take, "package", labels[name], "rgb.mp4")
-        if not os.path.exists(v):
-            raise SystemExit("missing " + v)
-        return v
+        """The camera's packaged video, or None when the take does not have that camera."""
+        v = os.path.join(take, "package", labels.get(name, name), "rgb.mp4")
+        return v if os.path.exists(v) else None
 
     # ring grid: 8 near temporal cameras over the clip frames, 2 x 4
     cams = ["H_near_temporal_%02d" % k for k in range(0, 32, 4)]
-    inputs = []
-    for c in cams:
-        inputs += ["-i", cam_video(c)]
-    tile_w, tile_h = 480, 274
-    filt = ";".join("[%d:v]scale=%d:%d,setsar=1[v%d]" % (i, tile_w, tile_h, i) for i in range(len(cams)))
-    layout = "|".join("%d_%d" % ((i % 4) * tile_w, (i // 4) * tile_h) for i in range(len(cams)))
-    filt += ";" + "".join("[v%d]" % i for i in range(len(cams))) + "xstack=inputs=%d:layout=%s[out]" % (len(cams), layout)
-    frames = ["-frames:v", str(args.ring_frames)] if args.ring_frames else []
-    run([ff, "-y", *inputs, "-filter_complex", filt, "-map", "[out]", *frames, "-c:v", "libx264", "-crf", "23",
-         "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-         os.path.join(args.out, "%s_ring_over_time.mp4" % p)])
+    if all(cam_video(c) for c in cams):
+        inputs = []
+        for c in cams:
+            inputs += ["-i", cam_video(c)]
+        tile_w, tile_h = 480, 274
+        filt = ";".join("[%d:v]scale=%d:%d,setsar=1[v%d]" % (i, tile_w, tile_h, i) for i in range(len(cams)))
+        layout = "|".join("%d_%d" % ((i % 4) * tile_w, (i // 4) * tile_h) for i in range(len(cams)))
+        filt += ";" + "".join("[v%d]" % i for i in range(len(cams))) + "xstack=inputs=%d:layout=%s[out]" % (len(cams), layout)
+        frames = ["-frames:v", str(args.ring_frames)] if args.ring_frames else []
+        run([ff, "-y", *inputs, "-filter_complex", filt, "-map", "[out]", *frames, "-c:v", "libx264", "-crf", "23",
+             "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+             os.path.join(args.out, "%s_ring_over_time.mp4" % p)])
 
-    # frozen sweep and flythrough at web size
-    for label, name in (("H_near_sweep_t000", "near_sweep"), ("H_far_sweep_t000", "far_sweep")):
-        run([ff, "-y", "-i", cam_video(label), "-vf", "scale=1344:768", "-c:v", "libx264", "-crf", "24",
-             "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-             os.path.join(args.out, "%s_%s.mp4" % (p, name))])
+    # frozen sweeps and the flythrough at web size, for whichever the take has
     traj = sorted(n for n in labels if n.startswith("traj_"))
-    if traj:
-        run([ff, "-y", "-i", cam_video(traj[0]), "-vf", "scale=1344:768", "-c:v", "libx264", "-crf", "24",
-             "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-             os.path.join(args.out, "%s_flythrough.mp4" % p)])
+    for label, name in (("H_near_sweep_t000", "near_sweep"), ("H_far_sweep_t000", "far_sweep"),
+                        (traj[0] if traj else "", "flythrough")):
+        src = cam_video(label) if label else None
+        if src:
+            run([ff, "-y", "-i", src, "-vf", "scale=1344:768", "-c:v", "libx264", "-crf", "24",
+                 "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                 os.path.join(args.out, "%s_%s.mp4" % (p, name))])
     for f in sorted(os.listdir(args.out)):
-        print("%8.1f MB  %s" % (os.path.getsize(os.path.join(args.out, f)) / 1e6, f))
+        if f.startswith(p + "_"):
+            print("%8.1f MB  %s" % (os.path.getsize(os.path.join(args.out, f)) / 1e6, f))
 
 
 def main():
@@ -197,7 +198,7 @@ def main():
     a.add_argument("--out", required=True)
     b = sub.add_parser("demo")
     b.add_argument("take")
-    b.add_argument("--sheets", required=True)
+    b.add_argument("--sheets", help="sheets folder (default: <take>/sheets)")
     b.add_argument("--out", required=True)
     b.add_argument("--prefix", default="d01")
     b.add_argument("--ring-frames", type=int, default=0, help="keep only the first n clip frames in the ring video")

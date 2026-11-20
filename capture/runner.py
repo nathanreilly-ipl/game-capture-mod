@@ -17,7 +17,7 @@ import uuid
 
 from .checks import PictureCheck
 from .placement import Placement
-from .shots import build, subset
+from .shots import build, select_cameras, subset
 from .util import now_iso, write_json
 
 
@@ -29,6 +29,7 @@ DEFAULT_SETTINGS = {
     "clock": "12:00",        # time of day; None keeps the game's
     "last_frame": 0,         # 0 = every clip frame (a sample stops earlier)
     "sweep_stride": 1,       # keep every n-th pose of the frozen sweeps (samples)
+    "cameras": None,         # rig camera name patterns to capture (None = all)
     "shot_attempts": 3,      # captures of one shot before the take fails
     "keep_raw": True,        # keep raw frames after packaging
     "adapter": {},           # passed to the adapter (e.g. settle ticks)
@@ -69,7 +70,8 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         take["clock"] = adapter.set_clock(settings["clock"])
     origin = adapter.ground_point(location["position"])
     placement = Placement(origin, adapter.rig_rotation(location.get("facing_deg", 0.0)))
-    shots = subset(build(rig, placement), settings["last_frame"], settings["sweep_stride"])
+    shots = select_cameras(subset(build(rig, placement), settings["last_frame"], settings["sweep_stride"]),
+                           settings.get("cameras"))
     write_json(os.path.join(take_dir, "shots.json"), shots, indent=None)
     total = shots["n_shots"]
     log("rig origin at %s; %d clip frames, %d shots, %d camera frames" % (
