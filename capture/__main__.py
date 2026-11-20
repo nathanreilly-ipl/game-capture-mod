@@ -28,23 +28,39 @@ def _xyz(text):
 
 
 def cmd_scout(a):
-    from .scout import scout
+    from .scout import TooClose, scout
     adapter = adapters_registry.get(a.game)()
     adapter.ensure_ready(restart=False)
     try:
         scout(adapter, a.locations, name=a.name, at=a.at, facing=a.facing,
               clock=None if a.clock == "keep" else a.clock,
-              tags=[t for t in a.tags.split(",") if t], note=a.note)
+              tags=[t for t in a.tags.split(",") if t], note=a.note, force=a.force)
+    except TooClose as e:
+        raise SystemExit(str(e))
     finally:
         adapter.close()
 
 
 def cmd_locations(a):
     doc = locs.load(a.locations)
+    if a.titles or a.publish:
+        for game in sorted({loc["game"] for loc in doc["locations"]}):
+            adapter = adapters_registry.get(game)()
+            if a.titles:
+                adapter.ensure_ready(restart=False)
+                adapter.open()
+                try:
+                    for loc in doc["locations"]:
+                        if loc["game"] == game and not loc.get("title"):
+                            loc["title"] = adapter.place_title(loc["position"])
+                finally:
+                    adapter.close()
+                locs.save(a.locations, doc)
+            adapter.publish_locations(doc["locations"])
     for loc in doc["locations"]:
-        print("%-28s %-6s %s  facing %6.1f  %s  %s" % (
-            loc["id"], loc["game"], ", ".join("%.2f" % v for v in loc["position"]), loc.get("facing_deg", 0),
-            ",".join(loc.get("tags", [])), os.path.join(os.path.dirname(a.locations), loc.get("preview", {}).get("sheet", ""))))
+        print("%-24s %-44s %s  facing %6.1f  %s" % (
+            loc["id"], loc.get("title") or "-", ", ".join("%.1f" % v for v in loc["position"]),
+            loc.get("facing_deg", 0), ",".join(loc.get("tags", []))))
     print("%d locations in %s" % (len(doc["locations"]), a.locations))
 
 
@@ -113,9 +129,12 @@ def main(argv=None):
     s.add_argument("--clock", default="12:00", help="time of day for the previews, HH:MM or 'keep'")
     s.add_argument("--tags", default="")
     s.add_argument("--note", default="")
+    s.add_argument("--force", action="store_true", help="save even within 5 m of a saved location")
     s.set_defaults(fn=cmd_scout)
 
     s = sub.add_parser("locations", help="list locations")
+    s.add_argument("--titles", action="store_true", help="fill in missing place titles from the running game")
+    s.add_argument("--publish", action="store_true", help="refresh the list the in-game scout overlay shows")
     s.set_defaults(fn=cmd_locations)
 
     s = sub.add_parser("submit", help="queue a rig for locations")

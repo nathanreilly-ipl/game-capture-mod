@@ -2,6 +2,7 @@
 
     {"schema": "capture_locations/v1", "locations": [
         {"id": "rdr2-lakeshore-001", "game": "rdr2",
+         "title": "Lake Don Julio · Rio Bravo · New Austin",   readable place name from the game, if any
          "position": [x, y, z],          ground point under the subject, world frame
          "facing_deg": 0.0,              the subject's facing, the game's heading convention
          "clock": "12:00",               time of day of the previews (jobs may override)
@@ -36,6 +37,18 @@ def get(path, location_id):
         if loc["id"] == location_id:
             return loc
     raise KeyError("no location %r in %s" % (location_id, path))
+
+
+def nearest(doc, game, position, exclude=None):
+    """(location, distance in world units) of the nearest saved location of this game, or (None, inf)."""
+    best, best_d = None, float("inf")
+    for loc in doc["locations"]:
+        if loc.get("game") != game or loc["id"] == exclude:
+            continue
+        d = sum((a - b) ** 2 for a, b in zip(loc["position"], position)) ** 0.5
+        if d < best_d:
+            best, best_d = loc, d
+    return best, best_d
 
 
 def new_id(doc, game, name=None):

@@ -30,20 +30,33 @@ def _sheet(images, labels, width=640):
     return out
 
 
+class TooClose(RuntimeError):
+    pass
+
+
 def scout(adapter, locations_path, name=None, at=None, facing=None, clock="12:00", tags=(), note="",
-          eye_height=1.6, vfov=60.0, log=print):
+          eye_height=1.6, vfov=60.0, warn_m=25.0, refuse_m=5.0, force=False, log=print):
     adapter.open()
+    doc = locs.load(locations_path)
+    adapter.publish_locations(doc["locations"])
     if at is not None:
         adapter.go_to(at, facing if facing is not None else adapter.subject_state()["facing_deg"])
     state = adapter.subject_state()
     position = [float(v) for v in adapter.ground_point(state["position"])]
     facing = float(facing if facing is not None else state["facing_deg"])
+
+    near, dist = locs.nearest(doc, adapter.name, position)
+    if near is not None:
+        msg = "nearest saved location: %s (%s), %.1f m away" % (near["id"], near.get("title") or "untitled", dist)
+        if dist < refuse_m and not force:
+            raise TooClose(msg + "; not saved (closer than %.0f m; --force to save anyway)" % refuse_m)
+        log(("WARNING: " if dist < warn_m else "") + msg)
+
     if clock:
         clock = adapter.set_clock(clock)
     else:
         clock = state.get("clock")
 
-    doc = locs.load(locations_path)
     loc_id = locs.new_id(doc, adapter.name, name)
     root = os.path.dirname(os.path.abspath(locations_path))
     pdir = os.path.join(root, "previews", loc_id)
@@ -70,9 +83,11 @@ def scout(adapter, locations_path, name=None, at=None, facing=None, clock="12:00
     _sheet(images, ["%s (heading %.0f)" % (lbl, (facing + t) % 360) for lbl, t in DIRECTIONS]).save(sheet, quality=88)
     preview["sheet"] = os.path.relpath(sheet, root)
 
-    entry = {"id": loc_id, "game": adapter.name, "position": position, "facing_deg": facing, "clock": clock,
-             "tags": list(tags), "note": note, "preview": preview, "scene": None, "scouted": now_iso()}
+    entry = {"id": loc_id, "game": adapter.name, "title": state.get("title"), "position": position,
+             "facing_deg": facing, "clock": clock, "tags": list(tags), "note": note, "preview": preview,
+             "scene": None, "scouted": now_iso()}
     locs.add(locations_path, entry)
-    log("location %s at %s, facing %.1f; previews in %s" % (
-        loc_id, ", ".join("%.2f" % v for v in position), facing, pdir))
+    adapter.publish_locations(locs.load(locations_path)["locations"])
+    log("location %s (%s) at %s, facing %.1f; previews in %s" % (
+        loc_id, entry["title"] or "untitled", ", ".join("%.2f" % v for v in position), facing, pdir))
     return entry

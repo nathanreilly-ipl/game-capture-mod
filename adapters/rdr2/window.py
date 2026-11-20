@@ -60,6 +60,45 @@ def client_size(hwnd):
     return r.right - r.left, r.bottom - r.top
 
 
+class _KEYBDINPUT(ctypes.Structure):
+    _fields_ = [("wVk", wt.WORD), ("wScan", wt.WORD), ("dwFlags", wt.DWORD), ("time", wt.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t)]
+
+
+class _INPUT(ctypes.Structure):
+    class _U(ctypes.Union):
+        _fields_ = [("ki", _KEYBDINPUT), ("pad", ctypes.c_byte * 32)]
+    _anonymous_ = ("u",)
+    _fields_ = [("type", wt.DWORD), ("u", _U)]
+
+
+SCAN = {"F3": 0x3D, "F4": 0x3E, "F5": 0x3F, "F6": 0x40, "Enter": 0x1C, "Esc": 0x01}
+
+
+def press(hwnd, key, hold_s=0.08):
+    """Presses one key (a SCAN name or scan code), only while the game window is in front."""
+    if not is_foreground(hwnd):
+        return False
+    scan = SCAN.get(key, key)
+    for flags in (0x0008, 0x0008 | 0x0002):  # KEYEVENTF_SCANCODE, then | KEYEVENTF_KEYUP
+        i = _INPUT(type=1)
+        i.ki = _KEYBDINPUT(0, scan, flags, 0, 0)
+        user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(_INPUT))
+        time.sleep(hold_s)
+    return True
+
+
+def grab(hwnd):
+    """A picture of the window's client area as it is on screen (PIL image), or None."""
+    from PIL import ImageGrab
+    size = client_size(hwnd)
+    if not size:
+        return None
+    pt = wt.POINT(0, 0)
+    user32.ClientToScreen(hwnd, ctypes.byref(pt))
+    return ImageGrab.grab(bbox=(pt.x, pt.y, pt.x + size[0], pt.y + size[1]), all_screens=True)
+
+
 def focus(hwnd):
     """Brings the window to the front. True if it is the foreground window afterwards."""
     if not hwnd:

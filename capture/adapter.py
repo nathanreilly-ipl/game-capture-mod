@@ -49,8 +49,16 @@ class Adapter:
 
     # --- the world ---------------------------------------------------------------------------
     def subject_state(self):
-        """{"position": [x, y, z] of the subject's feet, "facing_deg": f, "clock": "HH:MM"}"""
+        """{"position": [x, y, z] of the subject's feet, "facing_deg": f, "clock": "HH:MM",
+        "title": readable place name or None}"""
         raise NotImplementedError
+
+    def publish_locations(self, locations):
+        """Make the saved locations visible in the game (e.g. a scouting overlay). Optional."""
+
+    def place_title(self, position):
+        """Readable place name at a world point, or None. Optional."""
+        return None
 
     def go_to(self, position, facing_deg):
         """Move the subject there and wait until the scene around it has loaded."""

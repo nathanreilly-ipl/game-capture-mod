@@ -9,6 +9,8 @@ Settings (job settings "adapter"):
     step_scale    time scale while stepping the frozen world (0.1)
     first_settle  ticks on the first shot before exposure is locked (90)
     clock_settle  ticks after setting the clock (240)
+    park_height   metres to park the hidden player above the location (0 = stay there;
+                  measured 2026-11-20: 200 m costs no render detail, but fewer NPCs nearby)
 """
 import math
 import os
@@ -21,9 +23,9 @@ import numpy as np
 from capture.adapter import Adapter, AdapterError
 
 from . import render_camera as rc
-from . import window
+from . import window, zones
 from .mem import Process, find_pid
-from .session import CamSession, heartbeat_age, vec
+from .session import CAPTURES, CamSession, heartbeat_age, vec
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME_DIR = os.environ.get("RDR2_DIR", r"C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2")
@@ -31,12 +33,25 @@ GAME_DIR = os.environ.get("RDR2_DIR", r"C:\Program Files (x86)\Steam\steamapps\c
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
-DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240}
+DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 0.0}
 
 
 def _rz(deg):
     h = math.radians(deg)
     return np.array([[math.cos(h), -math.sin(h), 0.0], [math.sin(h), math.cos(h), 0.0], [0.0, 0.0, 1.0]])
+
+
+def _write_text(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    for _ in range(100):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            time.sleep(0.02)
+    os.replace(tmp, path)
 
 
 def _reshade_preset():
@@ -63,6 +78,7 @@ class RDR2Adapter(Adapter):
         self.subject_hidden = False
         self.frozen = False
         self.last_size = None
+        self._parked_from = None
 
     # --- lifecycle -------------------------------------------------------------------------
     def _running(self):
@@ -84,9 +100,12 @@ class RDR2Adapter(Adapter):
             raise AdapterError("game restart failed: %s" % (r.stdout[-500:] + r.stderr[-500:]))
 
     def open(self):
+        self.hwnd = window.find_game_window(find_pid())
+        # The game must be the foreground window: it may pause without focus.
+        if self.hwnd and not window.focus(self.hwnd):
+            raise AdapterError("could not bring the game window to the front")
         if self.sess is None:
             self.sess = CamSession(idle_s=900, timeout_s=12 * 3600)
-        self.hwnd = window.find_game_window(find_pid())
 
     def close(self):
         if self.sess is not None:
@@ -117,18 +136,48 @@ class RDR2Adapter(Adapter):
         return (-math.sin(h), math.cos(h), 0.0), (math.cos(h), math.sin(h), 0.0), (0.0, 0.0, 1.0)
 
     # --- the world ---------------------------------------------------------------------------
+    @staticmethod
+    def _title(st, key="zones"):
+        z = [int(float(v)) for v in st.get(key, "").split()] if st.get(key) else []
+        if len(z) < 6:
+            return None
+        return zones.title({12: z[0], 11: z[1], 1: z[2], "water": z[3], 10: z[4], 0: z[5]})
+
+    def place_title(self, position):
+        """Readable place name at a world point (no need to be there)."""
+        st = self.sess.cmd("place", "%.4f %.4f %.4f" % tuple(position[:3]))
+        return self._title(st, "place_zones")
+
     def subject_state(self):
         st = self.sess.cmd("state")
         p = vec(st["player"])
         g = self.ground_point(p)
-        return {"position": list(g), "facing_deg": float(st.get("player_heading", 0.0)), "clock": st.get("clock")}
+        return {"position": list(g), "facing_deg": float(st.get("player_heading", 0.0)), "clock": st.get("clock"),
+                "title": self._title(st)}
 
     def go_to(self, position, facing_deg):
-        r = self.sess.cmd("teleport", "%.4f %.4f %.4f %.4f" % (position[0], position[1], position[2], facing_deg),
+        # The player's position stays frozen afterwards (no stumble), until the session ends.
+        r = self.sess.cmd("teleport", "%.4f %.4f %.4f %.4f 900 1" % (position[0], position[1], position[2], facing_deg),
                           timeout=180)
         if r.get("loaded") != "true":
             raise AdapterError("the scene did not load around %s" % (position,))
         self.sess.cmd("wait", 120)  # level of detail catches up
+
+    def publish_locations(self, locations):
+        """Writes the saved locations and the zone name table where the in-game scout overlay
+        (lua/scout_overlay.lua) reads them."""
+        d = os.path.join(CAPTURES, "scout")
+        os.makedirs(d, exist_ok=True)
+        lines = []
+        for loc in locations:
+            if loc.get("game") != self.name:
+                continue
+            x, y, z = loc["position"]
+            title = (loc.get("title") or "").replace("|", "/").replace(" · ", " / ")  # the game font is ASCII
+            lines.append("%s|%s|%.3f|%.3f|%.3f|%.2f" % (loc["id"], title, x, y, z, loc.get("facing_deg", 0.0)))
+        _write_text(os.path.join(d, "locations.txt"), "\n".join(lines) + "\n")
+        _write_text(os.path.join(d, "zone_names.txt"),
+                    "\n".join("%d|%s" % (h, n) for h, n in sorted(zones.name_table().items())) + "\n")
 
     def ground_point(self, position):
         g = self.sess.cmd("ground", "%.4f %.4f %.4f" % (position[0], position[1], position[2] + 2.0))
@@ -142,7 +191,24 @@ class RDR2Adapter(Adapter):
         return clock
 
     def hide_subject(self, hidden):
+        """Takes the player out of the scene: invisible, plus the "ghost" natives (everyone
+        ignores the player, law off, silent, invincible, no collision), so NPCs and traffic
+        do not react to or get stuck on an invisible player (out/probes/npc, 2026-11-20).
+        With the setting park_height > 0 the player is also parked that high above, with
+        streaming focus kept at the location."""
         self.sess.cmd("player_visible", 0 if hidden else 1)
+        self.sess.cmd("ghost", 1 if hidden else 0)
+        h = float(self.settings.get("park_height") or 0)
+        if hidden and h > 0:
+            x, y, z = vec(self.sess.cmd("state")["player"])
+            self._parked_from = (x, y, z)
+            self.sess.cmd("park", "%.3f %.3f %.3f" % (x, y, z + h))
+            self.sess.cmd("focus", "%.3f %.3f %.3f" % (x, y, z))
+        elif not hidden and getattr(self, "_parked_from", None):
+            x, y, z = self._parked_from
+            self.sess.cmd("focus", "clear")
+            self.sess.cmd("teleport", "%.3f %.3f %.3f 0 900 1" % (x, y, z - 1.0), timeout=180)
+            self._parked_from = None
         self.subject_hidden = hidden
 
     def view(self, pos, fwd, up, vfov_deg, path):
@@ -154,6 +220,8 @@ class RDR2Adapter(Adapter):
 
     # --- frozen capture ----------------------------------------------------------------------
     def begin_frozen(self, first_shot):
+        if self.proc is not None:
+            self.proc.close()
         self.proc = Process(write=True)
         player = vec(self.sess.cmd("state")["player"])
         found, _ = rc.calibrate(self.sess, self.proc, player)

@@ -62,8 +62,13 @@ return function(ctx)
 	end
 
 	local ped = ctx.call('PLAYER', 'PLAYER_PED_ID')
+	-- RedLua returns PLAYER_ID() typed as a Cam here ("Cam: 4354"), which every Player native
+	-- rejects. A Player made with native.new holds 0, the single-player index; checked
+	-- 2026-11-20 (lua/jobs/type_probe.lua): GET_PLAYER_PED of it is PLAYER_PED_ID().
+	local pid = native.new('Player', 1)[0]
 	local cam = nil
 	local frozen = false
+	local held = false -- player position frozen (hold, teleport, park)
 
 	ctx.defer(function()
 		if frozen then
@@ -76,6 +81,22 @@ return function(ctx)
 		end
 		os.remove(IN)
 	end)
+
+	-- Zone name hashes at a point, for a readable place title (adapters/rdr2/zones.py):
+	-- written label, printed label, town, water body, district, state.
+	local function zone_line(x, y, z)
+		local out = {}
+		for _, ty in ipairs({ 12, 11, 1, 'water', 10, 0 }) do
+			local ok, h
+			if ty == 'water' then
+				ok, h = ctx.try('ZONE', '_GET_WATER_MAP_ZONE_AT_COORDS', x, y, z)
+			else
+				ok, h = ctx.try('ZONE', '_GET_MAP_ZONE_AT_COORDS', x, y, z, ty)
+			end
+			out[#out + 1] = ok and tostring(h or 0) or '0'
+		end
+		return 'zones=' .. table.concat(out, ' ')
+	end
 
 	local function state_lines()
 		local p = ctx.call('ENTITY', 'GET_ENTITY_COORDS', ped, true, true)
@@ -103,6 +124,7 @@ return function(ctx)
 		if okp then
 			lines[#lines + 1] = 'pause_menu=' .. (paused and '1' or '0')
 		end
+		lines[#lines + 1] = zone_line(p.x, p.y, p.z)
 		local okc, hh = ctx.try('CLOCK', 'GET_CLOCK_HOURS')
 		local okm, mm = ctx.try('CLOCK', 'GET_CLOCK_MINUTES')
 		if okc and okm then
@@ -199,15 +221,117 @@ return function(ctx)
 		return { 'ground_found=' .. tostring(ok), string.format('ground_z=%.9g', gz[0]) }
 	end
 
-	-- teleport x y z heading [max_ticks]: move the player to (x, y), standing on the ground
-	-- near z, and wait until collision and the scene around it have loaded.
+	-- focus x y z | focus clear: stream the world around a point instead of around the player.
+	local focused = false
+	ctx.defer(function()
+		if focused then
+			pcall(native.call, 'STREAMING', 'CLEAR_FOCUS')
+		end
+	end)
+	function handlers.focus(args)
+		if (args or ''):match('clear') then
+			ctx.call('STREAMING', 'CLEAR_FOCUS')
+			focused = false
+		else
+			local a = numbers(args)
+			ctx.call('STREAMING', 'SET_FOCUS_POS_AND_VEL', a[1], a[2], a[3], 0.0, 0.0, 0.0)
+			focused = true
+		end
+		return { 'focused=' .. (focused and '1' or '0') }
+	end
+
+	-- park x y z: put the player at an exact point with gravity off (position frozen, no
+	-- collision), e.g. high above the capture location. Undone when the session ends.
+	local parked, park_return = false, nil
+	ctx.defer(function()
+		if parked then
+			-- back to where the player was before, so releasing the hold cannot drop them from the sky
+			pcall(native.call, 'ENTITY', 'FREEZE_ENTITY_POSITION', ped, true)
+			if park_return then
+				pcall(native.call, 'ENTITY', 'SET_ENTITY_COORDS', ped, park_return.x, park_return.y, park_return.z,
+					false, false, false, false)
+			end
+			pcall(native.call, 'ENTITY', 'SET_ENTITY_COLLISION', ped, true, true)
+			pcall(native.call, 'ENTITY', 'FREEZE_ENTITY_POSITION', ped, false)
+		end
+	end)
+	function handlers.park(args)
+		local a = numbers(args)
+		if not parked then
+			park_return = ctx.call('ENTITY', 'GET_ENTITY_COORDS', ped, true, true)
+		end
+		ctx.call('ENTITY', 'FREEZE_ENTITY_POSITION', ped, true)
+		ctx.call('ENTITY', 'SET_ENTITY_COLLISION', ped, false, false)
+		ctx.call('ENTITY', 'SET_ENTITY_COORDS', ped, a[1], a[2], a[3], false, false, false, false)
+		held, parked = true, true
+	end
+
+	-- ghost 0|1: the player as absent as the game allows: ignored by everyone, no law
+	-- response or wanted score, silent, invincible, no collision. Undone when the session ends.
+	local ghost = false
+	local function set_ghost(on)
+		ctx.try('PLAYER', 'SET_EVERYONE_IGNORE_PLAYER', pid, on)
+		ctx.try('PLAYER', 'SET_PLAYER_INVINCIBLE', pid, on)
+		ctx.try('PLAYER', 'SET_PLAYER_NOISE_MULTIPLIER', pid, on and 0.0 or 1.0)
+		ctx.try('PLAYER', 'SET_WANTED_LEVEL_MULTIPLIER', on and 0.0 or 1.0)
+		ctx.try('LAW', 'SET_LAW_SENSE_RANGE_MODIFIER', pid, on and 0.0 or 1.0)
+		ctx.try('LAW', '_SET_LAW_DISABLED', on)
+		if on then
+			ctx.try('LAW', 'CLEAR_WANTED_SCORE', pid)
+			ctx.try('EVENT', 'REMOVE_ALL_SHOCKING_EVENTS', false)
+		end
+		ctx.try('ENTITY', 'SET_ENTITY_COLLISION', ped, not on, not on)
+		ghost = on
+	end
+	ctx.defer(function()
+		if ghost then
+			pcall(set_ghost, false)
+		end
+	end)
+	function handlers.ghost(args)
+		set_ghost((numbers(args)[1] or 1) ~= 0)
+		return { 'ghost=' .. (ghost and '1' or '0') }
+	end
+
+	-- law: the player's wanted score, bounty, and whether a law incident is active
+	function handlers.law()
+		local _, score = ctx.try('LAW', 'GET_WANTED_SCORE', pid)
+		local _, incident = ctx.try('LAW', 'IS_LAW_INCIDENT_ACTIVE', pid)
+		local _, bounty = ctx.try('LAW', 'GET_BOUNTY', pid)
+		return { 'wanted_score=' .. tostring(score), 'law_incident=' .. tostring(incident), 'bounty=' .. tostring(bounty) }
+	end
+
+	-- place x y z: zone name hashes at a point (answer line place_zones=...)
+	function handlers.place(args)
+		local a = numbers(args)
+		return { 'place_' .. zone_line(a[1], a[2], a[3]) }
+	end
+
+	-- hold 0|1: keep the player's position frozen (no stumbling after a teleport, no drifting
+	-- while hidden). Released when the session ends.
+	ctx.defer(function()
+		if held then
+			pcall(native.call, 'ENTITY', 'FREEZE_ENTITY_POSITION', ped, false)
+		end
+	end)
+	function handlers.hold(args)
+		held = (numbers(args)[1] or 1) ~= 0
+		ctx.call('ENTITY', 'FREEZE_ENTITY_POSITION', ped, held)
+		return { 'held=' .. (held and '1' or '0') }
+	end
+
+	-- teleport x y z heading [max_ticks] [hold]: move the player to (x, y), standing on the
+	-- ground near z, and wait until collision and the scene around it have loaded. With hold
+	-- (the default), the player's position stays frozen afterwards (see hold).
 	function handlers.teleport(args)
 		local a = numbers(args)
 		if #a < 3 then
-			error('teleport needs x y z [heading] [max_ticks]')
+			error('teleport needs x y z [heading] [max_ticks] [hold]')
 		end
 		local x, y, z, h = a[1], a[2], a[3], a[4] or 0.0
 		local max_ticks = math.floor(a[5] or 900)
+		local keep = (a[6] or 1) ~= 0
+		parked = false -- a teleport ends any parking (collision is restored below by ghost/park owners)
 		ctx.call('ENTITY', 'FREEZE_ENTITY_POSITION', ped, true)
 		ctx.call('ENTITY', 'SET_ENTITY_COORDS', ped, x, y, z + 1.0, false, false, false, false)
 		ctx.call('ENTITY', 'SET_ENTITY_HEADING', ped, h)
@@ -231,9 +355,12 @@ return function(ctx)
 			ctx.call('ENTITY', 'SET_ENTITY_COORDS', ped, x, y, gz[0] + 1.0, false, false, false, false)
 		end
 		ctx.call('ENTITY', 'SET_ENTITY_HEADING', ped, h)
-		ctx.call('ENTITY', 'FREEZE_ENTITY_POSITION', ped, false)
+		-- Stand still: no landing stumble or leftover movement from before the teleport.
+		ctx.try('TASK', 'CLEAR_PED_TASKS_IMMEDIATELY', ped, false, true)
+		held = keep
+		ctx.call('ENTITY', 'FREEZE_ENTITY_POSITION', ped, keep)
 		return { 'loaded=' .. tostring(loaded), 'ticks=' .. ticks, 'ground_found=' .. tostring(found),
-			string.format('ground_z=%.9g', gz[0]) }
+			string.format('ground_z=%.9g', gz[0]), 'held=' .. (keep and '1' or '0') }
 	end
 
 	-- player_visible 0|1
@@ -326,6 +453,18 @@ return function(ctx)
 		return { 'onscreen=' .. tostring(on), string.format('screen=%.9g %.9g', sx[0], sy[0]) }
 	end
 
+	-- While this file is fresh, other scripts (the scout overlay) stay off the screen.
+	local ACTIVE = ctx.out_dir .. '\\session_active.txt'
+	local function mark_active()
+		local f = io.open(ACTIVE, 'w')
+		if f then
+			f:write(tostring(os.time()))
+			f:close()
+		end
+	end
+	ctx.defer(function() os.remove(ACTIVE) end)
+	mark_active()
+
 	os.remove(IN)
 	respond(0, 'ok', 'ready')
 	ctx.log('session ready')
@@ -333,8 +472,13 @@ return function(ctx)
 	local last_seq = 0
 	local idle_deadline = os.time() + IDLE_TIMEOUT_S
 	local hide_hud = ctx.args.hide_hud ~= '0'
+	local tick = 0
 	while true do
 		ctx.wait(1)
+		tick = tick + 1
+		if tick % 60 == 0 then
+			mark_active()
+		end
 		if hide_hud then
 			pcall(native.call, 'HUD', 'HIDE_HUD_AND_RADAR_THIS_FRAME')
 			pcall(native.call, 'HUD', '_UI_PROMPT_DISABLE_PROMPTS_THIS_FRAME')

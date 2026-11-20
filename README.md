@@ -24,7 +24,7 @@ the same machine one after the other (the worker teleports to each location).
 # 1. scout: record where the player stands (or --at=x,y,z to go there first), with four
 #    previews looking outward (front, right, back, left of the facing) at eye height
 .\capture.ps1 scout --name lakeshore --tags open,shore
-.\capture.ps1 locations
+.\capture.ps1 locations                 # --titles fills in place names, --publish refreshes the overlay
 
 # 2. submit: one job per location for a rig file (copied into the queue, never changed)
 .\capture.ps1 submit --rig <rig_yiming_stdm.json> --location rdr2-lakeshore-001
@@ -35,6 +35,15 @@ the same machine one after the other (the worker teleports to each location).
 # 3. worker: claim jobs until none are left (--once: one job)
 .\capture.ps1 worker
 ```
+
+The scout records a readable place title from the game's map zones (e.g. "Saint Denis · Bayou
+Nwa"), warns when a saved location is within 25 m and refuses within 5 m (`--force` to save
+anyway).
+
+**In-game overlay (RDR2)** while scouting by hand: your position and place name, and the nearest
+saved location with its title, position and distance (red within 25 m). F6 hide, F8 next saved
+location, F9 view it (front, right, back, left, off), F10 teleport there. F4 and F5 are left to
+Native Trainer, F7 to RedLua. It hides itself while a take runs.
 
 `capture.ps1` runs `python -m capture` through uv with this project's Python. The rig files
 are in the rig repository, e.g. `~/repos/gamecapture-camera-rigs-huixin/web/data/demo/rig_yiming_stdm.json`.
@@ -160,11 +169,27 @@ foreground during a take (a lost focus is detected and recovered, see Per-shot c
   1,898 ms over 57 steps for 1,900 ms scheduled, within 2 ms at every clip frame, and
   unchanged across the shots of a clip frame.
 - **Teleport** (`teleport` session command): the player is moved with its position frozen,
-  collision and the scene are loaded around it, then it is put on the ground.
+  collision and the scene are loaded around it, then it is put on the ground and kept frozen
+  until the session ends (no landing stumble). About 8 s for 8 km.
+- **Taking the player out of the scene.** Cameras are placed in world coordinates at the
+  location, independent of the player. The player only has to be near for streaming, and must
+  not affect the scene: an invisible player still has collision (traffic piled up on the spot
+  in Saint Denis) and NPCs still respond to its wanted status. Hiding the subject therefore also
+  turns on the `ghost` natives: everyone ignores the player, law off, wanted score cleared,
+  silent, invincible, no collision; all undone when the session ends. Option `park_height`
+  (adapter setting) parks the player that high above with streaming focus kept at the
+  location: at 200 m no render detail is lost (`probes/ghost_probe.py`), but fewer NPCs appear
+  near the spot (`probes/npc_probe.py`), so it is off by default. An area already in a fight
+  stays in it.
+- **Frame rate.** RDR2's VSync setting holds the game at 60 fps, which makes a shot take 0.75 s
+  (40 ticks of settle); without the cap it ran at about 210 fps, 0.20 s per shot. Turn VSync off
+  in the game's graphics settings for capture machines.
 - **Speed.** 0.20 s per shot at 1600x900; the full ST-DM rig (12,356 shots, 24,387 camera
   frames) takes 41 min and 50 GB of BMP; 1.3 GB packaged.
 
-RedLua quirks: parameters typed `Any` only accept `native.new('Any', 1)`; out-pointers are
+RedLua quirks: `PLAYER_ID()` comes back typed as a Cam, which Player natives reject; a Player
+made with `native.new('Player', 1)[0]` (index 0) works and is our player (`lua/jobs/type_probe.lua`).
+Parameters typed `Any` only accept `native.new('Any', 1)`; out-pointers are
 `native.new('float', 1)` read with `[0]`; RedLua's `natives.json` names some natives only by
 hash (`patch_natives.ps1`).
 
