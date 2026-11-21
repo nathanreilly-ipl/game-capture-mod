@@ -5,7 +5,7 @@ import sys
 
 from .paths import REPO
 
-GAMES = {"rdr2": ("adapters.rdr2.adapter", "RDR2Adapter")}
+GAMES = {"rdr2": ("adapters.rdr2.adapter", "RDR2Adapter"), "gtav": ("adapters.gtav.adapter", "GTAVAdapter")}
 
 
 def get(game):

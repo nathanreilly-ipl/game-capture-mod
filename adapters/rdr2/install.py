@@ -1,15 +1,16 @@
 """What an RDR2 (story mode, Steam) install needs, for `capture install rdr2`.
 
 Game-agnostic components do ReShade, the capture add-on and (optionally) OptiScaler; this file
-says how RDR2 wants them (Vulkan by default, OptiScaler as an .asi plug-in) and adds what only
-RDR2 needs:
+says how RDR2 wants them (Direct3D 12 by default, ReShade and OptiScaler as .asi plug-ins) and
+adds what only RDR2 needs:
 
 - Script Hook RDR2 with its ASI loader (dinput8.dll): loads script plug-ins and exposes the game's
   natives. ScriptHookRDR2.dev turns on its CTRL+R script reload, used for unattended recovery.
 - RedLua: runs our Lua scripts in the game. Autorun on, so the loader starts by itself; its
   natives database patched with names for the photo-mode exposure natives.
 - Native Trainer (optional, on by default): handy while scouting. Its menu is F5.
-- Our scripts: capture_loader.lua (runs jobs without a keyboard), scout_overlay.lua.
+- Our scripts: capture_loader.lua (shared, adapters/common/lua: runs jobs without a keyboard),
+  scout_overlay.lua.
 - RDR2's visual set (adapters/rdr2/visual/): the ReShade preset captures are taken with, and the
   SweetFX and standard effects it uses (--no-preset: captures without effects). With
   --optiscaler, OptiScaler loads as an .asi through Script Hook's loader; its F6 comparison key
@@ -25,6 +26,7 @@ from capture import config
 from capture.install.components import addon, optiscaler, reshade
 
 from . import raytracing
+from ..common import redlua
 from capture.install.plan import Call, CopyFile, JsonSet, MakeDir, WriteText, XmlSet
 from capture.util import sha256_bytes
 
@@ -155,11 +157,12 @@ def steps(ctx):
     out.append(JsonSet(os.path.join(g, "RedLua", "Settings.json"), "autorun", True, default=REDLUA_SETTINGS, tag="mods",
                        why="our loader starts with the game"))
 
-    # our scripts (can be copied while the game runs; reload with reload_scripts.ps1)
+    # our scripts (can be copied while the game runs; reload with reload_scripts.ps1); the loader is
+    # shared with other RedLua games and watches RDR2's exchange folder by default
     for name in SCRIPTS:
-        src = os.path.join(HERE, "lua", name)
+        src = os.path.join(HERE, "lua", name) if name != "capture_loader.lua" else redlua.LOADER
         out.append(CopyFile(lambda p=src: p, os.path.join(g, "RedLua", "Scripts", name), tag="scripts", closed=False,
-                            what="adapters/rdr2/lua/" + name))
+                            what=os.path.relpath(src, os.path.dirname(os.path.dirname(HERE))).replace("\\", "/")))
     out.append(MakeDir(exchange, tag="scripts"))
 
     # game-agnostic components, as RDR2 wants them

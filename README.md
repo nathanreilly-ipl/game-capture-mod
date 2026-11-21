@@ -3,7 +3,7 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). The first game is Red Dead Redemption 2 in story mode.
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V Legacy, both in story mode.
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -13,10 +13,15 @@ capture/install/    game-agnostic installer: steps, where mod files come from, a
 addons/capture/     our ReShade add-on that saves frames (game-agnostic)
 rigs/               rig providers, one file per rig format (rigs/README.md has the contract)
 third_party/        the camera-rig repository as an optional git submodule (for the camrigs provider)
-adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockfile, Lua jobs, launch
-                    and recovery scripts, the render camera writer, research probes
+adapters/common/    what adapters share, tied to no game: the game window (focus, keys, grabs, size),
+                    process memory, and RedLua (the job loader script and the session client)
+adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockfile, visual set, ray
+                    tracing, Lua jobs, launch and recovery scripts, the render camera writer, probes
+adapters/gtav/      everything GTA V Legacy: the adapter, its install plan and lockfile, the unattended
+                    launcher, the freeze (timestep.py), the session job, probes
 docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
-tools/              generic helpers (frame reports, documentation media)
+tools/              comparison tools (DLSS 5, ray tracing, sheets with FLIP maps), frame reports,
+                    documentation media
 tests/              checks that need no game (installer, obstacle policy, rig providers)
 out/                all outputs, mod files and this machine's config (gitignored; CAPTURE_OUT moves it)
 BACKLOG.md          designed-for but not built
@@ -36,7 +41,8 @@ On a fresh PC: install the game and start it once, clone this repository
 .\capture.ps1 verify rdr2 --launch      # starts the game, checks scripts, a test frame, a small take
 ```
 
-After that the machine can scout, run a worker, or be driven by an agent (see Workflow).
+After that the machine can scout, run a worker, or be driven by an agent (see Workflow). The same
+commands take `gtav` for GTA V Legacy (see GTA V adapter).
 
 The RDR2 default (since 2026-11-20) is the full capture setup: Direct3D 12, a 2560x1440 window,
 the visual set's ReShade preset, ray tracing (Reality Redemption 2) and DLSS 5 (OptiScaler, which
@@ -83,7 +89,8 @@ of them stops it from loading (its loader file goes, backed up).
   from one camera to the next); its menu is on End (ReShade's is Home by default), and in RDR2 its F6
   comparison key is unbound (F6 is the game's camera mode). F13 switches DLSS 5 on and off live.
   `nvngx_dlssnr.dll` is yours to supply (`--dlss-nr <file>` or out/mods). Installing again
-  without `--optiscaler` does not remove it; press F13, or `capture uninstall`.
+  with `--no-optiscaler` stops it from loading (its loader file goes, backed up); F13 switches
+  it off live.
   `tools/upscaler_ab.py [--location <id>] [--npcs N]` compares DLSS 5 off and on at the same
   frozen instant (views of the player, the street and close-ups of nearby people, as off/on
   sheets) and measures how long the picture takes to settle after a cut. Measured in RDR2 on
@@ -108,8 +115,9 @@ of them stops it from loading (its loader file goes, backed up).
   file stops the install before anything is changed. Everything written is recorded in
   `out/install/<game>/installed.json` with backups, and `capture uninstall <game>` puts it back
   (files or settings you changed since are left alone; ReShade's machine-wide Vulkan layer stays).
-- **One administrator prompt** on a machine where ReShade's Vulkan layer is not registered yet
-  (it is registered machine-wide, as ReShade's own setup does).
+- **Administrator prompts** only for ReShade's machine-wide Vulkan layer: registering it for a
+  Vulkan install (`--api vulkan`), or unregistering it once no Vulkan app uses it
+  (`--only machine`; until then a Direct3D game gets a second ReShade from it).
 - **Iterating.** `capture install rdr2 --only scripts` copies changed Lua scripts (the game can
   be running; then `adapters\rdr2\scripts\reload_scripts.ps1`); `--only addon` rebuilds and
   deploys the add-on (game closed).
@@ -233,8 +241,9 @@ a hash of the settings, so submitting the same job twice queues it once.
 The queue is a folder. Put `out/` (or `--queue`, `--takes`) on a shared drive and run one
 worker per machine; a worker claims a job by renaming it into `claimed/` and keeps a lease
 file fresh. A claim whose lease is 15 minutes old is requeued (`capture queue requeue`, and
-every worker on start). Failed jobs stay in `failed/` with the error until
-`capture queue retry <job>`.
+every worker on start). If the game goes away mid-take (a script fault closes it, a graphics
+error stops it), the worker restarts it and takes again, up to twice per job. Failed jobs stay
+in `failed/` with the error until `capture queue retry <job>`.
 
 ### Per-shot checks
 
@@ -274,6 +283,12 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
   the world for a facing, the heading basis) and the operations: go to a location, ground point,
   clock, hide the subject, a preview view, freeze, write a camera, capture, advance by exact
   seconds, health, recover. Optional capabilities: `obstacles`, `raycast`, `snapshot`.
+  `capture verify <game>` is the acceptance test (a frozen 8-camera take with exact time steps).
+- **Shared pieces** (`adapters/common/`): for a game with a Script Hook and RedLua build, the
+  job loader (`lua/capture_loader.lua`, installed with the game's own exchange folder written in)
+  and the session client (`redlua.py`: one long Lua job driven a command at a time); the game
+  window (find by class, focus, keys, client size, grab); process memory. The game writes its own
+  session job (`adapters/<game>/lua/jobs/cam_session.lua`) with its natives.
 - **Install plan**: `adapters/<game>/install.py` (registered in `capture/install/__init__.py`)
   with the game's lockfile `mods.lock.json`. It names the game's exe, finds its folder, calls the
   shared components with the game's choices (graphics API for ReShade, how OptiScaler is loaded)
@@ -285,8 +300,9 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
 ### Setup
 
 `capture install rdr2` (see Install). The game-side scripts and the add-on exchange files in
-`%USERPROFILE%\Documents\RDR2Modding\captures` (fixed in `capture_loader.lua` and
-`ReShade.ini`). Frames only pass through it; the worker moves them into `out/`.
+`%USERPROFILE%\Documents\RDR2Modding\captures` (the default in the shared
+`adapters/common/lua/capture_loader.lua`, and `ReShade.ini`). Frames only pass through it; the
+worker moves them into `out/`.
 
 ### Running without anyone at the keyboard
 
@@ -367,18 +383,91 @@ hash (`patch_natives.ps1`).
 `adapters/rdr2/probes/` holds the tools the method was found with (memory scans, the frozen
 orbit, geometry and step checks). They are not part of the pipeline.
 
+## GTA V adapter (Legacy)
+
+GTA V Legacy (Steam app 271590, Direct3D 11, game build 1.0.3889.0), story mode only.
+
+### Setup
+
+```powershell
+.\capture.ps1 install gtav --mods "C:\...\Grand Theft Auto V Enhanced"   # or put Script Hook V in out\mods
+.\capture.ps1 verify gtav --launch
+.\capture.ps1 scout --game gtav --name legion-plaza --at "190,-955,30.5"
+.\capture.ps1 worker --game gtav
+```
+
+- **Mods**: Script Hook V with its ASI loader and Native Trainer (supplied: the readme forbids
+  redistribution; build 3889.0.1158.13 runs both Legacy 1.0.3889.0 and Enhanced, so an Enhanced
+  folder that has it is a source), RedLua for GTA V (downloaded), our loader written with GTA V's
+  own exchange folder (`Documents\RDR2Modding\captures_gtav`), ReShade 6.8 as `ReShade.asi` with an
+  empty preset (no visual set yet), the capture add-on. `ScriptHookV.dev` turns on CTRL+R reload.
+- **BattlEye off**: `-nobattleye` in the game's `commandline.txt` (GTA5.exe starts, not
+  GTA5_BE.exe), so the game cannot go online with mods.
+- **Settings**: Direct3D 11, VSync off, no pause on focus loss, windowed 2560x1440. The game sizes
+  the outer window from its settings (client 2554x1400), so the adapter resizes the window until
+  the client area, and so every frame, is 2560x1440.
+- **Unattended start** (`adapters/gtav/launch.py`, used by the worker when the loader is gone):
+  closes the game and its launcher, starts it through Steam, answers Steam's launch-option
+  dialog with "Play Grand Theft Auto V Legacy", clicks STORY MODE on Rockstar's landing page (the
+  rightmost item of its bottom bar, found in a grab of the window), and waits for the loader:
+  about 75 s. Clicks only go to Steam's dialog and to the game while the loader is not running.
+
+### How a take is captured in GTA V (measured 2026-11-21)
+
+- **Freeze.** GTA V has no photo-mode freeze. `SET_GAME_PAUSED` stops rendering (a moved camera
+  returns the same frame). `SET_TIME_SCALE(0)` still advances the world by a minimum step of
+  1/3000 s per frame (people walked 3.6 m in 240 frames; RDR2 shows the same 0.33 ms). That
+  minimum is a single writable float in GTA5.exe's image (`timestep.py` finds it by value on every
+  start; `probes/timestep_probe.py` found it). At 1e-7 s the world holds exactly: over 480 frames
+  nobody moved (0.000000 m), the same pose 240 frames apart gave identical frames, and a moved
+  script camera re-renders (`probes/freeze_probe.py`). A step of exactly 0 crashes the game.
+- **Time steps.** At time scale 0 every frame advances exactly the minimum step, so 1/30 s is 67
+  frames of 0.4975 ms, independent of the frame rate: the session pauses the game (no frame runs),
+  the adapter sets the step, the session runs exactly 67 frames and pauses, the hold step goes
+  back, the game resumes. Every step measured 33.333 ms. GTA V's game timer does not count these
+  steps; frozen frames are checked by their frame time instead.
+- **Camera.** GTA V's own script camera renders while frozen, so poses go through camera natives
+  (rotation order 2, roll included, vertical FoV); no memory writes. The engine projects world
+  points within 0.02 px of the rig's pinhole model at 2560x1440 (pitch, roll to 60 degrees, FoV
+  40-90; `probes/geometry_probe.py`); heading is counter-clockwise from north as in RDR2.
+- **HUD.** The HUD, radar, notification feed and help text are hidden on every frame, also while
+  a shot settles (the loader's `ctx.each_tick`); without that the minimap was in the frames.
+- **Speed.** About 185 frames/s at 2560x1440; 0.31 s per shot with the 40-frame settle.
+- **Full take** (2026-11-21, Legion Square, noon, ST-DM rig solved around a cube sculpture): 9,411
+  shots for 24,387 camera frames in 48.4 min, none recaptured; 57 time steps, each exactly
+  1/30 s; 287 cameras packaged (0.52 GB; 97 GB of raw BMP), the rig repository's QC passed (30
+  groups, Diverse). One pose seen across the 58 clip frames changes steadily (mean difference
+  0.44 after one step, 1.69 at the end: traffic, foliage) and not at all within a clip frame.
+- **Moving things**: people and vehicles as oriented boxes straight from their models'
+  dimensions (`GET_MODEL_DIMENSIONS` works in GTA V); raycasts against map, objects and foliage.
+
+### RedLua in GTA V: what to avoid
+
+- **No raw memory from Lua.** RedLua returns a C string as an object whose `tostring` is its
+  address; reading it, or any absolute address, through LuaJIT's `ffi` faulted inside lua51.dll
+  every time, and Script Hook V then closes the game. Place titles pass the zone code's pointer
+  straight back into `GET_HASH_KEY` instead, and `zones.py` names the hash (Legion Square,
+  Vinewood Hills, Los Santos International Airport, Sandy Shores, Paleto Bay checked).
+- **Faults in RedLua's Lua core.** lua51.dll faulted four times (offsets 0x5C83, 0x5DE2), always
+  at or just after the start or end of a session job, once 90 s after the full take's session
+  ended with the loader idle; never in the middle of the 48-minute take. The likeliest cause is
+  RedLua collecting a finished job's native objects. Script Hook V then closes the game; the worker
+  restarts it and takes again if it happens mid-take. `SET_THIS_SCRIPT_CAN_BE_PAUSED`, first
+  suspected, is no longer called (not needed: RedLua's scripts run while the game is paused).
+- **Hashes above 2^24** go through a float in RedLua (as in RDR2): pass them as `hash_arg`.
+
 ## Known gaps
 
-- The add-on reads the frame after ReShade's effects. `capture install` points ReShade at a
-  preset without effects for captures; on a machine where it has not been applied, the active
-  preset's effects are in every frame.
+- The add-on reads the frame after ReShade's effects, so a game's visual set (RDR2's preset, ray
+  tracing) is in every frame by design; `--no-preset` captures without effects.
 - Anything another mod draws on screen is in the frames too: an open Native Trainer menu, for
   example. Nothing detects that yet; keep such menus closed during a take.
 - Frames saved before 2026-11-20 12:07 (every take in `out/takes/_before_queue/` and the
   lakeshore sample) have red and blue swapped: ReShade's `capture_screenshot` returns the swap
   chain's own BGRA layout, not RGBA as documented. The add-on now orders channels by the back
   buffer's format (checked against a screen grab: mean difference 1.5).
-- At 1600x900 the portrait crops (768x1344) are upscaled; delivery needs a render at least 1344 high.
+- Takes rendered at 1600x900 (before 2026-11-20) have upscaled portrait crops (768x1344); the
+  capture size is now 2560x1440, where they are native.
 - A fixed rig file (`--rig`) is placed as solved on an open floor: nothing stops a camera
   standing inside a rock. Solved rigs (`--solver`) fit the scene, within what the rays reach
   (BACKLOG.md: solved rigs).

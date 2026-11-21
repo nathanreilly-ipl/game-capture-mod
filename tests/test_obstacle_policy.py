@@ -6,6 +6,8 @@
 2. Something walking into a camera early (before retake_before) raises Retake.
 3. Something walking into a camera late is recorded; the take completes.
 4. Something a game script owns holding a camera at the start raises Retake.
+5. --no-obstacle-check ignores it all.
+6. The worker restarts a game that went away mid-take and takes again (the job is done).
 """
 import os
 import sys
@@ -151,6 +153,59 @@ def main():
     take, _ = run({"walk_in_frame": 2}, obstacle_check=False)
     assert take["status"] == "captured" and not take["obstructions"]
     print("5 ok: --no-obstacle-check ignores it")
+
+    worker_restarts_a_game_that_stopped()
+
+
+class StoppingGame(FakeGame):
+    """A game that goes away once, at clip frame 3 of its first take (as a script fault closes GTA V)."""
+
+    def __init__(self, settings=None):
+        super().__init__({})
+        self.alive, self.stops, self.restarts = True, 1, 0
+
+    def ensure_ready(self, restart=True):
+        if not self.alive:
+            if not restart:
+                raise RuntimeError("the game is gone")
+            self.alive, self.restarts = True, self.restarts + 1
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+
+    def capture(self, path, settle):
+        if self.stops and self.frame == 3:
+            self.stops, self.alive = 0, False
+            raise TimeoutError("no answer to command 30")
+        return super().capture(path, settle)
+
+
+def worker_restarts_a_game_that_stopped():
+    """6. The worker restarts a game that went away mid-take and takes again; the job is done."""
+    from capture import adapters_registry, worker
+    from capture.queue import Queue
+    game = StoppingGame()
+    with tempfile.TemporaryDirectory() as d:
+        rig_path = os.path.join(d, "rig.json")
+        open(rig_path, "w").write("{}")
+        saved = (adapters_registry.get, worker.resolve, worker.package, worker.make_sheets)
+        adapters_registry.get = lambda name: (lambda settings=None: game)
+        worker.resolve = lambda *a, **k: (toy_rig(), rig_path)
+        worker.package = lambda take_dir, log=None: {"cameras": [None] * RIG_CAMS}
+        worker.make_sheets = lambda take_dir, log=None: []
+        try:
+            q = Queue(os.path.join(d, "queue"))
+            loc = {"id": "toy", "game": "fake", "position": [0, 0, 0], "facing_deg": 0}
+            job_id, _, _ = q.submit("fake", loc, {"kind": "file", "rig_id": "toy", "digest": "0"}, {"clock": None})
+            worker.run_worker("fake", q.root, os.path.join(d, "takes"), once=True, log=lambda *a: None)
+            assert q.find(job_id) == "done", q.find(job_id)
+            assert game.restarts == 1
+            print("6 ok: the game stopped mid-take; the worker restarted it once and took again; job done")
+        finally:
+            adapters_registry.get, worker.resolve, worker.package, worker.make_sheets = saved
 
 
 if __name__ == "__main__":

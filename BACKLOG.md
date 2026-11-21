@@ -26,6 +26,32 @@ Left:
    Script Hook RDR2 and nvngx_dlssnr.dll still come from the person installing (never
    redistributed).
 
+## GTA V Legacy: what is left
+
+`capture install/verify gtav`, the unattended launcher, scouting with place titles and queued
+takes work (README: GTA V adapter); verify passes everything but the machine-wide administrator
+step above. A full ST-DM take ran on 2026-11-21 (Legion Square: 9,411 shots in 48.4 min, every
+step exactly 1/30 s, QC passed). Left:
+
+- **RedLua faults.** lua51.dll faulted four times in its interpreter core, always at or just
+  after the start or end of a session job (once 90 s after the full take ended, the loader idle).
+  Suspected: RedLua's garbage collection of a finished job's native objects. Script Hook V then
+  closes the game. The worker restarts a game that went away mid-take and takes again (up to
+  twice per job; capture/worker.py, checked against a fake game in tests/test_obstacle_policy.py;
+  not yet seen live), and starts a closed game before the next job. To try: keep one session for
+  the game's lifetime, or stop Lua's collector during a session.
+- **Street names** are still hashes (the session returns them); titles use the zone only.
+- **Visual set.** None yet (captures without ReShade effects). OptiScaler cannot run (Legacy has
+  no DLSS/FSR call to take over); GTA V Enhanced has DLSS and ray tracing but did not start here.
+- **Exposure.** Not locked as in RDR2: the frozen world holds eye adaptation too (moving a camera
+  away and back gave the same frame within 0.04), so every shot of a take has the exposure of the
+  view the freeze started on. Not yet checked across a bright and a dark view.
+- **Settle.** 40 frames, carried over from RDR2 (TAA there). GTA V Legacy's anti-aliasing here is
+  not temporal, so far fewer frames may do; measuring it would cut the 0.32 s per shot.
+- **The game timer** does not count the frozen world's steps, so `instant()` cannot see the world
+  move during a recovery; frozen frames are checked by their frame time instead.
+- **Locations** are not shown in game: no scout overlay for GTA V yet (`--at x,y,z` scouts).
+
 ## The install CLI and DLSS 5, what is left
 
 `capture install`, `verify`, `uninstall` and `mods` exist and are applied on the development
@@ -61,8 +87,11 @@ in shade, warmer walls), 1-4 at night. With it on, a view needs about 60 frames 
 cut to settle (the take settle is 40). With DLSS 5 on top (`tools/preset_ab.py --with-dlss5`,
 DirectX 12): mean FLIP 0.055 for ray tracing, 0.054 for DLSS 5 over it, 0.069 for both on the
 sunny street; 0.026 / 0.042 / 0.051 at night; 0.048 / 0.046 / 0.065 in a thunderstorm (wet
-paths), 0.087 / 0.076 / 0.109 in the game's RAIN (patchy, sun breaks). Once, a few minutes after
-a run with both on, the GPU device was lost (DXGI_ERROR_DEVICE_HUNG). Left: consistency between
+paths), 0.087 / 0.076 / 0.109 in the game's RAIN (patchy, sun breaks). Twice, a few minutes
+after a run with both on, the game's graphics failed: the GPU device was lost
+(DXGI_ERROR_DEVICE_HUNG), and on 2026-11-20 23:32, two minutes after the clean-slate take, an
+ERR_GFX_STATE "Game error" dialog. The worker would restart the game (no heartbeat), but a dialog
+left open blocks focusing the window until the game is killed. Left: consistency between
 adjacent cameras, whether captures should use it, and unregistering ReShade's Vulkan layer
 (needs an administrator; meanwhile Steam is started with DISABLE_VK_LAYER_reshade_1=1).
 

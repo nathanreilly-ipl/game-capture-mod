@@ -53,8 +53,12 @@ def cmd_locations(a):
     if a.titles or a.publish:
         for game in sorted({loc["game"] for loc in doc["locations"]}):
             adapter = adapters_registry.get(game)()
-            if a.titles:
-                adapter.ensure_ready(restart=False)
+            if a.titles and any(loc["game"] == game and not loc.get("title") for loc in doc["locations"]):
+                try:
+                    adapter.ensure_ready(restart=False)
+                except Exception as e:
+                    print("titles for %s skipped: %s" % (game, e))
+                    continue
                 adapter.open()
                 try:
                     for loc in doc["locations"]:

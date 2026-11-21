@@ -19,7 +19,7 @@ from .components import addon
 from .plan import Ctx, InstallError, Record, System, run, uninstall as _uninstall
 from .sources import SHARED_LOCK, Files, load_locks
 
-INSTALLERS = {"rdr2": "adapters.rdr2.install"}
+INSTALLERS = {"rdr2": "adapters.rdr2.install", "gtav": "adapters.gtav.install"}
 
 
 def installer(game):

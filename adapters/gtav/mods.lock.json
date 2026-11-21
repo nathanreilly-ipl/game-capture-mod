@@ -1,0 +1,77 @@
+{
+    "schema": "capture_mods_lock/v1",
+    "mods": {
+        "scripthook_v": {
+            "title": "Script Hook V 3889.0 / 1158.13 (with its ASI loader and Native Trainer)",
+            "version": "3889.0.1158.13",
+            "what": "Loads script plug-ins into the game (the ASI loader, dinput8.dll) and lets them call the game's functions. Everything that drives GTA V runs through it. This build supports GTA V Legacy 1.0.3889.0 and Enhanced 1.0.1158.13; a game update needs a new build. Native Trainer is optional (--no-native-trainer).",
+            "required": true,
+            "source": "supplied",
+            "page": "http://www.dev-c.com/gtav/scripthookv/",
+            "note": "Its readme forbids redistributing it, so download it from the page above. An Enhanced install that already has these files is a source too: --mods <its folder>.",
+            "licence": "Alexander Blade; free to use, no redistribution",
+            "redistributable": false,
+            "files": [
+                {
+                    "name": "ScriptHookV.dll",
+                    "size": 1987072,
+                    "sha256": "126be57ca9dca00e471f9de611766009c900aad88f89ae6c2926ec62e5aaeb4f"
+                },
+                {
+                    "name": "dinput8.dll",
+                    "size": 131072,
+                    "sha256": "9fd9e02353b7d39fe07b9667f7ea2697229a7f2d0e7d389eb79eb212b1bb181d"
+                },
+                {
+                    "name": "NativeTrainer.asi",
+                    "size": 216576,
+                    "sha256": "f2302573ced45cdaaf190f332deeafd3f32e179d7e9102d939608a9ab774b3cf",
+                    "option": "native_trainer"
+                }
+            ]
+        },
+        "redlua_v": {
+            "title": "RedLua 0.6.4 for GTA V",
+            "version": "0.6.4",
+            "what": "Runs Lua scripts inside the game (LuaJIT). Our loader and the session job are RedLua scripts, shared with RDR2.",
+            "required": true,
+            "source": "download",
+            "page": "https://github.com/igor725/RedLua/releases/tag/v0.6.4",
+            "archive": {
+                "name": "RedLuaV-v0.6.4.zip",
+                "url": "https://github.com/igor725/RedLua/releases/download/v0.6.4/RedLuaV-v0.6.4.zip",
+                "size": 3862108,
+                "sha256": "c1420782cf38c64117fa0dfdd68fd8ab38ae8794cae4343d933ee90b1d737aa2"
+            },
+            "licence": "MIT",
+            "redistributable": true,
+            "files": [
+                {
+                    "name": "RedLua.asi",
+                    "size": 2459648,
+                    "sha256": "6b5c1bd47116a9be5acab46e6201585d8c947d4ffe22534db4e4c3396b4cba0d"
+                },
+                {
+                    "name": "lua51.dll",
+                    "size": 533504,
+                    "sha256": "0d4d79fe1e4829298b3b67da34a195a34e3229df94bb8f91aba6f3c8f89bd554"
+                },
+                {
+                    "name": "RedLua/natives.json",
+                    "size": 2635963,
+                    "sha256": "f9bd96b777f9534c7b313366f9fc22011e6575f208bc25e527f02d04ad471ba5"
+                },
+                {
+                    "name": "RedLua/Langs/en.lng",
+                    "size": 2234,
+                    "sha256": "4d4aa030d467fd4b1ebe94f5416e5f91f3a2875fdc4aeb1851185eccd433cbec"
+                },
+                {
+                    "name": "RedLua/Langs/ru.lng",
+                    "size": 3231,
+                    "sha256": "7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3"
+                }
+            ]
+        }
+    }
+}

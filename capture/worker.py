@@ -1,8 +1,9 @@
 """A worker: one game instance taking jobs from the queue until there are none.
 
 For each job: make sure the game is up (restart it if not), capture the take, package it,
-make its sheets, and mark the job done, or failed with the reason. A failed job stays in
-failed/ until someone retries it.
+make its sheets, and mark the job done, or failed with the reason. If the game goes away
+mid-take (a script fault closes it, a graphics error stops it), the worker restarts it and takes
+again, up to MAX_GAME_RESTARTS times. A failed job stays in failed/ until someone retries it.
 """
 import os
 import shutil
@@ -57,6 +58,18 @@ def _provider_qc(job, queue, take_dir, rig, take, log):
     return res
 
 
+MAX_GAME_RESTARTS = 2   # game restarts within one job before it fails
+
+
+def _game_alive(adapter):
+    """Whether the game is still up and drivable (the adapter's check, without restarting it)."""
+    try:
+        adapter.ensure_ready(restart=False)
+        return True
+    except Exception:
+        return False
+
+
 def take_dir_for(takes_root, job):
     return os.path.join(takes_root, job["location"]["id"], job["rig"]["rig_id"], "%s_%s" % (stamp(), job["id"][-8:]))
 
@@ -92,8 +105,10 @@ def run_worker(game, queue_root, takes_root, worker_id=None, once=False, wait_s=
                                     scene_dir=os.path.join(os.path.dirname(paths.LOCATIONS), "scenes"), log=log)
             max_retakes = int(merged_settings(job.get("settings"))["max_retakes"])
             first_dir = take_dir
-            for attempt in range(max_retakes + 1):
+            attempt = blocked = game_restarts = 0
+            while True:
                 take_dir = first_dir if attempt == 0 else "%s_retake%d" % (first_dir, attempt)
+                attempt += 1
                 try:
                     take = run_take(adapter, job, rig, rig_path, take_dir, log=log)
                     break
@@ -101,9 +116,26 @@ def run_worker(game, queue_root, takes_root, worker_id=None, once=False, wait_s=
                     # the aborted attempt keeps its logs; its frames are of no use
                     shutil.rmtree(os.path.join(take_dir, "raw"), ignore_errors=True)
                     retakes.append({"take_dir": take_dir, "reason": str(r)})
-                    log("retake %d of %d: %s" % (attempt + 1, max_retakes, r))
-            else:
-                raise TakeFailed("still blocked after %d retakes: %s" % (max_retakes, retakes[-1]["reason"]))
+                    blocked += 1
+                    log("retake %d of %d: %s" % (blocked, max_retakes, r))
+                    if blocked > max_retakes:
+                        raise TakeFailed("still blocked after %d retakes: %s" % (max_retakes, r))
+                except Exception as e:
+                    # The game itself went away mid-take (a script fault closed it, a graphics error
+                    # stopped it): restart it and take again, a few times. Anything else is a failure.
+                    if not restart or game_restarts >= MAX_GAME_RESTARTS or _game_alive(adapter):
+                        raise
+                    game_restarts += 1
+                    shutil.rmtree(os.path.join(take_dir, "raw"), ignore_errors=True)
+                    retakes.append({"take_dir": take_dir, "reason": "the game stopped: %s: %s" % (type(e).__name__, e)})
+                    log("the game stopped mid-take (%s: %s); restarting it (%d of %d)" % (
+                        type(e).__name__, e, game_restarts, MAX_GAME_RESTARTS))
+                    try:
+                        adapter.close()
+                    except Exception:
+                        pass
+                    adapter.ensure_ready(restart=True)
+                    adapter.open()
             adapter.close()
             meta = package(take_dir, log=log)
             sheets = make_sheets(take_dir, log=log)

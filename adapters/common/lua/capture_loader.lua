@@ -21,9 +21,13 @@
 --   ctx.capture(stem [, timeout]) ask the ReShade add-on for jobs\<id>\<stem>.bmp;
 --                                 returns the ack table, errors if there is no add-on
 --   ctx.defer(fn)                 run fn when the job ends, however it ends
+--   ctx.each_tick = fn            run fn on every tick ctx.wait and ctx.capture pass (e.g. calls
+--                                 the game needs every frame, like hiding the HUD)
 --   ctx.result.<key> = value      extra lines for result.txt
 --   ctx.args, ctx.id, ctx.out_dir, ctx.job_dir
 
+-- The exchange folder. This default is RDR2's; `capture install <game>` writes each game's own
+-- folder into this line (adapters/common/redlua.py, loader_text).
 local OUT_DIR = (os.getenv('USERPROFILE') or 'C:') .. '\\Documents\\RDR2Modding\\captures'
 local POLL_TICKS = 10        -- look for command.txt every this many ticks
 local DEFAULT_TIMEOUT_S = 60
@@ -153,6 +157,7 @@ local function make_ctx(j, args)
 
 	function ctx.wait(frames)
 		for _ = 1, frames or 1 do
+			if ctx.each_tick then ctx.each_tick() end
 			coroutine.yield()
 		end
 	end
@@ -182,6 +187,7 @@ local function make_ctx(j, args)
 		end
 		local deadline = os.time() + (timeout_s or CAPTURE_TIMEOUT_S)
 		while true do
+			if ctx.each_tick then ctx.each_tick() end
 			coroutine.yield()
 			local ack = read_kv(OUT_DIR .. '\\ack.txt')
 			if ack and ack.id == req_id then

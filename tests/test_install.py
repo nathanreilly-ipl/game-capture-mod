@@ -9,6 +9,8 @@ B. The RDR2 plan in a sandbox (a fake game folder, a fake ProgramData and regist
    uninstall (everything back), then a bundle made from the sandbox installs into a second one
    on a "machine without build tools". With the OptiScaler release in out/mods, a third sandbox
    gets --optiscaler (a stand-in for NVIDIA's model), then its own preset edits survive a reinstall.
+C. RDR2's default install (Direct3D 12, OptiScaler, ray tracing, 2560x1440), then both off, uninstall.
+D. The GTA V Legacy plan in a sandbox: install, again (nothing to do), uninstall.
 """
 import argparse
 import os
@@ -274,6 +276,43 @@ def part_c(tmp, mods):
     print("C ok: uninstall put the game folder and its settings back")
 
 
+def part_d(tmp, mods):
+    """The GTA V Legacy plan in a sandbox: install, again (nothing to do), uninstall."""
+    lines = []
+    root = os.path.join(tmp, "gtav")
+    game = os.path.join(root, "game")
+    os.makedirs(game)
+    open(os.path.join(game, "GTA5.exe"), "wb").write(b"not the real game")
+    xml = os.path.join(root, "settings.xml")
+    open(xml, "wb").write(b'<Settings>\r\n  <DX_Version value="2" />\r\n  <ScreenWidth value="3072" />\r\n'
+                          b'  <ScreenHeight value="1728" />\r\n  <Windowed value="0" />\r\n  <VSync value="1" />\r\n'
+                          b'  <PauseOnFocusLoss value="1" />\r\n</Settings>\r\n')
+    exchange = os.path.join(root, "exchange")
+    opts = {"exchange_dir": exchange, "settings_xml": xml}
+    system, work = FakeSystem(root), os.path.join(root, "work")
+    before, xml_before = tree(game), open(xml, "rb").read()
+    n = inst.install("gtav", game, opts, mods, system=system, work=work, log=lines.append)
+    for rel in ("ScriptHookV.dll", "dinput8.dll", "NativeTrainer.asi", "ScriptHookV.dev", "RedLua.asi", "lua51.dll",
+                os.path.join("RedLua", "natives.json"), os.path.join("RedLua", "Settings.json"),
+                os.path.join("RedLua", "Scripts", "capture_loader.lua"), "ReShade.asi", "capture_mod.addon64",
+                "ReShade.ini", "ReShadePreset.capture.ini"):
+        assert os.path.exists(os.path.join(game, rel)), rel
+    loader = open(os.path.join(game, "RedLua", "Scripts", "capture_loader.lua"), encoding="utf-8").read()
+    assert "local OUT_DIR = '%s'" % exchange.replace("\\", "\\\\") in loader, "the loader watches GTA V's own exchange folder"
+    assert open(os.path.join(game, "commandline.txt")).read().strip() == "-nobattleye"
+    assert plan.Ini(os.path.join(game, "ReShade.ini")).get("CAPTURE_MOD", "OutputDir") == exchange
+    x = open(xml).read()
+    for want in ('VSync value="0"', 'PauseOnFocusLoss value="0"', 'Windowed value="1"', 'ScreenWidth value="2560"',
+                 'ScreenHeight value="1440"'):
+        assert want in x, want
+    assert inst.install("gtav", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    inst.uninstall("gtav", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert open(xml, "rb").read() == xml_before, "the game's settings are back"
+    print("D ok: the GTA V plan in a sandbox: %d steps, then nothing to do; uninstall put it all back" % n)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mods", action="append", default=[])
@@ -293,6 +332,13 @@ def main():
                 print("C skipped: the OptiScaler and Reality Redemption 2 archives are not in out/mods")
         else:
             print("B skipped: the real mod files are not available (pass --mods <folder>) or the add-on is not built")
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("gtav").LOCK), roots=a.mods)
+        need = [("scripthook_v", "ScriptHookV.dll"), ("redlua_v", "RedLua.asi"), ("reshade", "ReShade64.dll")]
+        if all(probe.ref(m, f).found for m, f in need) and addon.is_built():
+            part_d(tmp, a.mods)
+        else:
+            print("D skipped: Script Hook V, RedLua for GTA V or ReShade is not in out/mods (or the add-on is not built)")
 
 
 if __name__ == "__main__":

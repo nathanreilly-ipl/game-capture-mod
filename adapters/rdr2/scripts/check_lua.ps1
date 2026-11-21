@@ -1,4 +1,4 @@
-# Compile-checks every Lua file under lua\ with the LuaJIT that RedLua ships
+# Compile-checks every Lua file under adapters\*\lua\ with the LuaJIT that RedLua ships
 # (lua51.dll in the game folder). Files are compiled, not run.
 param(
 	[string]$GameDir = 'C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2'
@@ -32,9 +32,12 @@ public static class LuaCheck {
 Add-Type -TypeDefinition $source.Replace('__DLL__', $dll)
 
 $failed = 0
-Get-ChildItem -LiteralPath (Join-Path $root 'lua') -Filter '*.lua' -Recurse | ForEach-Object {
+# every adapter's Lua (RDR2's, the shared loader in adapters\common, other RedLua games)
+$adapters = Split-Path -Parent $root
+Get-ChildItem -LiteralPath $adapters -Directory | ForEach-Object { Join-Path $_.FullName 'lua' } | Where-Object { Test-Path -LiteralPath $_ } |
+	ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.lua' -Recurse } | ForEach-Object {
 	$err = [LuaCheck]::Check($_.FullName)
-	$rel = $_.FullName.Substring($root.Length + 1)
+	$rel = $_.FullName.Substring($adapters.Length + 1)
 	if ($err) {
 		$failed++
 		Write-Host "FAIL  $rel"
