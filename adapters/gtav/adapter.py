@@ -20,6 +20,13 @@ Settings (job settings "adapter"):
     clock_settle  frames after setting the clock (240)
     park_height   metres to park the hidden player above the location during a take (10; 0 = stay)
     min_step      the engine's minimum time step while frozen, seconds (1e-7; the game's own is 1/3000)
+    populate_s    seconds the world runs after a teleport, so people and traffic stream in (45)
+    crowd         walkers of our own spawned around a location after the teleport (12; 0 = none)
+    crowd_radius  metres they walk about in around the location (12)
+
+While frozen the population multipliers are 0: with more people than its budget the game
+despawns and spawns people even in a frozen world (7 gone and 9 new within 60 m over 3,000
+frozen frames); with the multipliers at 0 nothing moved, appeared or went (2026-11-21).
 """
 import math
 import os
@@ -32,13 +39,14 @@ from capture import config
 from capture.adapter import Adapter, AdapterError
 
 from ..common import mem, redlua, window
-from . import launch, zones
+from . import launch, settings_menu, zones
 from .timestep import MinStep
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXE = launch.EXE
 WINDOW_CLASS = launch.WINDOW_CLASS
 EXCHANGE = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtav")
+EXCHANGE_ENHANCED = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtave")
 SESSION_JOB = os.path.join(HERE, "lua", "jobs", "cam_session.lua")
 CLIENT = (2560, 1440)
 
@@ -46,7 +54,7 @@ CLIENT = (2560, 1440)
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 40, "step_frame_s": 0.0005, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
-            "min_step": 1e-7}
+            "min_step": 1e-7, "populate_s": 45, "crowd": 12, "crowd_radius": 12.0}
 
 
 def game_dir():
@@ -76,6 +84,8 @@ def euler_from_axes(right, fwd, up):
 class GTAVAdapter(Adapter):
     name = "gtav"
     capabilities = frozenset({"obstacles", "raycast"})
+    edition = launch.LEGACY
+    exchange = EXCHANGE
 
     def __init__(self, settings=None):
         super().__init__(dict(DEFAULTS, **(settings or {})))
@@ -85,29 +95,30 @@ class GTAVAdapter(Adapter):
         self.frozen = False
         self.last_size = None
         self._parked_from = None
-        self.min_step = MinStep(EXE)
+        self.min_step = MinStep(self.edition.exe)
 
     # --- lifecycle -------------------------------------------------------------------------
     def _running(self):
         try:
-            mem.find_pid(EXE)
+            mem.find_pid(self.edition.exe)
         except RuntimeError:
             return False
-        return redlua.heartbeat_age(EXCHANGE) < 5
+        return redlua.heartbeat_age(self.exchange) < 5
 
     def ensure_ready(self, restart=True):
         if self._running():
             return
         if not restart:
-            raise AdapterError("GTA V is not running with capture_loader.lua (no heartbeat in %s)" % EXCHANGE)
+            raise AdapterError("%s is not running with capture_loader.lua (no heartbeat in %s)" % (self.edition.name, self.exchange))
         try:
-            launch.start(EXCHANGE, CLIENT)
+            launch.start(self.exchange, CLIENT, ed=self.edition)
         except RuntimeError as e:
             raise AdapterError("game restart failed: %s" % e)
 
     def open(self):
+        window.keep_awake()
         redlua.minimize_console()
-        self.hwnd = window.find_game_window(mem.find_pid(EXE), WINDOW_CLASS)
+        self.hwnd = window.find_game_window(mem.find_pid(self.edition.exe), self.edition.window_class)
         for _ in range(120):
             if not self.hwnd or window.focus(self.hwnd):
                 break
@@ -117,7 +128,7 @@ class GTAVAdapter(Adapter):
         if not window.set_client_size(self.hwnd, *CLIENT):
             raise AdapterError("the game window is %s, not %s" % (window.client_size(self.hwnd), CLIENT))
         if self.sess is None:
-            self.sess = redlua.Session(EXCHANGE, SESSION_JOB, idle_s=900, timeout_s=12 * 3600)
+            self.sess = redlua.Session(self.exchange, SESSION_JOB, idle_s=900, timeout_s=12 * 3600)
 
     def close(self):
         if self.sess is not None:
@@ -165,6 +176,16 @@ class GTAVAdapter(Adapter):
         if r.get("loaded") != "true":
             raise AdapterError("the scene did not load around %s" % (position,))
         self.sess.cmd("wait", 120)  # level of detail catches up
+        # People and traffic stream in around a new spot over about 50 s (Vinewood Blvd, 2026-11-21:
+        # 0 people within 15 m after 10 s, 5-6 after 50 s), even at the game's maximum density.
+        # A crowd of walkers of our own adds people (12 within 12 m: 2 -> 14 within 15 m); the world
+        # runs on so they spread out and the game's population settles before anything is frozen.
+        self.sess.cmd("populate")
+        n = int(self.settings.get("crowd") or 0)
+        if n:
+            self.sess.cmd("crowd", "%d %.3f %.3f %.3f %.1f" % (n, position[0], position[1], position[2],
+                                                               float(self.settings.get("crowd_radius") or 12)), timeout=60)
+        time.sleep(float(self.settings.get("populate_s") or 0))
 
     def ground_point(self, position):
         g = self.sess.cmd("ground", "%.4f %.4f %.4f" % (position[0], position[1], position[2] + 2.0))
@@ -224,6 +245,8 @@ class GTAVAdapter(Adapter):
         s = first_shot
         self._pose(s["pos"], s["right"], s["fwd"], s["up"], s["vfov_deg"])
         self.sess.cmd("wait", 60)
+        self.sess.cmd("density", "0 0")   # no spawning or culling while frozen (see the module notes)
+        self.sess.cmd("wait", 10)
         self.min_step.set(float(self.settings["min_step"]))
         self.sess.cmd("freeze", "timescale")
         self.frozen = True
@@ -310,7 +333,7 @@ class GTAVAdapter(Adapter):
         """Line probes against terrain, buildings, objects and foliage (not people or vehicles).
         Returns (hit bool N, points N x 3, normals N x 3)."""
         starts, ends = np.asarray(starts, float), np.asarray(ends, float)
-        inp, outp = os.path.join(EXCHANGE, "rays_in.txt"), os.path.join(EXCHANGE, "rays_out.txt")
+        inp, outp = os.path.join(self.exchange, "rays_in.txt"), os.path.join(self.exchange, "rays_out.txt")
         with open(inp, "w", encoding="utf-8") as f:
             for s, e in zip(starts, ends):
                 f.write("%.3f %.3f %.3f %.3f %.3f %.3f\n" % (s[0], s[1], s[2], e[0], e[1], e[2]))
@@ -348,6 +371,30 @@ class GTAVAdapter(Adapter):
     def end_frozen(self):
         try:
             self.sess.cmd("unfreeze")
+            self.sess.cmd("density", "off")
         finally:
             self.frozen = False
             self.min_step.restore()
+
+
+class GTAVEnhancedAdapter(GTAVAdapter):
+    """GTA V Enhanced (Direct3D 12, DLSS, ray tracing): the same natives through Script Hook V, its
+    own exe, Steam app and exchange folder. Its install puts Ultimate ASI Loader in as
+    xinput1_4.dll (GTA5_Enhanced.exe does not load dinput8.dll at start, so Script Hook V's own
+    loader never runs) and keeps ReShade's config outside the game folder, which Enhanced locks."""
+    name = "gtave"
+    edition = launch.ENHANCED
+    exchange = EXCHANGE_ENHANCED
+    capabilities = GTAVAdapter.capabilities | {"ray_tracing_switch"}
+
+    def set_ray_tracing(self, on, log=print):
+        """The game's ray tracing on or off, live, through its settings menu (settings_menu.py),
+        also while frozen; True if it changed."""
+        changed = settings_menu.set_ray_tracing(self.hwnd, on, log=log)
+        if changed and self.frozen:
+            # the pause menu paused and resumed the game: hold the world again and check it is held
+            self.sess.cmd("freeze", "timescale")
+            st = self.sess.cmd("wait", 60)
+            if float(st["frame_time"]) > 10 * float(self.settings["min_step"]):
+                raise AdapterError("the world is not frozen after the settings menu: frame time %s s" % st["frame_time"])
+        return changed

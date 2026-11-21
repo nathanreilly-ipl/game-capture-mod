@@ -90,6 +90,77 @@ The lockfiles pin the versions this repository was tested with:
 | `dinput8.dll` | 131,072 | `9fd9e02353b7d39fe07b9667f7ea2697229a7f2d0e7d389eb79eb212b1bb181d` |
 | `NativeTrainer.asi` (optional: `native_trainer`) | 216,576 | `f2302573ced45cdaaf190f332deeafd3f32e179d7e9102d939608a9ab774b3cf` |
 
+### Ultimate ASI Loader 10.0.4 (x64)
+
+**Optional.** Loads .asi plug-ins (Script Hook V's scripts, RedLua, ReShade) into GTA V Enhanced, installed as xinput1_4.dll: GTA5_Enhanced.exe never loads dinput8.dll, the name Script Hook V's own loader uses. Not needed for Legacy.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v10.0.4 |
+| File as downloaded | `Ultimate-ASI-Loader-NoPDB_x64.zip`, 897,014 bytes, SHA-256 `aed4a9ed3fe76cbd5ae7e62a25eccafdd05e0b5b585ff1995e51455ff387a4fb` |
+| Direct link | https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v10.0.4/Ultimate-ASI-Loader-NoPDB_x64.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `ultimate_asi_loader` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `dinput8.dll` | 2,437,352 | `aefcb1f8f74bf998c3f0ccf1576174da31bdb07ee37fb332aca184842bb97ffb` |
+
+### RedLua 0.6.4 for GTA V
+
+**Required.** Runs Lua scripts inside the game (LuaJIT). Our loader and the session job are RedLua scripts, shared with RDR2.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/igor725/RedLua/releases/tag/v0.6.4 |
+| File as downloaded | `RedLuaV-v0.6.4.zip`, 3,862,108 bytes, SHA-256 `c1420782cf38c64117fa0dfdd68fd8ab38ae8794cae4343d933ee90b1d737aa2` |
+| Direct link | https://github.com/igor725/RedLua/releases/download/v0.6.4/RedLuaV-v0.6.4.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `redlua_v` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `RedLua.asi` | 2,459,648 | `6b5c1bd47116a9be5acab46e6201585d8c947d4ffe22534db4e4c3396b4cba0d` |
+| `lua51.dll` | 533,504 | `0d4d79fe1e4829298b3b67da34a195a34e3229df94bb8f91aba6f3c8f89bd554` |
+| `RedLua/natives.json` | 2,635,963 | `f9bd96b777f9534c7b313366f9fc22011e6575f208bc25e527f02d04ad471ba5` |
+| `RedLua/Langs/en.lng` | 2,234 | `4d4aa030d467fd4b1ebe94f5416e5f91f3a2875fdc4aeb1851185eccd433cbec` |
+| `RedLua/Langs/ru.lng` | 3,231 | `7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3` |
+
+## Grand Theft Auto V Enhanced (story mode, Steam)
+
+### Script Hook V 3889.0 / 1158.13 (with its ASI loader and Native Trainer)
+
+**Required.** Loads script plug-ins into the game (the ASI loader, dinput8.dll) and lets them call the game's functions. Everything that drives GTA V runs through it. This build supports GTA V Legacy 1.0.3889.0 and Enhanced 1.0.1158.13; a game update needs a new build. Native Trainer is optional (--no-native-trainer).
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: http://www.dev-c.com/gtav/scripthookv/ |
+| Licence | Alexander Blade; free to use, no redistribution (may NOT be redistributed) |
+| Note | Its readme forbids redistributing it, so download it from the page above. An Enhanced install that already has these files is a source too: --mods <its folder>. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `scripthook_v` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `ScriptHookV.dll` | 1,987,072 | `126be57ca9dca00e471f9de611766009c900aad88f89ae6c2926ec62e5aaeb4f` |
+| `dinput8.dll` | 131,072 | `9fd9e02353b7d39fe07b9667f7ea2697229a7f2d0e7d389eb79eb212b1bb181d` |
+| `NativeTrainer.asi` (optional: `native_trainer`) | 216,576 | `f2302573ced45cdaaf190f332deeafd3f32e179d7e9102d939608a9ab774b3cf` |
+
+### Ultimate ASI Loader 10.0.4 (x64)
+
+**Optional.** Loads .asi plug-ins (Script Hook V's scripts, RedLua, ReShade) into GTA V Enhanced, installed as xinput1_4.dll: GTA5_Enhanced.exe never loads dinput8.dll, the name Script Hook V's own loader uses. Not needed for Legacy.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v10.0.4 |
+| File as downloaded | `Ultimate-ASI-Loader-NoPDB_x64.zip`, 897,014 bytes, SHA-256 `aed4a9ed3fe76cbd5ae7e62a25eccafdd05e0b5b585ff1995e51455ff387a4fb` |
+| Direct link | https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v10.0.4/Ultimate-ASI-Loader-NoPDB_x64.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `ultimate_asi_loader` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `dinput8.dll` | 2,437,352 | `aefcb1f8f74bf998c3f0ccf1576174da31bdb07ee37fb332aca184842bb97ffb` |
+
 ### RedLua 0.6.4 for GTA V
 
 **Required.** Runs Lua scripts inside the game (LuaJIT). Our loader and the session job are RedLua scripts, shared with RDR2.

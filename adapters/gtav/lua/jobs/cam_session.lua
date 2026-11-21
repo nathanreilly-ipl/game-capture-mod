@@ -31,11 +31,21 @@ return function(ctx)
 	-- The HUD, radar, notification feed and help text are hidden one frame at a time, so on every
 	-- tick, also while a command waits or a capture is pending (a shot's settle showed the minimap
 	-- and a notification otherwise, 2026-11-21).
-	if ctx.args.hide_hud ~= '0' then
-		ctx.each_tick = function()
+	-- The population multipliers (density command) are per frame too.
+	local hide_hud = ctx.args.hide_hud ~= '0'
+	local density = nil   -- { people, traffic } multipliers, or nil for the game's own
+	ctx.each_tick = function()
+		if hide_hud then
 			pcall(native.call, 'HUD', 'HIDE_HUD_AND_RADAR_THIS_FRAME')
 			pcall(native.call, 'HUD', 'THEFEED_HIDE_THIS_FRAME')
 			pcall(native.call, 'HUD', 'HIDE_HELP_TEXT_THIS_FRAME')
+		end
+		if density then
+			pcall(native.call, 'PED', 'SET_PED_DENSITY_MULTIPLIER_THIS_FRAME', density[1])
+			pcall(native.call, 'PED', 'SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME', density[1], density[1])
+			pcall(native.call, 'VEHICLE', 'SET_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME', density[2])
+			pcall(native.call, 'VEHICLE', 'SET_RANDOM_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME', density[2])
+			pcall(native.call, 'VEHICLE', 'SET_PARKED_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME', density[2])
 		end
 	end
 
@@ -88,6 +98,33 @@ return function(ctx)
 	local frozen = false
 	local freeze_method = ctx.args.freeze or 'timescale'
 	local held = false -- player position frozen (hold, teleport, park)
+
+	-- An entity's identity as text. An element of a native.allpeds/allvehicles pool prints as the
+	-- address of its slot ("Entity*: 0x..."), which another entity takes on the next call; the
+	-- index natives give a value-typed handle, which prints as "Ped: 1234" / "Vehicle: 5678".
+	local function value_of(e, kind)
+		local ok, h
+		if kind == 'vehicle' or kind == 'vehicles' then
+			ok, h = ctx.try('ENTITY', 'GET_VEHICLE_INDEX_FROM_ENTITY_INDEX', e)
+		else
+			ok, h = ctx.try('ENTITY', 'GET_PED_INDEX_FROM_ENTITY_INDEX', e)
+		end
+		return ok and h or e
+	end
+	local function handle_of(e, kind)
+		return tostring(value_of(e, kind))
+	end
+
+	-- people this session spawned (crowd): its own, so obstacles reports them as not owned and
+	-- remove may delete them; released to the game when the session ends. Keyed by handle_of.
+	local spawned = {}
+	ctx.defer(function()
+		for _, p in pairs(spawned) do
+			local ref = native.new('Ped', 1)
+			ref[0] = p
+			pcall(native.call, 'ENTITY', 'SET_PED_AS_NO_LONGER_NEEDED', ref)
+		end
+	end)
 
 	local function render(on)
 		-- p5 is typed Any; RedLua may only take a typed pointer there
@@ -329,11 +366,14 @@ return function(ctx)
 	function handlers.obstacles(args)
 		local a = numbers(args)
 		local r2 = (a[4] or 30) ^ 2
-		obs_pool = obs_pool or native.new('Entity', 2048)
-		local pool = obs_pool
+		-- One pool per kind: a listed entity is a slot of its pool, and refilling one pool with the
+		-- vehicles overwrote the people's slots before `remove` used them (2026-11-21: people in
+		-- cameras survived every clearing).
+		obs_pool = obs_pool or { peds = native.new('Entity', 2048), vehicles = native.new('Entity', 2048) }
 		listed = {}
 		local out = {}
 		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local pool = obs_pool[kind]
 			local n = kind == 'peds' and native.allpeds(pool) or native.allvehicles(pool)
 			for i = 0, n - 1 do
 				local e = pool[i]
@@ -353,6 +393,7 @@ return function(ctx)
 							label = select(2, ctx.try('PED', 'IS_PED_HUMAN', e)) and 'human' or 'animal'
 						end
 						local mission = select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e))
+							and not spawned[handle_of(e, kind)]
 						listed[#listed + 1] = { e = e, kind = label }
 						out[#out + 1] = string.format('o%d=%s|%d|%s|%s|%s|%s|%.4f %.4f %.4f', #listed, label,
 							mission and 1 or 0, v3(centre), v3(R), v3(F), v3(U),
@@ -377,7 +418,7 @@ return function(ctx)
 			return
 		end
 		seen[tostring(e)] = true
-		acc[#acc + 1] = e
+		acc[#acc + 1] = { e = e, kind = kind }
 		if kind == 'vehicle' then
 			for seat = -1, 6 do
 				local ok, occ = ctx.try('VEHICLE', 'GET_PED_IN_VEHICLE_SEAT', e, seat, false)
@@ -388,33 +429,48 @@ return function(ctx)
 		end
 	end
 	function handlers.remove(args)
-		local removed, skipped = 0, {}
+		local removed, skipped, moved_away = 0, {}, 0
 		for _, n in ipairs(numbers(args)) do
 			local item = listed[n]
 			if item then
 				local group, seen = {}, {}
 				linked(item.e, item.kind == 'vehicle' and 'vehicle' or 'ped', group, seen)
 				local owned = false
-				for _, e in ipairs(group) do
+				for _, g in ipairs(group) do
+					local e = g.e
 					if e == ped or select(2, ctx.try('PED', 'IS_PED_A_PLAYER', e))
-						or select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e)) then
+						or (select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e)) and not spawned[handle_of(e, g.kind)]) then
 						owned = true
 					end
 				end
 				if owned then
 					skipped[#skipped + 1] = tostring(n)
 				else
-					for _, e in ipairs(group) do
-						ctx.try('ENTITY', 'SET_ENTITY_AS_MISSION_ENTITY', e, true, true)
+					for _, g in ipairs(group) do
+						-- the value-typed handle, not a pool slot (see handle_of)
+						local v = value_of(g.e, g.kind)
+						ctx.try('ENTITY', 'SET_ENTITY_AS_MISSION_ENTITY', v, true, true)
 						local ref = native.new('Entity', 1)
-						ref[0] = e
+						ref[0] = v
 						ctx.try('ENTITY', 'DELETE_ENTITY', ref)
+						-- People this script did not create in this job (ambient, or an earlier session's
+						-- crowd) survived DELETE_ENTITY (2026-11-21). In a frozen world, moving one far
+						-- below the street takes it out of every camera just the same.
+						if select(2, ctx.try('ENTITY', 'DOES_ENTITY_EXIST', v)) then
+							local okc, c = ctx.try('ENTITY', 'GET_ENTITY_COORDS', v, true)
+							if okc then
+								ctx.try('ENTITY', 'FREEZE_ENTITY_POSITION', v, true)
+								ctx.try('ENTITY', 'SET_ENTITY_COORDS_NO_OFFSET', v, c.x, c.y, c.z - 300.0, false, false, false)
+							end
+							moved_away = moved_away + 1
+						end
+						spawned[tostring(v)] = nil
 						removed = removed + 1
 					end
 				end
 			end
 		end
-		return { 'removed=' .. removed, 'skipped=' .. table.concat(skipped, ',') }
+		return { 'removed=' .. removed, 'moved_away=' .. moved_away, 'skipped=' .. table.concat(skipped, ',') }
 	end
 
 	-- raycast [flags] [per_tick]: line probes for the scene around a location. Reads rays_in.txt in
@@ -462,6 +518,81 @@ return function(ctx)
 		os.remove(outp)
 		os.rename(outp .. '.tmp', outp)
 		return { 'rays=' .. n, 'hits=' .. nhit, string.format('cpu_s=%.2f', os.clock() - t0) }
+	end
+
+	-- density people traffic: population multipliers applied every frame (1 = the game's maximum
+	-- setting); density off: back to the game's own.
+	function handlers.density(args)
+		if (args or ''):match('off') then
+			density = nil
+			return { 'density=off' }
+		end
+		local a = numbers(args)
+		density = { a[1] or 1.0, a[2] or a[1] or 1.0 }
+		ctx.try('STREAMING', 'SET_PED_POPULATION_BUDGET', 3)
+		ctx.try('STREAMING', 'SET_VEHICLE_POPULATION_BUDGET', 3)
+		return { string.format('density=%g %g', density[1], density[2]) }
+	end
+
+	-- populate: fill the ambient population around the player now, instead of over a minute.
+	function handlers.populate()
+		ctx.try('PED', 'INSTANTLY_FILL_PED_POPULATION')
+		ctx.try('VEHICLE', 'INSTANTLY_FILL_VEHICLE_POPULATION')
+		ctx.try('MISC', 'POPULATE_NOW')
+	end
+
+	-- crowd n x y z radius: n random pedestrians placed 2.5 m to radius from (x, y), walking about
+	-- inside the radius. They stay this session's own (the game culls released extra people, also
+	-- while the world is frozen: 16 vanished over 2,000 frozen frames, 2026-11-21), so obstacles
+	-- reports them as not owned and remove may delete them; they are released when the session ends.
+	function handlers.crowd(args)
+		local a = numbers(args)
+		local n, x, y, z, r = math.floor(a[1] or 8), a[2], a[3], a[4], a[5] or 12
+		local gz = native.new('float', 1)
+		local made = 0
+		for i = 1, n do
+			local ang = 2 * math.pi * (i + math.random()) / n
+			local d = 2.5 + (r - 2.5) * math.random()
+			local px, py = x + d * math.cos(ang), y + d * math.sin(ang)
+			local pz = z
+			if ctx.call('MISC', 'GET_GROUND_Z_FOR_3D_COORD', px, py, z + 3.0, gz, false, false) then
+				pz = gz[0]
+			end
+			local ok, p = ctx.try('PED', 'CREATE_RANDOM_PED', px, py, pz + 1.0)
+			if ok and p and p ~= 0 then
+				ctx.try('TASK', 'TASK_WANDER_IN_AREA', p, x, y, z, r, 2.0, 2.0)
+				ctx.try('PED', 'SET_PED_KEEP_TASK', p, true)
+				spawned[handle_of(p, 'ped')] = p
+				made = made + 1
+			end
+			ctx.wait(1)
+		end
+		return { 'crowd=' .. made }
+	end
+
+	-- entities x y z radius: every ped (not the player) and vehicle within radius, one answer line
+	-- each, e<n>=<handle>|<ped|vehicle>|<x y z>, to check that a frozen world stays as it is.
+	local ent_pool = nil
+	function handlers.entities(args)
+		local a = numbers(args)
+		local r2 = (a[4] or 60) ^ 2
+		ent_pool = ent_pool or native.new('Entity', 2048)
+		local out, n = {}, 0
+		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local count = kind == 'peds' and native.allpeds(ent_pool) or native.allvehicles(ent_pool)
+			for i = 0, count - 1 do
+				local e = ent_pool[i]
+				if e ~= ped then
+					local okp, q = ctx.try('ENTITY', 'GET_ENTITY_COORDS', e, true)
+					if okp and q and (q.x - a[1]) ^ 2 + (q.y - a[2]) ^ 2 + (q.z - a[3]) ^ 2 <= r2 then
+						n = n + 1
+						out[#out + 1] = string.format('e%d=%s|%s|%.4f %.4f %.4f', n, handle_of(e, kind), kind, q.x, q.y, q.z)
+					end
+				end
+			end
+		end
+		out[#out + 1] = 'entity_count=' .. n
+		return out
 	end
 
 	-- population x y z: people and vehicles near a point, within 15, 30 and 60 m

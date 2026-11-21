@@ -202,13 +202,16 @@ return function(ctx)
 	function handlers.obstacles(args)
 		local a = numbers(args)
 		local r2 = (a[4] or 30) ^ 2
-		obs_pool = obs_pool or native.new('Entity', 2048)
-		local pool = obs_pool
+		-- One pool per kind: a listed entity is a slot of its pool, and refilling one shared pool with
+		-- the vehicles overwrote the people's slots before `remove` used them (found in GTA V,
+		-- 2026-11-21: people in cameras were never deleted when vehicles were near).
+		obs_pool = obs_pool or { peds = native.new('Entity', 2048), vehicles = native.new('Entity', 2048) }
 		listed = {}
 		local out = {}
 		local mn, mx = native.new('Vector3', 1), native.new('Vector3', 1)
 		local vr, vf, vu, vp = native.new('Vector3', 1), native.new('Vector3', 1), native.new('Vector3', 1), native.new('Vector3', 1)
 		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local pool = obs_pool[kind]
 			local n = kind == 'peds' and native.allpeds(pool) or native.allvehicles(pool)
 			for i = 0, n - 1 do
 				local e = pool[i]

@@ -1,8 +1,10 @@
 """ReShade presets side by side at one frozen instant, switched live by key (ReShade's preset
 shortcuts). Game-agnostic. Made for Reality Redemption 2 in RDR2 (capture install rdr2 --api d3d12
---ray-tracing), whose three presets are on F16 (mod off), F15 (ray tracing off), F14 (on).
+--ray-tracing), whose three presets are on F16 (mod off), F15 (ray tracing off), F14 (on). A game
+with its own ray tracing that its adapter switches live (GTA V Enhanced) takes --with-dlss5.
 
     uv run --project . python tools/preset_ab.py --location rdr2-city-street-001 --clock 14:00 --weather SUNNY
+    uv run --project . python tools/preset_ab.py --game gtave --with-dlss5 --location gtave-vinewood-walk-001 --clock 14:00
 
 Views: the player and the street, people nearby (tools/upscaler_ab.py), and views it finds for
 materials and reflections: building fronts in up to four directions (found with the scene probes),
@@ -69,16 +71,25 @@ def extra_views(adapter, st):
 
 
 class PresetKeys:
+    """Ray tracing by ReShade preset keys (Reality Redemption 2), or, for a game whose own ray
+    tracing the adapter switches live (capability "ray_tracing_switch": GTA V Enhanced, through
+    its settings menu), through the adapter."""
+
     def __init__(self, adapter, log):
         self.adapter, self.log, self.mode = adapter, log, None
+        self.native = "ray_tracing_switch" in adapter.capabilities
 
     def set(self, mode, key):
         if mode == self.mode:
             return
-        self.adapter.press_key(key)
-        time.sleep(4.0)  # ReShade blends presets over PresetTransitionDuration (1 s here)
+        if self.native:
+            self.adapter.set_ray_tracing(mode.startswith("rt_on"), log=self.log)
+            time.sleep(2.0)
+        else:
+            self.adapter.press_key(key)
+            time.sleep(4.0)  # ReShade blends presets over PresetTransitionDuration (1 s here)
+            self.log("  preset %s (%s)" % (mode, key))
         self.mode = mode
-        self.log("  preset %s (%s)" % (mode, key))
 
 
 def main():
@@ -99,6 +110,8 @@ def main():
     os.makedirs(out)
     log = print
     adapter = adapters_registry.get(a.game)()
+    if "ray_tracing_switch" in adapter.capabilities and not a.with_dlss5:
+        ap.error("%s has no ray tracing mod to turn off; use --with-dlss5 (ray tracing off/on x DLSS 5 off/on)" % a.game)
     adapter.ensure_ready(restart=False)
     adapter.open()
     keys = PresetKeys(adapter, log)

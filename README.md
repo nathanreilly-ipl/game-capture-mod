@@ -3,7 +3,8 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V Legacy, both in story mode.
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V (Legacy and Enhanced), all
+in story mode.
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -17,8 +18,9 @@ adapters/common/    what adapters share, tied to no game: the game window (focus
                     process memory, and RedLua (the job loader script and the session client)
 adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockfile, visual set, ray
                     tracing, Lua jobs, launch and recovery scripts, the render camera writer, probes
-adapters/gtav/      everything GTA V Legacy: the adapter, its install plan and lockfile, the unattended
-                    launcher, the freeze (timestep.py), the session job, probes
+adapters/gtav/      everything GTA V, both editions: the adapter, the install plans (install.py,
+                    install_enhanced.py) and lockfile, the unattended launcher, the freeze
+                    (timestep.py), the session job, probes
 docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
 tools/              comparison tools (DLSS 5, ray tracing, sheets with FLIP maps), frame reports,
                     documentation media
@@ -42,7 +44,7 @@ On a fresh PC: install the game and start it once, clone this repository
 ```
 
 After that the machine can scout, run a worker, or be driven by an agent (see Workflow). The same
-commands take `gtav` for GTA V Legacy (see GTA V adapter).
+commands take `gtav` for GTA V Legacy and `gtave` for GTA V Enhanced (see GTA V adapter).
 
 The RDR2 default (since 2026-11-20) is the full capture setup: Direct3D 12, a 2560x1440 window,
 the visual set's ReShade preset, ray tracing (Reality Redemption 2) and DLSS 5 (OptiScaler, which
@@ -275,6 +277,11 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
   the capture log and listed under `obstructions` in `take.json`.
 - `--no-obstacle-check` turns both off. `tests/test_obstacle_policy.py` checks the policy
   against a fake game.
+- Fixed 2026-11-21: both session jobs listed people and vehicles in one shared pool, so with
+  vehicles near the rig the people's entries pointed at vehicles by the time they were deleted,
+  and a person in a camera survived the clearing (the take was then retaken). Found in GTA V
+  (19 of 21 people removed after the fix, against 7 of 34 before); RDR2's job has the same fix,
+  not yet run in the game.
 
 ## Adding a game
 
@@ -383,9 +390,11 @@ hash (`patch_natives.ps1`).
 `adapters/rdr2/probes/` holds the tools the method was found with (memory scans, the frozen
 orbit, geometry and step checks). They are not part of the pipeline.
 
-## GTA V adapter (Legacy)
+## GTA V adapter (Legacy and Enhanced)
 
-GTA V Legacy (Steam app 271590, Direct3D 11, game build 1.0.3889.0), story mode only.
+GTA V Legacy (`gtav`: Steam app 271590, Direct3D 11, game build 1.0.3889.0) and GTA V Enhanced
+(`gtave`: Steam app 3240220, Direct3D 12 with ray tracing, build 1.0.1158.13), story mode only.
+Both run the same adapter, session script and freeze; what differs is under "GTA V Enhanced" below.
 
 ### Setup
 
@@ -411,6 +420,73 @@ GTA V Legacy (Steam app 271590, Direct3D 11, game build 1.0.3889.0), story mode 
   dialog with "Play Grand Theft Auto V Legacy", clicks STORY MODE on Rockstar's landing page (the
   rightmost item of its bottom bar, found in a grab of the window), and waits for the loader:
   about 75 s. Clicks only go to Steam's dialog and to the game while the loader is not running.
+
+### GTA V Enhanced (`gtave`)
+
+```powershell
+.\capture.ps1 install gtave --mods "C:\...\Grand Theft Auto V Enhanced"   # Script Hook V is already there
+.\capture.ps1 install gtave --optiscaler --dlss-nr "C:\...\nvngx_dlssnr.dll"   # DLSS 5 (optional)
+.\capture.ps1 verify gtave --launch
+.\capture.ps1 scout --game gtave --name vinewood-walk --at "300,177,103.13" --facing 180
+.\capture.ps1 worker --game gtave
+```
+
+Verified 2026-11-21: every check passes (frames through the add-on at 2560x1440, colours, a
+frozen take with every step exactly 1/30 s, packaging) but the machine-wide administrator step;
+a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What differs from Legacy:
+
+- **The ASI loader.** GTA5_Enhanced.exe does not import dinput8.dll (it loads it only late, for
+  DirectInput), so Script Hook V's own loader never loads Script Hook V or any plug-in at start:
+  the reason modding Enhanced seemed not to work. Ultimate ASI Loader 10.0.4 (MIT, downloaded and
+  pinned) goes in as `xinput1_4.dll`, which Enhanced does import; Script Hook V then logs
+  `Success, game version is VER_EN_1_0_1158_13`. Script Hook V's own `dinput8.dll`, if there from
+  a manual install, is removed (backed up): Enhanced still loads it late and it loads every plug-in
+  a second time.
+- **The game locks its own folder.** While Enhanced runs it holds every file in its folder open
+  read-only and denies writes (BattlEye's licence texts too). ReShade therefore could never save
+  and printed "Unable to save configuration" over every frame. The game folder's `ReShade.ini`
+  now only holds `[INSTALL] BasePath=<exchange>\reshade`. ReShade keeps its config, preset and
+  log there, and finds the add-on in the game folder through `[ADDON] AddonPath`. The same lock
+  means our loader script and RedLua's settings cannot change while the game runs, and Script
+  Hook V's log stops after its first lines.
+- **Launcher.** The window is class `sgaWindow`; the landing page has tabs (ONLINE, GTA+, STORY)
+  instead of a bottom bar: E moves one tab right, Enter on STORY resumes the story (found from the
+  white box behind the selected tab). About 3.5 min to the loader, most of it Rockstar's launcher.
+- **Settings** in `Documents\Rockstar Games\GTAV Enhanced\settings.xml`; Direct3D 12 only, no
+  `DX_Version`. Ray tracing is the game's own (shadows, reflections, ambient occlusion, indirect
+  diffuse). Frame generation is set off (`FrameGenType` 0). The game has DLSS, FSR and SSAA built
+  in; without `--optiscaler` its upscaler setting is left as it is.
+- **DLSS 5** (`--optiscaler`, measured 2026-11-21): OptiScaler loads as `OptiScaler.asi` through
+  the same loader, and the install turns the game's DLSS on (`ResScalingType` 4; 0 off, 1 SSAA,
+  2 FSR 1, 3 FSR 3, per PCGamingWiki). Enhanced calls DLSS through NVIDIA Streamline, which
+  OptiScaler hooks. The game's mode (`dlssQuality` 2) renders 1707x960; DLSS 5 then runs on every
+  2560x1440 frame (2.2 ms). Verify passes with it on. `tools/upscaler_ab.py --game gtave` at
+  Vinewood: off to on, mean FLIP 0.16 to 0.21 (RDR2: about 0.055), largest on faces and clothes;
+  settle after a cut and the same pose twice are about as with it off (40 frames: 1.58 against
+  1.45; twice: 0.87 against 0.66). OptiScaler's ini cannot be saved from its menu while the game
+  runs (the folder lock); the install sets it beforehand.
+- **Ray tracing switched live** (`settings_menu.py`, adapter capability `ray_tracing_switch`): the
+  game applies "Enable Ray Tracing" from its pause menu without a restart, also while frozen, so
+  `tools/preset_ab.py --game gtave --with-dlss5` compares neither / ray tracing / DLSS 5 / both at
+  one frozen instant, as for RDR2. The adapter presses the keys, checks each step on screen (the
+  lit tab and row, the list moving, "Apply Changes" appearing), confirms the result in
+  settings.xml, and freezes the world again afterwards. Keys are sometimes dropped, so each one is
+  confirmed before the next. Scripts do not run while the pause menu is open. About 25 s per
+  switch. Vinewood at 14:00, extra sunny, 13 views: mean FLIP 0.172 for ray tracing, 0.174 for
+  DLSS 5 over it, 0.259 for both (RDR2's Saint Denis: 0.055, 0.054, 0.069).
+- **Speed.** About 158 frames/s at 2560x1440 with ray tracing at the Alamo Sea, 94 in Vinewood with
+  DLSS 5; 0.30 s per shot, 0.53 s with a moving crowd.
+- **Freeze**: the same minimum step, found the same way (a different address). Find it before
+  freezing: at time scale 0 the value 1/3000 is copied into 321 other places.
+- **A deliberate crash.** Three times in about 15 frozen sessions (2026-11-21) the picture froze,
+  scripts stopped, and about a minute later the game exited. Rockstar's crash handler wrote a
+  dump each time (`%LOCALAPPDATA%\Rockstar Games\GTAV Enhanced\CrashLogs`). All three dumps fault
+  at the same instruction, `GTA5_Enhanced.exe+0x13f8980`: `mov qword ptr [0], 0x621`, a crash on
+  purpose with code 0x621, in code that is encrypted on disk. That makes it the game's protection,
+  not a script fault. What sets it off is not known. It came during or 1-3 min after frozen work
+  (the minimum-step writes), but each part of a take repeated alone did not set it off, and a
+  9.4-minute frozen take ran clean. The worker treats it like a closed game: a stale heartbeat
+  ends the game and starts it again.
 
 ### How a take is captured in GTA V (measured 2026-11-21)
 
@@ -440,6 +516,19 @@ GTA V Legacy (Steam app 271590, Direct3D 11, game build 1.0.3889.0), story mode 
   0.44 after one step, 1.69 at the end: traffic, foliage) and not at all within a clip frame.
 - **Moving things**: people and vehicles as oriented boxes straight from their models'
   dimensions (`GET_MODEL_DIMENSIONS` works in GTA V); raycasts against map, objects and foliage.
+- **People and traffic.** After a teleport the game's population takes about 50 s to stream in,
+  even at its maximum density setting (Population Density 1.0; multipliers above 1 do nothing).
+  The adapter fills it at once, spawns a crowd of its own walkers (12 within 12 m by default:
+  people within 15 m went from 2 to 14 on Vinewood Blvd) and lets the world run 45 s
+  (`populate_s`, `crowd`, `crowd_radius`). The crowd stays the session's own, so the
+  start-of-take clearing may delete one standing in a camera. While frozen the population
+  multipliers are 0: with more people than its budget the game despawns and spawns people even in
+  a frozen world (7 gone, 9 new within 60 m over 3,000 frozen frames); with them at 0 nothing
+  moved, appeared or went. The game's own people alone hold still without that.
+- **Steam runs one game at a time**: with RDR2 running, a GTA V start fails and leaves Steam's
+  launch waiting until Steam restarts; the launcher refuses to start while another game runs.
+- **The display must stay on**: with it asleep, screen grabs return the last picture shown, so
+  the launcher could not find the landing page; the launcher and the adapter keep it awake.
 
 ### RedLua in GTA V: what to avoid
 
@@ -452,7 +541,8 @@ GTA V Legacy (Steam app 271590, Direct3D 11, game build 1.0.3889.0), story mode 
   at or just after the start or end of a session job, once 90 s after the full take's session
   ended with the loader idle; never in the middle of the 48-minute take. The likeliest cause is
   RedLua collecting a finished job's native objects. Script Hook V then closes the game; the worker
-  restarts it and takes again if it happens mid-take. `SET_THIS_SCRIPT_CAN_BE_PAUSED`, first
+  restarts it and takes again if it happens mid-take. (Enhanced's freezes are something else: the
+  game's protection crashes it on purpose; see above.) `SET_THIS_SCRIPT_CAN_BE_PAUSED`, first
   suspected, is no longer called (not needed: RedLua's scripts run while the game is paused).
 - **Hashes above 2^24** go through a float in RedLua (as in RDR2): pass them as `hash_arg`.
 

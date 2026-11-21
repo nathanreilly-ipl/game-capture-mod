@@ -30,6 +30,29 @@
                 }
             ]
         },
+        "ultimate_asi_loader": {
+            "title": "Ultimate ASI Loader 10.0.4 (x64)",
+            "version": "10.0.4",
+            "what": "Loads .asi plug-ins (Script Hook V's scripts, RedLua, ReShade) into GTA V Enhanced, installed as xinput1_4.dll: GTA5_Enhanced.exe never loads dinput8.dll, the name Script Hook V's own loader uses. Not needed for Legacy.",
+            "required": false,
+            "source": "download",
+            "page": "https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v10.0.4",
+            "archive": {
+                "name": "Ultimate-ASI-Loader-NoPDB_x64.zip",
+                "url": "https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v10.0.4/Ultimate-ASI-Loader-NoPDB_x64.zip",
+                "size": 897014,
+                "sha256": "aed4a9ed3fe76cbd5ae7e62a25eccafdd05e0b5b585ff1995e51455ff387a4fb"
+            },
+            "licence": "MIT",
+            "redistributable": true,
+            "files": [
+                {
+                    "name": "dinput8.dll",
+                    "size": 2437352,
+                    "sha256": "aefcb1f8f74bf998c3f0ccf1576174da31bdb07ee37fb332aca184842bb97ffb"
+                }
+            ]
+        },
         "redlua_v": {
             "title": "RedLua 0.6.4 for GTA V",
             "version": "0.6.4",

@@ -14,10 +14,15 @@ The add-on saves frames after ReShade's effects, so the preset is part of what a
 like. A game's visual set (adapters/<game>/visual/ReShadePreset.ini) is installed as the game's
 ReShadePreset.ini, with the shader files it uses; without one (or with --no-preset) captures use
 an empty preset of their own and the game's ReShadePreset.ini is left alone.
+
+config_dir: a game that locks its own folder while it runs (GTA V Enhanced opens every file there
+read-only, denying writes, so ReShade shows "Unable to save configuration" over every frame) keeps
+ReShade's config, preset and log in a folder of ours instead: the game folder's ReShade.ini only
+says [INSTALL] BasePath=<config_dir>, which ReShade reads first.
 """
 import os
 
-from ..plan import Call, CopyFile, Ini, IniListAdd, IniSet, RemoveFile, WriteText
+from ..plan import Call, CopyFile, Ini, IniListAdd, IniSet, MakeDir, RemoveFile, WriteText
 
 MOD = "reshade"
 API_DLL = {"d3d9": "d3d9.dll", "d3d10": "dxgi.dll", "d3d11": "dxgi.dll", "d3d12": "dxgi.dll", "dxgi": "dxgi.dll",
@@ -44,7 +49,13 @@ OTHER_NAME = "ReShade64.dll"  # the name other mods load ReShade by (OptiScaler'
 ASI_NAME = "ReShade.asi"
 
 
-def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_preset=False, asi_loader=False):
+def config_path(game_dir, config_dir=None):
+    """ReShade.ini as ReShade uses it: in config_dir when the game has one (see the module doc)."""
+    return os.path.join(config_dir or game_dir, "ReShade.ini")
+
+
+def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_preset=False, asi_loader=False,
+          config_dir=None):
     """preset: path of the game's preset file, or None for no effects. effects: [(FileRef,
     path relative to the game folder)] of the shader files the preset uses. keep_preset: another
     step writes ReShadePreset.ini (e.g. a game's preset with an added effect); only the effects,
@@ -134,23 +145,29 @@ def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_p
     else:
         raise ValueError("ReShade cannot hook graphics API %r" % api)
 
-    ini = os.path.join(game_dir, "ReShade.ini")
+    # relative paths in ReShade's config (presets, search paths) are relative to its base folder
+    base = config_dir or game_dir
+    if config_dir:
+        out += [MakeDir(config_dir, tag="reshade"),
+                IniSet(os.path.join(game_dir, "ReShade.ini"), "INSTALL", "BasePath", config_dir, tag="reshade",
+                       why="ReShade's config, preset and log live there: the game denies writes to its own folder")]
+    ini = config_path(game_dir, config_dir)
     if keep_preset:
         for ref, rel in effects:
-            out.append(CopyFile(ref, os.path.join(game_dir, *rel.split("/")), tag="reshade"))
+            out.append(CopyFile(ref, os.path.join(base, *rel.split("/")), tag="reshade"))
         out += [IniSet(ini, "GENERAL", "PresetPath", ".\\" + PRESET, tag="reshade", why="the game's preset"),
                 IniListAdd(ini, "GENERAL", "EffectSearchPaths", SHADERS, tag="reshade", why="where the preset's effects are"),
                 IniListAdd(ini, "GENERAL", "TextureSearchPaths", TEXTURES, tag="reshade")]
     elif preset:
-        out.append(CopyFile(lambda: preset, os.path.join(game_dir, PRESET), tag="reshade",
+        out.append(CopyFile(lambda: preset, os.path.join(base, PRESET), tag="reshade",
                             what=preset_label or "the game's ReShade preset"))
         for ref, rel in effects:
-            out.append(CopyFile(ref, os.path.join(game_dir, *rel.split("/")), tag="reshade"))
+            out.append(CopyFile(ref, os.path.join(base, *rel.split("/")), tag="reshade"))
         out += [IniSet(ini, "GENERAL", "PresetPath", ".\\" + PRESET, tag="reshade", why="the game's preset"),
                 IniListAdd(ini, "GENERAL", "EffectSearchPaths", SHADERS, tag="reshade", why="where the preset's effects are"),
                 IniListAdd(ini, "GENERAL", "TextureSearchPaths", TEXTURES, tag="reshade")]
     else:
-        out += [WriteText(os.path.join(game_dir, EMPTY_PRESET_NAME), EMPTY_PRESET, tag="reshade", closed=True,
+        out += [WriteText(os.path.join(base, EMPTY_PRESET_NAME), EMPTY_PRESET, tag="reshade", closed=True,
                           what="an empty ReShade preset: captures without effects"),
                 IniSet(ini, "GENERAL", "PresetPath", ".\\" + EMPTY_PRESET_NAME, tag="reshade",
                        why="captures without effects; your own preset file is left as it is")]

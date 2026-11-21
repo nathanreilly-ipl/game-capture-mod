@@ -8,7 +8,9 @@ probes/timestep_probe.py: the only writable 1/3000 in the image, offset 0x1e7c09
 while the script camera still renders; it is put back when the freeze ends.
 
 The address is found by value on every start (the image moves with each launch, and a game
-update moves the variable), and the frame time read back confirms it.
+update moves the variable), and the frame time read back confirms it. Find it while the world
+runs at normal speed: at time scale 0 the frame time 1/3000 is copied into hundreds of other
+writable places (321 in Enhanced, 2026-11-21). Enhanced 1.0.1158.13 has the same single variable.
 """
 import struct
 
@@ -42,7 +44,8 @@ class MinStep:
                 f = np.frombuffer(raw[: len(raw) - len(raw) % 4], dtype=np.float32)
                 found += [rb + 4 * int(i) for i in np.flatnonzero(f == DEFAULT)]
         if len(found) != 1:
-            raise RuntimeError("expected one writable 1/3000 in %s, found %d (a game update?)" % (self.exe, len(found)))
+            raise RuntimeError("expected one writable 1/3000 in %s, found %d (the world already at time scale 0, "
+                               "or a game update?)" % (self.exe, len(found)))
         self.addr = found[0]
         self.original = self.proc.read(self.addr, 4)
         return self.addr

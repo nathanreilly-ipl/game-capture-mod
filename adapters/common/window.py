@@ -72,6 +72,13 @@ def windows_titled(title, window_class=None):
     return out
 
 
+def keep_awake():
+    """Keeps the display (and the machine) awake while this process runs. With the display
+    asleep, grabs of the screen return the last picture shown (seen 2026-11-21), so anything
+    read off the screen (a launcher's menus, the colour check) goes stale."""
+    kernel32.SetThreadExecutionState(0x80000000 | 0x00000002 | 0x00000001)  # CONTINUOUS | DISPLAY | SYSTEM
+
+
 def is_foreground(hwnd):
     return bool(hwnd) and user32.GetForegroundWindow() == hwnd
 
@@ -113,7 +120,9 @@ class _INPUT(ctypes.Structure):
     _fields_ = [("type", wt.DWORD), ("u", _U)]
 
 
-SCAN = {"F3": 0x3D, "F4": 0x3E, "F5": 0x3F, "F6": 0x40, "Enter": 0x1C, "Esc": 0x01}
+SCAN = {"F3": 0x3D, "F4": 0x3E, "F5": 0x3F, "F6": 0x40, "Enter": 0x1C, "Esc": 0x01, "Space": 0x39, "Back": 0x0E,
+        "Q": 0x10, "E": 0x12, "Up": 0x48, "Down": 0x50, "Left": 0x4B, "Right": 0x4D}
+EXTENDED = {"Up", "Down", "Left", "Right"}   # the arrow keys, not the number pad's
 
 
 def press(hwnd, key, hold_s=0.08):
@@ -121,7 +130,8 @@ def press(hwnd, key, hold_s=0.08):
     if not is_foreground(hwnd):
         return False
     scan = SCAN.get(key, key)
-    for flags in (0x0008, 0x0008 | 0x0002):  # KEYEVENTF_SCANCODE, then | KEYEVENTF_KEYUP
+    ext = 0x0001 if key in EXTENDED else 0    # KEYEVENTF_EXTENDEDKEY
+    for flags in (0x0008 | ext, 0x0008 | ext | 0x0002):  # KEYEVENTF_SCANCODE, then | KEYEVENTF_KEYUP
         i = _INPUT(type=1)
         i.ki = _KEYBDINPUT(0, scan, flags, 0, 0)
         user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(_INPUT))

@@ -160,9 +160,9 @@ class Session:
 
     def end(self):
         try:
-            self.cmd("end")
-        except RuntimeError:
-            pass
+            self.cmd("end", timeout=10)
+        except (RuntimeError, TimeoutError):
+            pass   # the job already ended, or the game is gone
 
 
 if __name__ == "__main__":

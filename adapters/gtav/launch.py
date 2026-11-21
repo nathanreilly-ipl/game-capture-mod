@@ -1,9 +1,9 @@
-"""Starts GTA V Legacy story mode through Steam with nobody at the keyboard, until the capture
-loader's heartbeat is up (about three minutes).
+"""Starts GTA V story mode (Legacy or Enhanced) through Steam with nobody at the keyboard, until
+the capture loader's heartbeat is up (about 75 s for Legacy).
 
     close the game and its launcher (a leftover launcher makes Steam refuse a new start)
-    -> steam://rungameid/271590
-    -> Steam asks which launch option: pick "Play Grand Theft Auto V Legacy" and Play
+    -> steam://rungameid/<app>
+    -> Steam asks which launch option: pick the story-mode one (the first) and Play
     -> Rockstar's landing page: click STORY MODE (the rightmost item of its bottom bar)
     -> story mode loads; RedLua's Autorun starts capture_loader.lua; heartbeat
 
@@ -11,7 +11,7 @@ Clicks go only to Steam's dialog and to the game while the loader is not running
 loading screens), so a click never lands in the game world. BattlEye stays off (-nobattleye in
 commandline.txt), so the game cannot go online whatever is clicked.
 
-    uv run --project . python -m adapters.gtav.launch [--snapshots DIR]
+    uv run --project . python -m adapters.gtav.launch [--enhanced] [--snapshots DIR]
 """
 import ctypes
 import ctypes.wintypes as wt
@@ -19,20 +19,40 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 
 import numpy as np
 
 from ..common import mem, redlua, window
 
-STEAM_APP = "271590"
-EXE = "GTA5.exe"
-WINDOW_CLASS = "grcWindow"
-DIALOG_TITLE = "Grand Theft Auto V Legacy"      # Steam's launch-option dialog
+
+@dataclass(frozen=True)
+class Edition:
+    name: str
+    steam_app: str
+    exe: str
+    dialog_title: str            # Steam's launch-option dialog
+    close: tuple                 # processes to end before a start
+    window_class: str = "grcWindow"
+    landing: str = "bar"         # Rockstar's landing page: "bar" (Legacy) or "tabs" (Enhanced)
+
+
+LAUNCHER_PROCS = ("PlayGTAV.exe", "Launcher.exe", "RockstarErrorHandler.exe", "RockstarSteamHelper.exe",
+                  "SocialClubHelper.exe", "GTAVLauncher.exe")
+LEGACY = Edition("GTA V Legacy", "271590", "GTA5.exe", "Grand Theft Auto V Legacy",
+                 ("GTA5.exe", "GTA5_BE.exe") + LAUNCHER_PROCS)
+# Enhanced's window is class sgaWindow, titled "Grand Theft Auto V" (2026-11-21)
+ENHANCED = Edition("GTA V Enhanced", "3240220", "GTA5_Enhanced.exe", "Grand Theft Auto V Enhanced",
+                   ("GTA5_Enhanced.exe", "GTA5_Enhanced_BE.exe") + LAUNCHER_PROCS, window_class="sgaWindow",
+                   landing="tabs")
+# Enhanced's landing page: tabs ONLINE, GTA+, STORY across the top (ONLINE selected, a white box);
+# E moves one tab right, Enter on STORY resumes the story. Tab centres as fractions of the width.
+TABS = (0.085, 0.148, 0.208)
+# Legacy's names, as the adapter and older callers use them
+STEAM_APP, EXE, WINDOW_CLASS = LEGACY.steam_app, LEGACY.exe, LEGACY.window_class
 # Steam's dialog, as fractions of its window: the story-mode option (first) and the Play button
 DIALOG_STORY = (0.34, 0.287)
 DIALOG_PLAY = (0.60, 0.925)
-CLOSE = ("GTA5.exe", "GTA5_BE.exe", "PlayGTAV.exe", "Launcher.exe", "RockstarErrorHandler.exe",
-         "RockstarSteamHelper.exe", "SocialClubHelper.exe", "GTAVLauncher.exe")
 
 user32 = window.user32
 user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
@@ -47,14 +67,38 @@ def running_app():
         return "0"
 
 
-def close_game(log=print):
-    for name in CLOSE:
+def _post_close(h):
+    user32.PostMessageW(h, 0x0010, 0, 0)   # WM_CLOSE
+
+
+def steam_error():
+    """Closes Steam's error box ("Unable to launch game, ...") if one is up; True if there was one."""
+    try:
+        steam = mem.find_pid("steam.exe")
+    except RuntimeError:
+        return False
+    hit = False
+    for h in window.windows_titled("Error", "#32770"):
+        pid = wt.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        if pid.value == steam:
+            _post_close(h)
+            hit = True
+    return hit
+
+
+def close_game(log=print, ed=LEGACY):
+    for name in ed.close:
         subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
+    # a launch Steam gave up on leaves its "Launching..." window open, and Steam ignores new starts
+    steam_error()
+    for h in window.windows_titled("Launching...", "SDL_app"):
+        _post_close(h)
     t = time.time()
-    while running_app() == STEAM_APP and time.time() - t < 60:
+    while running_app() == ed.steam_app and time.time() - t < 60:
         time.sleep(1)
-    if running_app() == STEAM_APP:
-        log("Steam still lists GTA V as running; the start may fail")
+    if running_app() == ed.steam_app:
+        log("Steam still lists %s as running; the start may fail" % ed.name)
 
 
 def click_screen(x, y):
@@ -71,9 +115,9 @@ def _rect(h):
     return r
 
 
-def answer_steam_dialog(log=print):
+def answer_steam_dialog(log=print, ed=LEGACY):
     """Steam's launch-option dialog, if it is up: story mode, then Play. True if it was answered."""
-    for h in window.windows_titled(DIALOG_TITLE, "SDL_app"):
+    for h in window.windows_titled(ed.dialog_title, "SDL_app"):
         window.focus(h)
         r = _rect(h)
         w, hgt = r.right - r.left, r.bottom - r.top
@@ -111,27 +155,63 @@ def landing_target(img):
     return int(w * 0.40 + (x0 + x1) / 2), int(h * 0.95)
 
 
-def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None):
+def selected_tab(img):
+    """Which of Enhanced's landing-page tabs is selected (0 ONLINE, 1 GTA+, 2 STORY), from the white
+    box behind it; None when no such box is there (another screen)."""
+    a = np.asarray(img.convert("L"), dtype=np.float32)
+    h, w = a.shape
+    band = a[int(h * 0.062):int(h * 0.080), :int(w * 0.30)]
+    filled = band.mean(axis=0) > 200
+    xs = np.flatnonzero(filled)
+    if len(xs) < w * 0.03 or len(xs) > w * 0.12:      # a tab-sized box, not a bright screen
+        return None
+    centre = xs.mean() / w
+    best = min(range(len(TABS)), key=lambda i: abs(TABS[i] - centre))
+    return best if abs(TABS[best] - centre) < 0.03 else None
+
+
+def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None, ed=LEGACY):
     """Restarts the game into story mode; returns once the loader's heartbeat is up."""
-    close_game(log)
+    window.keep_awake()   # the landing page is found in grabs of the screen
+    close_game(log, ed)
+    other = running_app()
+    if other not in ("0", ed.steam_app):
+        # Steam runs one game at a time; it answers a second start with "Unable to launch game"
+        raise RuntimeError("Steam is running another game (app %s); close it before starting %s" % (other, ed.name))
     try:
         os.remove(os.path.join(exchange, "heartbeat.txt"))
     except OSError:
         pass
+    os.startfile("steam://rungameid/%s" % ed.steam_app)
+    log("starting %s through Steam" % ed.name)
+    return drive(exchange, client, timeout, log, snapshots, ed)
+
+
+def drive(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None, ed=LEGACY):
+    """Takes a starting game to story mode (Steam's dialog, the landing page) until the loader's
+    heartbeat is up; also for attaching to a game already on its way."""
+    window.keep_awake()
     t0 = time.time()
-    os.startfile("steam://rungameid/%s" % STEAM_APP)
-    log("starting GTA V Legacy through Steam")
-    last_click, shots, sized = 0.0, 0, False
+    last_click, last_answer, shots, sized = 0.0, 0.0, 0, False
     while time.time() - t0 < timeout:
         time.sleep(2)
         if redlua.heartbeat_age(exchange) < 3:
             log("loader heartbeat is up after %.0f s" % (time.time() - t0))
             break
-        answer_steam_dialog(log)
+        if steam_error():
+            close_game(log, ed)
+            raise RuntimeError("Steam could not launch %s (its error box is closed); is another game running?" % ed.name)
         try:
-            h = window.find_game_window(mem.find_pid(EXE), WINDOW_CLASS)
+            pid = mem.find_pid(ed.exe)
         except RuntimeError:
+            # Steam's launch-option dialog comes before the game starts; other Steam windows can
+            # carry the same title later (Enhanced's), so only answer it while there is no game.
+            # After Play, Steam keeps a window of that title up for a minute while Rockstar's
+            # launcher starts (Enhanced, 2026-11-21): answer again only if it is still there later.
+            if time.time() - last_answer > 30 and answer_steam_dialog(log, ed):
+                last_answer = time.time()
             continue
+        h = window.find_game_window(pid, ed.window_class)
         if not h:
             continue
         if not sized and window.focus(h):
@@ -145,6 +225,17 @@ def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None)
             os.makedirs(snapshots, exist_ok=True)
             shots += 1
             img.convert("RGB").resize((960, 540)).save(os.path.join(snapshots, "%02d_%03ds.jpg" % (shots, time.time() - t0)))
+        if ed.landing == "tabs":
+            tab = selected_tab(img)
+            if tab is not None and redlua.heartbeat_age(exchange) > 3:
+                if tab == 2:
+                    window.press(h, "Enter")
+                    log("resumed the story (Enter on the STORY tab)")
+                else:
+                    window.press(h, 0x12)   # E: one tab to the right
+                    log("landing page on tab %d; E" % tab)
+                last_click = time.time() - 8   # look again in about 2 s
+            continue
         target = landing_target(img)
         if target and redlua.heartbeat_age(exchange) > 3:
             pt = wt.POINT(*target)
@@ -153,9 +244,9 @@ def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None)
             log("clicked STORY MODE at %s" % (target,))
             last_click = time.time()
     else:
-        raise RuntimeError("GTA V did not reach story mode with the loader running in %d s" % timeout)
+        raise RuntimeError("%s did not reach story mode with the loader running in %d s" % (ed.name, timeout))
     redlua.minimize_console()
-    h = window.find_game_window(mem.find_pid(EXE), WINDOW_CLASS)
+    h = window.find_game_window(mem.find_pid(ed.exe), ed.window_class)
     window.focus(h)
     if not window.set_client_size(h, *client):
         log("the game window is %s, not %s" % (window.client_size(h), client))
@@ -163,6 +254,9 @@ def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None)
 
 
 if __name__ == "__main__":
-    from .adapter import EXCHANGE
+    from . import adapter
     snaps = sys.argv[sys.argv.index("--snapshots") + 1] if "--snapshots" in sys.argv else None
-    start(EXCHANGE, snapshots=snaps)
+    if "--enhanced" in sys.argv:
+        start(adapter.EXCHANGE_ENHANCED, snapshots=snaps, ed=ENHANCED)
+    else:
+        start(adapter.EXCHANGE, snapshots=snaps)

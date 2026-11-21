@@ -35,6 +35,7 @@ local CAPTURE_TIMEOUT_S = 10
 
 local t = {}
 local job = nil
+local kept_jobs = {}   -- finished jobs, never collected (see finish)
 local ticks = 0
 local last_beat = -1
 
@@ -142,6 +143,11 @@ local function finish(status, message)
 	end
 	local text = table.concat(lines, '\n') .. '\n'
 
+	-- A finished job stays referenced, so the native objects it held for its whole run (a camera,
+	-- typed arrays, entity pools) are never collected: in GTA V, lua51.dll faulted about a minute
+	-- after a session ended, five times (2026-11-21), and Script Hook V then closes the game.
+	-- Short-lived objects are still collected while a job runs (a 48-minute take ran clean).
+	kept_jobs[#kept_jobs + 1] = ending
 	job = nil
 	os.remove(OUT_DIR .. '\\request.txt')
 	write_atomic(ending.dir .. '\\result.txt', text)

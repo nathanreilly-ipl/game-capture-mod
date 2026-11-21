@@ -313,6 +313,63 @@ def part_d(tmp, mods):
     print("D ok: the GTA V plan in a sandbox: %d steps, then nothing to do; uninstall put it all back" % n)
 
 
+def part_e(tmp, mods, shv_loader):
+    """The GTA V Enhanced plan in a sandbox: Ultimate ASI Loader as xinput1_4.dll (Script Hook V's
+    own dinput8.dll, as its readme installs it, goes), and ReShade's config outside the game folder
+    (the game denies writes to its folder while it runs)."""
+    lines = []
+    root = os.path.join(tmp, "gtave")
+    game = os.path.join(root, "game")
+    os.makedirs(game)
+    open(os.path.join(game, "GTA5_Enhanced.exe"), "wb").write(b"not the real game")
+    open(os.path.join(game, "dinput8.dll"), "wb").write(shv_loader.read())   # a manual Script Hook V install
+    xml = os.path.join(root, "settings.xml")
+    open(xml, "wb").write(b'<Settings>\r\n  <ScreenWidth value="3072" />\r\n  <ScreenHeight value="1728" />\r\n'
+                          b'  <Windowed value="0" />\r\n  <VSync value="1" />\r\n  <PauseOnFocusLoss value="1" />\r\n'
+                          b'  <FrameGenType value="1" />\r\n  <ResScalingType value="0" />\r\n</Settings>\r\n')
+    exchange = os.path.join(root, "exchange")
+    base = os.path.join(exchange, "reshade")
+    opts = {"exchange_dir": exchange, "settings_xml": xml}
+    system, work = FakeSystem(root), os.path.join(root, "work")
+    before, xml_before = tree(game), open(xml, "rb").read()
+    n = inst.install("gtave", game, opts, mods, system=system, work=work, log=lines.append)
+    for rel in ("ScriptHookV.dll", "xinput1_4.dll", "NativeTrainer.asi", "RedLua.asi", "ReShade.asi",
+                "capture_mod.addon64", "ReShade.ini", os.path.join("RedLua", "Scripts", "capture_loader.lua")):
+        assert os.path.exists(os.path.join(game, rel)), rel
+    assert not os.path.exists(os.path.join(game, "dinput8.dll")), "Script Hook V's own loader is gone (a second loader)"
+    assert not os.path.exists(os.path.join(game, "ReShadePreset.capture.ini")), "the preset lives in ReShade's base folder"
+    gi = plan.Ini(os.path.join(game, "ReShade.ini"))
+    assert gi.get("INSTALL", "BasePath") == base and gi.get("CAPTURE_MOD", "OutputDir") is None
+    bi = plan.Ini(os.path.join(base, "ReShade.ini"))
+    assert bi.get("CAPTURE_MOD", "OutputDir") == exchange
+    assert bi.get("ADDON", "AddonPath") == game, "ReShade finds the add-on in the game folder"
+    assert bi.get("GENERAL", "PresetPath") == ".\\ReShadePreset.capture.ini"
+    assert os.path.exists(os.path.join(base, "ReShadePreset.capture.ini"))
+    x = open(xml).read()
+    assert "DX_Version" not in x, "Enhanced has no DX_Version setting"
+    assert 'FrameGenType value="0"' in x and 'ResScalingType value="0"' in x, "no frame generation; upscaler left alone"
+    assert inst.install("gtave", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    note = ""
+    probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("gtave").LOCK), roots=mods)
+    if probe.ref("optiscaler_dlss5", "OptiScaler.dll").found and probe.ref("nvngx_dlssnr", "nvngx_dlssnr.dll").found:
+        inst.install("gtave", game, dict(opts, optiscaler=True), mods, system=system, work=work, log=lines.append)
+        assert os.path.exists(os.path.join(game, "OptiScaler.asi")), "OptiScaler loads through the ASI loader"
+        assert 'ResScalingType value="4"' in open(xml).read(), "the game's DLSS on, for OptiScaler to take over"
+        oi = plan.Ini(os.path.join(game, "OptiScaler.ini"))
+        assert oi.get("DlssNr", "Enabled") == "true" and oi.get("Upscalers", "Dx12Upscaler") == "dlss"
+        note = ", --optiscaler turns the game's DLSS on"
+    else:
+        note = " (--optiscaler not tried: OptiScaler or nvngx_dlssnr.dll not found)"
+    inst.uninstall("gtave", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert open(xml, "rb").read() == xml_before, "the game's settings are back"
+    assert not os.path.exists(os.path.join(base, "ReShadePreset.capture.ini"))
+    print("E ok: the GTA V Enhanced plan in a sandbox: %d steps (ASI loader as xinput1_4.dll, Script Hook V's loader "
+          "removed, ReShade's config in %s), then nothing to do%s; uninstall put it all back"
+          % (n, os.path.relpath(base, root), note))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mods", action="append", default=[])
@@ -337,8 +394,13 @@ def main():
         need = [("scripthook_v", "ScriptHookV.dll"), ("redlua_v", "RedLua.asi"), ("reshade", "ReShade64.dll")]
         if all(probe.ref(m, f).found for m, f in need) and addon.is_built():
             part_d(tmp, a.mods)
+            if probe.ref("ultimate_asi_loader", "dinput8.dll").found:
+                part_e(tmp, a.mods, probe.ref("scripthook_v", "dinput8.dll"))
+            else:
+                print("E skipped: Ultimate ASI Loader is not in out/mods")
         else:
             print("D skipped: Script Hook V, RedLua for GTA V or ReShade is not in out/mods (or the add-on is not built)")
+            print("E skipped: as D")
 
 
 if __name__ == "__main__":

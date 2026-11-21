@@ -84,7 +84,9 @@ def _prebuilt(ctx):
     return None, None
 
 
-def steps(ctx, game_dir, output_dir):
+def steps(ctx, game_dir, output_dir, config_dir=None):
+    """config_dir: where ReShade keeps its config for this game (reshade.steps' config_dir)."""
+    from .reshade import config_path
     state = {}
 
     def usable():
@@ -104,7 +106,12 @@ def steps(ctx, game_dir, output_dir):
         return "missing", ("the capture add-on cannot be built here: install Visual Studio Build Tools with 'Desktop "
                            "development with C++', or use a mods bundle that includes the add-on")
 
-    return [Call("capture add-on built from addons/capture", build_status, lambda c: build(c.log), tag="addon"),
-            CopyFile(usable, os.path.join(game_dir, NAME), tag="addon", what="capture add-on"),
-            IniSet(os.path.join(game_dir, "ReShade.ini"), "CAPTURE_MOD", "OutputDir", output_dir, tag="addon",
-                   why="where the add-on exchanges files with the scripts")]
+    out = [Call("capture add-on built from addons/capture", build_status, lambda c: build(c.log), tag="addon"),
+           CopyFile(usable, os.path.join(game_dir, NAME), tag="addon", what="capture add-on"),
+           IniSet(config_path(game_dir, config_dir), "CAPTURE_MOD", "OutputDir", output_dir, tag="addon",
+                  why="where the add-on exchanges files with the scripts")]
+    if config_dir:
+        # ReShade looks for add-ons in its base folder, which is config_dir then
+        out.append(IniSet(config_path(game_dir, config_dir), "ADDON", "AddonPath", game_dir, tag="addon",
+                          why="the add-on stays in the game folder; ReShade's base folder is elsewhere"))
+    return out

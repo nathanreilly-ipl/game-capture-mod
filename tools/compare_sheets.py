@@ -128,6 +128,9 @@ def render(rows, col_titles, title, subtitle, out_prefix, crop=False, flip_cols=
     return out
 
 
+GAME_LABELS = {"rdr2": "RDR2", "gtav": "GTA V Legacy", "gtave": "GTA V Enhanced, Direct3D 12, ray tracing"}
+
+
 def _report(folder):
     p = os.path.join(folder, "report.json")
     return json.load(open(p)) if os.path.exists(p) else {}
@@ -172,7 +175,9 @@ def build_rt_dlss(folder):
     cols = ["neither", "ray tracing", "DLSS 5", "ray tracing + DLSS 5", "FLIP: ray tracing",
             "FLIP: DLSS 5 over RT", "FLIP: neither → both"]
     title = "Ray tracing x DLSS 5 · " + _scene(rep)
-    sub = "RDR2, Direct3D 12, 2560x1440, Reality Redemption 2 + OptiScaler DLSS 5, one frozen instant per row, "           "settle %s frames" % rep.get("settle", "?")
+    setup = {"gtave": "GTA V Enhanced, Direct3D 12, 2560x1440, the game's ray tracing + OptiScaler DLSS 5"}.get(
+        rep.get("game"), "RDR2, Direct3D 12, 2560x1440, Reality Redemption 2 + OptiScaler DLSS 5")
+    sub = "%s, one frozen instant per row, settle %s frames" % (setup, rep.get("settle", "?"))
     _clear(folder)
     return (render(rows, cols, title, sub, os.path.join(folder, "compare"), flip_cols={4, 5, 6}, cell_w=400) +
             render(rows, cols, title, sub, os.path.join(folder, "compare_crops"), crop=True, flip_cols={4, 5, 6},
@@ -223,7 +228,8 @@ def build_upscaler_ab(folder, note=""):
         cols += [label, "FLIP: off → " + label]
         flips.add(4 + 2 * i)
     title = "DLSS 5 (OptiScaler) · " + _scene(rep)
-    sub = "RDR2, Vulkan, one frozen instant per row%s" % note
+    game = GAME_LABELS.get(rep.get("game"), rep.get("game") or "RDR2, Vulkan")   # older reports: RDR2 on Vulkan
+    sub = "%s, one frozen instant per row%s" % (game, note)
     _clear(folder)
     return (render(rows, cols, title, sub, os.path.join(folder, "compare"), flip_cols=flips) +
             render(rows, cols, title, sub, os.path.join(folder, "compare_crops"), crop=True, flip_cols=flips))

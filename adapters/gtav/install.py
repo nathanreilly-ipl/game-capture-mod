@@ -21,8 +21,8 @@ import os
 import re
 
 from capture import config
-from capture.install.components import addon, reshade
-from capture.install.plan import CopyFile, JsonSet, MakeDir, WriteText, XmlSet
+from capture.install.components import addon, optiscaler, reshade
+from capture.install.plan import CopyFile, JsonSet, MakeDir, RemoveFile, WriteText, XmlSet
 
 from ..common import redlua
 
@@ -44,10 +44,10 @@ def settings_xml():
     return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "Rockstar Games", "GTA V", "settings.xml")
 
 
-def find_game_dir():
-    """The game folder: this machine's config, GTAV_DIR, then the Steam libraries."""
-    known = config.game(GAME).get("game_dir") or os.environ.get("GTAV_DIR")
-    if known and os.path.exists(os.path.join(known, EXE)):
+def find_game_dir(game=GAME, exe=EXE, folder=FOLDER, env="GTAV_DIR"):
+    """The game folder: this machine's config, the environment variable, then the Steam libraries."""
+    known = config.game(game).get("game_dir") or os.environ.get(env)
+    if known and os.path.exists(os.path.join(known, exe)):
         return known
     libs = []
     try:
@@ -61,8 +61,8 @@ def find_game_dir():
     except OSError:
         pass
     for lib in libs:
-        d = os.path.join(lib, "steamapps", "common", FOLDER)
-        if os.path.exists(os.path.join(d, EXE)):
+        d = os.path.join(lib, "steamapps", "common", folder)
+        if os.path.exists(os.path.join(d, exe)):
             return d
     return None
 
@@ -73,25 +73,40 @@ def installed_dirs(game_dir, system):
             os.path.join(system.program_data(), "ReShade")]
 
 
-def steps(ctx):
+# What differs between the editions; install_enhanced.py passes its own.
+LEGACY = {"title": "GTA V Legacy", "exe": EXE, "exchange": EXCHANGE, "settings_xml": settings_xml,
+          "apis": tuple(DX_VERSION), "default_api": "d3d11", "dx_version_setting": True,
+          # Script Hook V's own ASI loader: GTA5.exe loads dinput8.dll
+          "asi_loader": ("scripthook_v", "dinput8.dll", "dinput8.dll")}
+
+
+def steps(ctx, ed=LEGACY):
     g, opt = ctx.game_dir, ctx.options
-    exe = os.path.join(g, EXE)
-    api = opt.get("api") or "d3d11"
-    if api not in DX_VERSION:
-        raise ValueError("GTA V Legacy runs on Direct3D 10, 10.1 or 11, not %s" % api)
-    if opt.get("optiscaler"):
+    exe = os.path.join(g, ed["exe"])
+    api = opt.get("api") or ed["default_api"]
+    if api not in ed["apis"]:
+        raise ValueError("%s runs on %s, not %s" % (ed["title"], ", ".join(ed["apis"]), api))
+    if opt.get("optiscaler") and not ed.get("optiscaler"):
         raise ValueError("--optiscaler: GTA V Legacy has no upscaler (DLSS, FSR, XeSS) for OptiScaler to take over")
     if opt.get("ray_tracing"):
         raise ValueError("--ray-tracing is RDR2's Reality Redemption 2; there is none for GTA V")
     if opt.get("preset"):
         raise ValueError("GTA V has no visual set yet (adapters/gtav/visual/); leave out --preset")
-    exchange = opt.get("exchange_dir") or EXCHANGE      # tests point these two elsewhere
-    xml = opt.get("settings_xml") or settings_xml()
+    exchange = opt.get("exchange_dir") or ed["exchange"]      # tests point these two elsewhere
+    xml = opt.get("settings_xml") or ed["settings_xml"]()
     out = []
 
-    # Script Hook V, RedLua, Native Trainer
-    for name in ("ScriptHookV.dll", "dinput8.dll"):
-        out.append(CopyFile(ctx.file("scripthook_v", name), os.path.join(g, name)))
+    # Script Hook V and an ASI loader the game loads, RedLua, Native Trainer
+    out.append(CopyFile(ctx.file("scripthook_v", "ScriptHookV.dll"), os.path.join(g, "ScriptHookV.dll")))
+    mod, name, installed_as = ed["asi_loader"]
+    out.append(CopyFile(ctx.file(mod, name), os.path.join(g, installed_as),
+                        what="ASI loader (%s) as %s" % (ctx.files.mods[mod].get("title", mod), installed_as)))
+    if installed_as != "dinput8.dll":
+        # Script Hook V's own loader, where its readme puts it: Enhanced loads dinput8.dll only late,
+        # for DirectInput, and that loader then loads every plug-in a second time
+        sha = next(f["sha256"] for f in ctx.files.mods["scripthook_v"]["files"] if f["name"] == "dinput8.dll")
+        out.append(RemoveFile(os.path.join(g, "dinput8.dll"), sha, tag="mods",
+                              why="Script Hook V's own ASI loader: a second loader, loaded late"))
     if opt.get("native_trainer", True):
         out.append(CopyFile(ctx.file("scripthook_v", "NativeTrainer.asi"), os.path.join(g, "NativeTrainer.asi")))
     out.append(WriteText(os.path.join(g, "ScriptHookV.dev"), "", what="turns on Script Hook V's CTRL+R script reload",
@@ -109,11 +124,25 @@ def steps(ctx):
     out.append(MakeDir(exchange, tag="scripts"))
 
     # game-agnostic components, as GTA V wants them: ReShade through Script Hook V's loader, no effects
-    out += reshade.steps(ctx, exe, api, asi_loader=True)
-    out += addon.steps(ctx, g, exchange)
+    config_dir = os.path.join(exchange, "reshade") if ed.get("reshade_outside") else None
+    out += reshade.steps(ctx, exe, api, asi_loader=True, config_dir=config_dir)
+    out += addon.steps(ctx, g, exchange, config_dir=config_dir)
+
+    # OptiScaler (Enhanced has DLSS for it to take over), loaded as an .asi like ReShade
+    if ed.get("optiscaler"):
+        if opt.get("optiscaler"):
+            out += optiscaler.steps(ctx, g, api, loader="asi")
+        else:
+            out += optiscaler.not_loaded(ctx, g, loader="asi")
 
     # game settings
-    out.append(XmlSet(xml, "DX_Version", DX_VERSION[api], why="the graphics API ReShade is installed for"))
+    if ed["dx_version_setting"]:
+        out.append(XmlSet(xml, "DX_Version", DX_VERSION[api], why="the graphics API ReShade is installed for"))
+    if ed.get("optiscaler"):   # Enhanced: upscalers and frame generation built in
+        out.append(XmlSet(xml, "FrameGenType", "0", why="no frame generation: a generated frame is not a render"))
+        if opt.get("optiscaler"):
+            # ResScalingType: 0 off, 1 SSAA, 2 FSR 1, 3 FSR 3, 4 DLSS/DLAA (PCGamingWiki, 2026-11-21)
+            out.append(XmlSet(xml, "ResScalingType", "4", why="the game's DLSS on: OptiScaler takes over that call"))
     out.append(XmlSet(xml, "VSync", "0", why="uncapped frame rate"))
     out.append(XmlSet(xml, "PauseOnFocusLoss", "0", why="the game keeps running if focus is lost"))
     if opt.get("resolution"):
