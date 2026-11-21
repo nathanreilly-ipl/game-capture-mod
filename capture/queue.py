@@ -5,7 +5,8 @@ shared drive) can take jobs without a server.
     <root>/claimed/<job id>.json  + <job id>.lease   (the worker touches the lease while it runs)
     <root>/done/<job id>.json     the job plus its result
     <root>/failed/<job id>.json   the job plus its error
-    <root>/rigs/<rig id>.json     every submitted rig file, copied, never changed
+    <root>/rigs/<rig>-<hash>.json every rig file submitted with the "file" provider, never changed
+    <root>/providers/<key>_<hash>.py   rig providers from outside the repository, as submitted
 
 A worker claims a job by renaming it from pending/ to claimed/ (atomic on one volume, so
 two workers never get the same job). A claim whose lease is older than `stale_s` belongs
@@ -14,17 +15,17 @@ to a worker that died; requeue_stale() puts it back in pending/.
 A job:
     {"schema": "capture_job/v1", "id": ..., "game": "rdr2",
      "location": {...copy of the location entry...},
-     "rig": {"kind": "camrig", "path": "rigs/<rig id>.json", "digest": ..., "rig_id": ...},
+     "rig": {"kind": "provider", "provider": "camrigs", "version": ..., "settings": {...},
+             "subject": {...}, "scene": {...}, "rig_id": ..., "digest": ...},   (capture/providers.py)
      "settings": {...see capture/runner.py DEFAULT_SETTINGS...},
      "submitted": ..., "attempts": 0}
 The id is a hash of game, location, rig and settings: submitting the same job again is a
 no-op unless forced.
 """
 import os
-import shutil
 import time
 
-from .rigs import source_for_file
+from .providers import make_source
 from .util import digest_json, now_iso, read_json, write_json
 
 SCHEMA = "capture_job/v1"
@@ -46,19 +47,14 @@ class Queue:
                 return state
         return None
 
-    def add_rig(self, rig_path):
-        """Copies a rig file into the queue; returns its rig source (path relative to the queue)."""
-        src = source_for_file(rig_path)
-        dst = os.path.join(self.root, "rigs", src["rig_id"] + ".json")
-        if not os.path.exists(dst):
-            shutil.copyfile(rig_path, dst)
-        return dict(src, path=os.path.relpath(dst, self.root))
+    def add_provider(self, key_or_path, settings=None, subject=None, scene=None):
+        """A rig source for a rig provider (capture/providers.py); files it needs are kept in the
+        queue folder (rigs/, providers/) so every worker reads the same ones."""
+        return make_source(key_or_path, settings, subject, scene, store=self.root)
 
-    def add_solver(self, spec):
-        """A solver spec (capture/solver.py) as a rig source: solved per location by the worker."""
-        from .solver import spec_id
-        rid = spec_id(spec)
-        return dict(spec, rig_id=rid, digest=digest_json({k: v for k, v in spec.items() if k != "repo"}))
+    def add_rig(self, rig_path):
+        """A camrig/v1 pose file used as it is (the "file" provider)."""
+        return self.add_provider("file", {"path": rig_path})
 
     def submit(self, game, location, rig_source, settings, force=False):
         key = {"game": game, "location": location["id"], "position": location["position"],

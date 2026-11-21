@@ -55,9 +55,12 @@ needs the game's world state to be saved and restored exactly:
 - Adapters declare capabilities (`capture/adapter.py`); `snapshot` / `restore` are optional
   and nothing calls them yet.
 
-## Solved rigs: what is still approximate
+## Rig providers: what is still approximate
 
-Rigs are now solved per location (README: Rigs solved per location). Left open:
+Rig formats are providers (README: Rig providers, rigs/README.md). Left open:
+
+- **Other camera-rig repository rigs** (hemisphere, chaowei_v2) test the performer's silhouette
+  and line of sight; they are not checked with the stand-in box and may need a real SMPL-X body.
 
 - **The scene is sampled by rays** from 11 points around the location: surfaces no ray reaches
   (behind a wall, inside a closed room) are missing, so the solver may think space behind them is

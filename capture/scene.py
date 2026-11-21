@@ -1,10 +1,11 @@
-"""The scene around a location, as triangles, for solving rigs per location (capture/solver.py).
+"""The scene around a location, as triangles, for rig providers that fit their rig to each
+location (capture/providers.py, rigs/).
 
 Any adapter with the "raycast" capability can provide it: rays are cast from several points
 around the location (the ground point, and rings around it at a few heights) in every
-direction; each hit becomes a small square patch facing the surface normal. The rig solver
-voxelises these triangles with its own clearance (25 cm for ST-DM), so patches spaced closer
-than about half a metre read as a closed surface.
+direction; each hit becomes a small square patch facing the surface normal. The camera-rig
+repository's solver (rigs/camrigs.py) voxelises these triangles with its own clearance (25 cm
+for ST-DM), so patches spaced closer than about half a metre read as a closed surface.
 
 What the rays stop at is the adapter's choice; for RDR2: terrain, buildings, objects, glass and
 foliage, not people, animals or vehicles (the obstacle check handles those at capture time).

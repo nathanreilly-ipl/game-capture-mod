@@ -6,8 +6,8 @@ A shot (capture/shots.py) carries world-frame pos, right, fwd, up and vfov_deg.
 
 Capabilities are optional features the generic code only uses when listed:
     "obstacles"   obstacles()/remove_obstacles(): moving things near the rig (capture/obstacles.py)
-    "raycast"     raycast(): line probes against the static scene, for solving rigs per location
-                  (capture/scene.py, capture/solver.py)
+    "raycast"     raycast(): line probes against the static scene, given to rig providers that fit
+                  their rig to each location (capture/scene.py, capture/providers.py)
     "snapshot"    snapshot()/restore() of the world state (BACKLOG.md: shot reuse)
 """
 

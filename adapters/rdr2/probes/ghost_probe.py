@@ -25,10 +25,10 @@ from adapters.rdr2.adapter import RDR2Adapter  # noqa: E402
 from capture import locations as locs  # noqa: E402
 from capture import paths  # noqa: E402
 from capture.placement import Placement  # noqa: E402
+from capture.providers import find as find_provider  # noqa: E402
 from capture.shots import build, select_cameras  # noqa: E402
 
-RIG = os.path.join(os.environ.get("USERPROFILE", ""), "repos", "gamecapture-camera-rigs-huixin", "web", "data", "demo",
-                   "rig_yiming_stdm.json")
+RIG = find_provider("camrigs").demo_rig_file()  # the camera-rig repository's demo ST-DM rig (rigs/camrigs.py)
 CAMERAS = ["H_near_temporal_00", "H_near_temporal_08", "H_near_temporal_16", "H_near_temporal_24",
            "H_far_temporal_00", "H_far_temporal_16"]
 

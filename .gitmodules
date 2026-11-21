@@ -1,0 +1,3 @@
+[submodule "third_party/gamecapture-camera-rigs-huixin"]
+	path = third_party/gamecapture-camera-rigs-huixin
+	url = git@github.com:impossible-inc/gamecapture-camera-rigs-huixin.git

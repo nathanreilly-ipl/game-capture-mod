@@ -2,6 +2,8 @@
 
     scout      record a location (and its 4 outward previews) from the running game
     locations  list the recorded locations
+    providers  list the rig providers (rig formats) this machine can use
+    solve      a provider's rig at a location, with a plan image, without a take
     submit     queue a rig for one or more locations
     queue      show the queue; retry a failed job; requeue stale claims
     worker     take jobs from the queue and capture them
@@ -9,6 +11,7 @@
     sheets     render sheets for a captured take
 """
 import argparse
+import json
 import os
 import sys
 
@@ -74,16 +77,8 @@ def cmd_submit(a):
     if not chosen:
         raise SystemExit("no locations chosen (use --location ID or --all)")
     q = Queue(a.queue)
-    if bool(a.rig) == bool(a.solver):
-        raise SystemExit("give either --rig (a camrig/v1 file) or --solver (a rig solved per location)")
-    if a.rig:
-        rig = q.add_rig(a.rig)
-    else:
-        from .solver import make_spec
-        subject = {k: v for k, v in (("height_m", a.subject_height), ("radius_m", a.subject_radius)) if v is not None}
-        rig = q.add_solver(make_spec(a.solver, seed=a.solver_seed, key=a.solver_key, subject=subject,
-                                     repo=a.rig_repo))
-        print("solver rig %s (rig repository at %s)" % (rig["rig_id"], rig["commit"][:10]))
+    rig = q.add_provider(*_provider_args(a))
+    print("rig %s: provider %s %s" % (rig["rig_id"], rig["provider"], rig["version"]))
     settings = {"clock": None if a.clock == "keep" else a.clock, "last_frame": a.last_frame,
                 "sweep_stride": a.sweep_stride, "keep_raw": not a.no_keep_raw, "adapter": {}}
     if a.cameras:
@@ -97,37 +92,70 @@ def cmd_submit(a):
             settings[key] = getattr(a, key)
     if a.no_obstacle_check:
         settings["obstacle_check"] = False
+    if a.qc:
+        settings["qc"] = a.qc
     for loc in chosen:
         job_id, state, new = q.submit(loc["game"], loc, rig, settings, force=a.force)
         print("%s %s" % ("queued " if new else "exists (%s)" % state, job_id))
 
 
+def _parse_value(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def _provider_args(a):
+    """(provider, settings, subject) from --rig / --solver / --provider and --set key=value."""
+    given = [x for x in (a.rig, a.solver, a.provider) if x]
+    if len(given) != 1:
+        raise SystemExit("give one of --rig <camrig/v1 file>, --solver <camrigs rig key>, --provider <key or file>")
+    settings = {}
+    for kv in a.set or []:
+        k, _, v = kv.partition("=")
+        settings[k.strip()] = _parse_value(v.strip())
+    if a.rig:
+        key, settings["path"] = "file", a.rig
+    elif a.solver:
+        key, settings["rig"] = "camrigs", a.solver
+    else:
+        key = a.provider
+    subject = {k: v for k, v in (("height_m", a.subject_height), ("radius_m", a.subject_radius)) if v is not None}
+    return key, settings, subject
+
+
+def cmd_providers(a):
+    from .providers import listing
+    for p in listing():
+        if p.get("key") is None:
+            print("%-10s ERROR %s (%s)" % ("?", p["error"], p["file"]))
+        else:
+            print("%-10s %-4s %s\n           %s%s" % (p["key"], "ok" if p["available"] else "--", p["title"], p["file"],
+                                                    "" if p["available"] else "\n           not available: " + p["why"]))
+
+
 def cmd_solve(a):
-    """Capture a location's scene, solve a rig there and draw its plan, without capturing a take."""
-    import numpy as np
-    from . import rigplot, scene
-    from .rigs import resolve
-    from .solver import make_spec
-    from .queue import Queue
+    """Capture a location's scene, ask a rig provider for its rig there, draw the plan; no take."""
+    from . import rigplot
+    from .rigs import resolve, scene_for
     loc = locs.get(a.locations, a.location)
     adapter = adapters_registry.get(loc["game"])()
     adapter.ensure_ready(restart=False)
     adapter.open()
+    scene_dir = os.path.join(os.path.dirname(a.locations), "scenes")
     try:
-        src = Queue(a.queue).add_solver(make_spec(a.solver, seed=a.solver_seed, key=a.solver_key, repo=a.rig_repo))
-        rig, path = resolve(src, location=loc, adapter=adapter, out_dir=os.path.join(paths.OUT, "solved"),
-                            scene_dir=os.path.join(os.path.dirname(a.locations), "scenes"))
-        sc = np.load(rig["record"]["solved_for"]["scene_file"])
-        origin = adapter.ground_point(loc["position"])
-        R = adapter.rig_rotation(loc.get("facing_deg", 0.0))
+        src = Queue(a.queue).add_provider(*_provider_args(a))
+        rig, path = resolve(src, base_dir=a.queue, location=loc, adapter=adapter,
+                            out_dir=os.path.join(paths.OUT, "solved"), scene_dir=scene_dir)
+        sc = scene_for(adapter, loc, src.get("scene"), scene_dir) if "raycast" in adapter.capabilities else None
     finally:
         adapter.close()
-    st = rig["record"].get("stdm", {})
-    title = "%s, near %.2f m, far %s" % (loc["id"], st.get("near", {}).get("radius_m", 0),
-                                          "%.2f m" % st["far"]["radius_m"] if st.get("far", {}).get("supported") else "dropped")
+    fit = rig.get("record", {}).get("scene_fit", {})
     out = path[:-5] + "_plan.png"
-    rigplot.plan(scene.to_rig_frame(sc["points"], origin, R), rig, title).save(out)
-    print("%d cameras; effects: %s" % (len(rig["cameras"]), rig["record"]["scene_fit"]["effects"] or "none"))
+    title = "%s, %s, %d cameras" % (loc["id"], src["rig_id"], len(rig["cameras"]))
+    rigplot.plan(sc.points if sc is not None else [], rig, title).save(out)
+    print("%d cameras; effects: %s" % (len(rig["cameras"]), fit.get("effects") or "none"))
     print("rig:", path)
     print("plan:", out)
 
@@ -183,15 +211,22 @@ def main(argv=None):
     s.add_argument("--publish", action="store_true", help="refresh the list the in-game scout overlay shows")
     s.set_defaults(fn=cmd_locations)
 
+    def rig_args(s):
+        s.add_argument("--provider", help="a rig provider: a key (capture providers) or a .py file (rigs/README.md)")
+        s.add_argument("--set", action="append", metavar="KEY=VALUE",
+                       help="a provider setting (repeatable; JSON values allowed), e.g. --set seed=7")
+        s.add_argument("--rig", help="shortcut: --provider file --set path=<camrig/v1 file>")
+        s.add_argument("--solver", help="shortcut: --provider camrigs --set rig=<key>, e.g. yiming_stdm")
+        s.add_argument("--subject-height", type=float, help="stand-in subject height, m (default 1.996)")
+        s.add_argument("--subject-radius", type=float, help="stand-in subject half width, m (default 0.534)")
+
+    s = sub.add_parser("providers", help="list the rig providers this machine can use")
+    s.set_defaults(fn=cmd_providers)
+
     s = sub.add_parser("submit", help="queue a rig for locations")
-    s.add_argument("--rig", help="a camrig/v1 file, used as it is")
-    s.add_argument("--solver", help="a rig of the camera-rig repository solved per location against its "
-                                    "scene, e.g. yiming_stdm (with its Diverse trajectory)")
-    s.add_argument("--solver-seed", type=int, default=1234)
-    s.add_argument("--solver-key", default="demo", help="the rig repository's take key (seeds some draws)")
-    s.add_argument("--subject-height", type=float, help="stand-in subject height, m (default: the demo performer, 1.996)")
-    s.add_argument("--subject-radius", type=float, help="stand-in subject half width, m (default 0.534)")
-    s.add_argument("--rig-repo", help="path to gamecapture-camera-rigs-huixin (default ~/repos/..., or CAMRIGS_REPO)")
+    rig_args(s)
+    s.add_argument("--qc", choices=("flag", "fail", "off"),
+                   help="the provider's check of the packaged take: record it (flag, default), fail the job, or skip")
     s.add_argument("--location", action="append", default=[], help="location id (repeatable)")
     s.add_argument("--all", action="store_true", help="every location (of --game, if given)")
     s.add_argument("--game")
@@ -215,12 +250,9 @@ def main(argv=None):
     s.add_argument("--force", action="store_true", help="queue again even if the same job exists")
     s.set_defaults(fn=cmd_submit)
 
-    s = sub.add_parser("solve", help="solve a rig at a location against its scene and draw its plan (no take)")
+    s = sub.add_parser("solve", help="a provider's rig at a location, with its plan (no take)")
     s.add_argument("--location", required=True)
-    s.add_argument("--solver", default="yiming_stdm")
-    s.add_argument("--solver-seed", type=int, default=1234)
-    s.add_argument("--solver-key", default="demo")
-    s.add_argument("--rig-repo")
+    rig_args(s)
     s.set_defaults(fn=cmd_solve)
 
     s = sub.add_parser("queue", help="show or manage the queue")

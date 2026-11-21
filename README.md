@@ -1,19 +1,21 @@
 # capture_mod
 
-Captures a camera rig (a `camrig/v1` file from the camera-rig repository) inside a running
-game: the world is held at exactly one instant across every view, stepped by exactly 1/fps
-between instants, and the result is packaged in the rig repository's delivery layout.
-The first game is Red Dead Redemption 2 in story mode.
+Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
+is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
+and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
+pluggable providers (`rigs/`). The first game is Red Dead Redemption 2 in story mode.
 
 ```
-capture/            game-agnostic: rigs, placement, shot lists, the take loop, per-shot
-                    checks, packaging, sheets, locations, the job queue, the worker, the CLI
+capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
+                    per-shot checks, packaging, sheets, locations, the job queue, the worker, the CLI
+rigs/               rig providers, one file per rig format (rigs/README.md has the contract)
+third_party/        the camera-rig repository as an optional git submodule (for the camrigs provider)
 adapters/rdr2/      everything RDR2: the adapter, Lua jobs, the ReShade add-on, launch and
                     recovery scripts, the render camera writer, research probes
 tools/              generic helpers (frame reports, documentation media)
+tests/              checks that need no game (obstacle policy, rig providers)
 out/                all capture outputs (gitignored; CAPTURE_OUT moves it)
 BACKLOG.md          designed-for but not built: per-game mod sets and an install CLI, shot reuse
-tests/              checks that need no game (the obstacle policy)
 ```
 
 ## Workflow
@@ -27,8 +29,9 @@ the same machine one after the other (the worker teleports to each location).
 .\capture.ps1 scout --name lakeshore --tags open,shore
 .\capture.ps1 locations                 # --titles fills in place names, --publish refreshes the overlay
 
-# 2. submit: one job per location for a rig file (copied into the queue, never changed)
-.\capture.ps1 submit --rig <rig_yiming_stdm.json> --location rdr2-lakeshore-001
+# 2. submit: one job per location for a rig (any provider; see Rig providers below)
+.\capture.ps1 submit --solver yiming_stdm --location rdr2-lakeshore-001   # solved per location
+.\capture.ps1 submit --rig <rig_yiming_stdm.json> --location rdr2-lakeshore-001  # a fixed pose file
 .\capture.ps1 submit --rig <rig.json> --all --last-frame 3 --sweep-stride 30   # a quick sample
 .\capture.ps1 submit --rig <rig.json> --location <id> --cameras "?_near_sweep_t000"   # only some cameras
 .\capture.ps1 submit --rig <rig.json> --location <id> --park-height 0   # hidden player stays at the spot (default 10 m up)
@@ -47,40 +50,61 @@ saved location with its title, position and distance (red within 25 m). F11 hide
 location, F9 view it (front, right, back, left, off), F10 teleport there. F4 and F5 are left to
 Native Trainer, F6 to the game's camera mode, F7 to RedLua. It hides itself while a take runs.
 
-`capture.ps1` runs `python -m capture` through uv with this project's Python. The rig files
-are in the rig repository, e.g. `~/repos/gamecapture-camera-rigs-huixin/web/data/demo/rig_yiming_stdm.json`.
+`capture.ps1` runs `python -m capture` through uv with this project's Python.
 
 Tested 2026-11-20 on one machine: two locations scouted (one where the player stood, one
 reached with `--at`), then a worker took a 3-frame sample job, teleported back to the first
 location and captured it: 480 shots in 2.2 min, none recaptured, 275 cameras packaged, read
 by the rig repository's `qc/stdm_view.py` (275 cameras, 18 groups, Diverse).
 
-### Rigs solved per location
+### Rig providers
 
-Instead of a fixed rig file, a job can name a rig of the camera-rig repository to be solved at
-each location against the scene there, with the repository's own rules (lift or shrink a ring,
-drop a blocked group, decline the location; its `docs/SCENE_FIT.md`):
+Every rig format is a provider: one Python file that turns the scene around a location into a
+`camrig/v1` rig (or declines the location), with an optional check of the captured package.
+`rigs/README.md` has the contract. Providers are found in `rigs/` (add one by pull request), in
+the folders on `CAPTURE_RIG_PATH`, or by passing a file path.
 
 ```powershell
-.\capture.ps1 solve --location rdr2-rhodes-001                         # scene + solved rig + a plan image, no take
-.\capture.ps1 submit --solver yiming_stdm --location rdr2-rhodes-001   # a job with the solved rig
+.\capture.ps1 providers                                               # what this machine can use
+.\capture.ps1 solve --location rdr2-rhodes-001 --solver yiming_stdm   # the rig there + a plan image, no take
+.\capture.ps1 submit --location <id> --provider ring --set count=12 --set radius_m=5
+.\capture.ps1 submit --location <id> --provider C:\my\rigs\dolly.py --set speed=0.5
 ```
+
+| provider | what | scene |
+|---|---|---|
+| `file` (`--rig <file>`) | a `camrig/v1` pose file used as it is | not used |
+| `camrigs` (`--solver <key>`) | the camera-rig repository's rigs, solved with its own rules (lift or shrink a ring, drop a blocked group, decline the location; its `docs/SCENE_FIT.md`) | used |
+| `ring` | example: a ring of static cameras shrunk to clear the scene | used |
 
 - **Scene** (`capture/scene.py`, adapters with `raycast`): 66,000 rays from 11 points around the
   location (the ground point at 0.5, 1.6 and 3 m, rings of 4 at 3 m and 7 m), 14 m long, against
   terrain, buildings, objects, glass and foliage; each hit becomes a 0.3 m patch facing its normal.
-  Cached per location in `out/locations/scenes/` (.npz, and .obj to look at). About 30 s.
-- **Solve** (`capture/solver.py`): the repository's `rigs.get(<key>).solve()` in a scene made
-  from those patches, moved into the rig's frame. No-performer captures need no SMPL-X model:
-  the ST-DM and Diverse rules read only the performer's bounding box and pelvis, so the subject
-  is a static stand-in box of the demo performer's size; on an open floor this reproduces the
-  demo rig file exactly (poses within 1e-5). The Diverse trajectory (`zehao_traj`) is folded in
-  as the demo file does. A declined location fails the job with the rules' reason.
-- The solved rig is written to `out/solved/<rig id>/<location>.json` (+ `_plan.png`) and reused.
-  The spec records the rig repository's commit; a worker refuses to solve with another commit.
-- Measured at the Rhodes location: 28,492 of 66,000 rays hit; the far ring went from 4.57 m (open
-  floor) to 4.37 m to clear a porch, 8 s to solve. A wall 5 m away in a test scene shrinks it to
-  3.47 m; a 7 x 7 x 3 m room drops it and caps the higher groups.
+  Handed to every provider in the rig frame. Cached per location in `out/locations/scenes/`
+  (.npz, and .obj to look at). About 30 s.
+- **Jobs** record the provider's key, version and settings; a worker refuses a job whose provider
+  version differs from its own. A provider file from outside the repository is copied into the
+  queue at submit, so every worker runs the same file. The rig a provider returns is written to
+  `out/solved/<rig id>/<location>.json` and reused.
+- **QC**: a provider's `qc()` runs after packaging; the result goes into the job result and
+  `take.json`. `--qc flag` (default) records a failed check, `--qc fail` fails the job.
+- **camrigs** needs a checkout of `gamecapture-camera-rigs-huixin`. It is an optional git
+  submodule at `third_party/gamecapture-camera-rigs-huixin`, pinned to the commit this
+  repository was tested with: clone with `git clone --recurse-submodules`, or run
+  `git submodule update --init` after a plain clone (needs read access to that repository).
+  `CAMRIGS_REPO` overrides it (for working on the rig repository itself); `~/repos/...` is the
+  last fallback. Without any of them the other providers still work. Its version is that
+  checkout's commit; updating the rig rules is a submodule bump committed here. No-performer
+  captures need no SMPL-X model: the ST-DM and Diverse rules read only the performer's bounding
+  box and pelvis, so the subject is a static stand-in box of the demo performer's size; on an
+  open floor this reproduces the demo rig (poses within 1e-5 relative to the subject). The
+  Diverse trajectory (`zehao_traj`) is folded in as the demo file does. Its `qc()` runs that
+  repository's `qc/stdm_view.py` (skipped for takes without the temporal ring). The repository's
+  other rigs (hemisphere, chaowei_v2) test the performer's silhouette and are not checked with
+  the stand-in.
+- Measured at the Rhodes location: 28,492 of 66,000 rays hit; camrigs' far ring went from 4.57 m
+  (open floor) to 4.37 m to clear a porch, 8 s to solve. A wall 5 m away in a test scene shrinks
+  it to 3.47 m; a 7 x 7 x 3 m room drops it and caps the higher groups.
 
 A changed rig (for example ten cameras raised by 0.5 m) is a new rig file, so a new rig id
 and a new job; it is captured again in full. Reusing the unchanged shots needs a restorable

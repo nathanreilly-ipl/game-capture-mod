@@ -11,7 +11,8 @@ import threading
 import time
 import traceback
 
-from . import adapters_registry, paths
+from . import adapters_registry, paths, providers
+from .util import write_json
 from .package import package
 from .queue import Queue
 from .rigs import resolve
@@ -32,6 +33,28 @@ class _Lease(threading.Thread):
                 self.queue.touch(self.job_id, self.worker)
             except OSError:
                 pass
+
+
+def _provider_qc(job, queue, take_dir, rig, take, log):
+    """The rig provider's own check of the packaged take (capture/providers.py qc), recorded in
+    take.json; with the job setting qc = "fail" a failed check fails the job."""
+    mode = merged_settings(job.get("settings")).get("qc", "flag")
+    src = job["rig"]
+    if mode == "off" or src.get("kind") != "provider":
+        return None
+    mod = providers.load_for_source(src, queue.root)
+    if not hasattr(mod, "qc"):
+        return None
+    try:
+        res = mod.qc(os.path.join(take_dir, "package"), rig, take)
+    except Exception as e:
+        res = {"ok": False, "message": "%s: %s" % (type(e).__name__, e)}
+    log("qc (%s): %s %s" % (mod.KEY, {True: "passed", False: "FAILED", None: "-"}.get(res.get("ok")), res.get("message", "")))
+    take["qc"] = res
+    write_json(os.path.join(take_dir, "take.json"), take)
+    if res.get("ok") is False and mode == "fail":
+        raise TakeFailed("qc failed: %s" % res.get("message"))
+    return res
 
 
 def take_dir_for(takes_root, job):
@@ -84,13 +107,15 @@ def run_worker(game, queue_root, takes_root, worker_id=None, once=False, wait_s=
             adapter.close()
             meta = package(take_dir, log=log)
             sheets = make_sheets(take_dir, log=log)
+            qc = _provider_qc(job, queue, take_dir, rig, take, log)
             if not take["settings"].get("keep_raw", True):
                 shutil.rmtree(os.path.join(take_dir, "raw"), ignore_errors=True)
             queue.finish(job, {"take_dir": take_dir, "package": os.path.join(take_dir, "package"),
                                "cameras": len(meta["cameras"]), "shots": take["n_shots"],
                                "shots_recaptured": take["shots_recaptured"], "seconds": take["seconds"],
                                "retakes": retakes, "cleared": take.get("cleared"),
-                               "obstructions": take.get("obstructions"), "sheets": sheets, "worker": worker_id})
+                               "obstructions": take.get("obstructions"), "qc": qc, "sheets": sheets,
+                               "worker": worker_id})
             log("job %s done: %s" % (job["id"], take_dir))
         except Exception as e:
             log("job %s failed: %s: %s" % (job["id"], type(e).__name__, e))

@@ -54,6 +54,7 @@ DEFAULT_SETTINGS = {
     "obstacle_margin": 0.15, # metres around a person/animal/vehicle box that count as inside
     "retake_before": 2 / 3,  # a camera inside something before this share of shots: retake
     "max_retakes": 3,        # retakes of one job before it fails
+    "qc": "flag",            # the rig provider's check of the package: flag (record), fail, off
     "adapter": {},           # passed to the adapter (e.g. settle ticks)
 }
 
