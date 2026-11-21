@@ -3,7 +3,11 @@ name = "capture-mod"
 version = "0.1.0"
 description = "Synchronized multi-view capture of camera rigs in games"
 requires-python = ">=3.11"
-dependencies = ["numpy", "pillow"]
+dependencies = [
+    "flip-evaluator>=1.7",
+    "numpy",
+    "pillow",
+]
 
 [tool.uv]
 package = false

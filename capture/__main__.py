@@ -1,5 +1,9 @@
 """Command line: python -m capture <command> (or .\\capture.ps1 <command> from the repo root).
 
+    install    install everything a game needs (mods, ReShade, our add-on and scripts, settings)
+    verify     check that an install can scout, capture and iterate
+    uninstall  put back what install changed
+    mods       the third-party files an install needs: status, fetch, bundle, docs
     scout      record a location (and its 4 outward previews) from the running game
     locations  list the recorded locations
     providers  list the rig providers (rig formats) this machine can use
@@ -182,6 +186,79 @@ def cmd_queue(a):
             print(line)
 
 
+def _install_options(a):
+    def flag(on, off):  # None: the game's default
+        return False if off else True if on else None
+    return {"optiscaler": flag(a.optiscaler, a.no_optiscaler), "native_trainer": False if a.no_native_trainer else None,
+            "preset": False if a.no_preset else None, "ray_tracing": flag(a.ray_tracing, a.no_ray_tracing),
+            "api": a.api, "resolution": a.resolution}
+
+
+def _mods_roots(a):
+    roots = list(a.mods or [])
+    if getattr(a, "dlss_nr", None):
+        roots.append(a.dlss_nr)
+    return roots
+
+
+def cmd_install(a):
+    from . import install as inst
+    from .install import prereqs
+    try:
+        if not a.only:
+            print("machine:")
+            prereqs.report(_install_options(a))
+            print("steps:")
+        n = inst.install(a.game, a.game_dir, _install_options(a), _mods_roots(a), only=a.only, dry_run=a.dry_run)
+    except inst.InstallError as e:
+        raise SystemExit("install stopped: %s" % e)
+    if not a.dry_run and not a.only and not a.no_verify:
+        print("next: .\\capture.ps1 verify %s --launch   (starts the game and checks everything works)" % a.game)
+    return n
+
+
+def cmd_uninstall(a):
+    from . import install as inst
+    ctx, mod = inst.context(a.game)
+    if ctx.system.process_running(mod.EXE):
+        raise SystemExit("close the game first")
+    inst.uninstall(a.game)
+
+
+def cmd_verify(a):
+    from .install.verify import verify
+    if not verify(a.game, launch=a.launch, quick=a.quick):
+        raise SystemExit(1)
+
+
+def cmd_mods(a):
+    from . import install as inst
+    from .install import docs, sources
+    from .install.components import addon
+    if a.action == "docs":
+        print("wrote", docs.generate())
+        return
+    ctx, mod = inst.context(a.game, a.game_dir, None, _mods_roots(a))
+    if a.action == "fetch":
+        sources.fetch(ctx.files)
+    elif a.action == "bundle":
+        out = a.output or os.path.join(paths.OUT, "bundles", "capture-mods-%s.zip" % a.game)
+        extra = [("capture_addon/" + addon.NAME, addon.BUILT), ("capture_addon/" + addon.STAMP, addon.BUILT_STAMP)] if addon.is_built() else []
+        if not extra:
+            print("the capture add-on is not built here, so the bundle will not include it")
+        sources.bundle(ctx.files, out, with_supplied=a.with_supplied, extra=extra)
+    else:
+        print("looking in: %s" % ", ".join(ctx.files.roots + ["the existing install"]))
+        for mod_id, m, refs in ctx.files.status():
+            print("%s  [%s%s]" % (m["title"], "required" if m.get("required") else "optional",
+                                  ", download" if m.get("source") == "download" else ", supply yourself"))
+            for r in refs:
+                print("  %-8s %-22s %s" % ("found" if r.found else "MISSING", r.spec["name"], r.where or "get it from " + str(m.get("page"))))
+            if not refs:
+                print("  (files not pinned yet)")
+        print("what each file is and where to get it: docs/MOD_FILES.md")
+
+
 def cmd_worker(a):
     from .worker import run_worker
     n = run_worker(a.game, a.queue, a.takes, worker_id=a.worker_id, once=a.once, restart=not a.no_restart)
@@ -260,6 +337,56 @@ def main(argv=None):
     s.add_argument("ids", nargs="*")
     s.add_argument("--stale-s", type=float, default=900)
     s.set_defaults(fn=cmd_queue)
+
+    def game_args(s, mods=True):
+        s.add_argument("game", choices=adapters_registry.names())
+        s.add_argument("--game-dir", help="the folder holding the game's exe (default: found through Steam, "
+                                          "or what the last install used)")
+        if mods:
+            s.add_argument("--mods", action="append", metavar="PATH",
+                           help="a folder, archive or bundle holding mod files (repeatable; out/mods is always searched)")
+            s.add_argument("--dlss-nr", metavar="FILE", help="your nvngx_dlssnr.dll, for --optiscaler")
+
+    s = sub.add_parser("install", help="install everything a game needs")
+    game_args(s)
+    s.add_argument("--optiscaler", action="store_true",
+                   help="install OptiScaler (DLSS 5; needs your nvngx_dlssnr.dll); the default for RDR2")
+    s.add_argument("--no-optiscaler", action="store_true", help="leave OptiScaler out (it is not loaded)")
+    s.add_argument("--no-native-trainer", action="store_true", help="leave out the game's trainer menu, where it has one")
+    s.add_argument("--ray-tracing", action="store_true",
+                   help="RDR2: Reality Redemption 2 (hardware ray tracing; Direct3D 12 only); the default for RDR2")
+    s.add_argument("--no-ray-tracing", action="store_true", help="leave the ray tracing out")
+    s.add_argument("--no-preset", action="store_true",
+                   help="captures without ReShade effects (an empty preset) instead of the game's visual set")
+    s.add_argument("--api", choices=("vulkan", "d3d12", "d3d11", "dxgi", "opengl"),
+                   help="the graphics API (the game is switched to it; default: the game's install default, "
+                        "Direct3D 12 for RDR2)")
+    s.add_argument("--resolution", metavar="WxH",
+                   help="the game's windowed size, 16:9 (default for RDR2: 2560x1440, the capture size)")
+    s.add_argument("--only", action="append",
+                   choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "machine"),
+                   help="only these parts (repeatable), e.g. --only scripts after editing a script")
+    s.add_argument("--dry-run", action="store_true", help="show every step and what it would change; change nothing")
+    s.add_argument("--no-verify", action="store_true", help=argparse.SUPPRESS)
+    s.set_defaults(fn=cmd_install)
+
+    s = sub.add_parser("verify", help="check that an install can scout, capture and iterate")
+    s.add_argument("game", choices=adapters_registry.names())
+    s.add_argument("--launch", action="store_true", help="start (or restart) the game if it is not ready")
+    s.add_argument("--quick", action="store_true", help="skip the small test take")
+    s.set_defaults(fn=cmd_verify)
+
+    s = sub.add_parser("uninstall", help="put back what install changed")
+    s.add_argument("game", choices=adapters_registry.names())
+    s.set_defaults(fn=cmd_uninstall)
+
+    s = sub.add_parser("mods", help="the third-party files an install needs")
+    s.add_argument("action", choices=("status", "fetch", "bundle", "docs"))
+    game_args(s)
+    s.add_argument("-o", "--output", help="bundle: the zip to write (default out/bundles/capture-mods-<game>.zip)")
+    s.add_argument("--with-supplied", action="store_true",
+                   help="bundle: include files that may not be redistributed (for your own machines only)")
+    s.set_defaults(fn=cmd_mods)
 
     s = sub.add_parser("worker", help="capture queued jobs")
     s.add_argument("--game", default="rdr2", choices=adapters_registry.names())

@@ -24,6 +24,20 @@ if ($running) {
 	$running | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
 	Start-Sleep -Seconds 3
 }
+# Steam counts the game as running while its launch stub (PlayRDR2.exe) and the Rockstar launcher
+# live on, which they do after a forced close; a new start then fails with "Game already running".
+$stub = Get-Process -Name 'PlayRDR2', 'Launcher', 'RockstarErrorHandler', 'RockstarSteamHelper', 'SocialClubHelper' -ErrorAction SilentlyContinue
+if ($stub) {
+	Write-Host 'Closing the Rockstar launcher'
+	$stub | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+$t = Get-Date
+while (((Get-ItemProperty 'HKCU:\Software\Valve\Steam' -Name RunningAppID -ErrorAction SilentlyContinue).RunningAppID -eq [int]$SteamAppId) -and ((Get-Date) - $t).TotalSeconds -lt 60) {
+	Start-Sleep -Seconds 1
+}
+if (((Get-ItemProperty 'HKCU:\Software\Valve\Steam' -Name RunningAppID -ErrorAction SilentlyContinue).RunningAppID) -eq [int]$SteamAppId) {
+	Write-Warning 'Steam still lists the game as running; the start may fail with "Game already running"'
+}
 
 # With the game closed, nothing can overwrite these.
 $dev = Join-Path $GameDir 'ScriptHookRDR2.dev'

@@ -101,6 +101,20 @@ class Adapter:
     def wait_frames(self, n):
         """Let n rendered frames pass (e.g. after deleting something, before capturing)."""
 
+    def set_weather(self, name):
+        """Set and hold a weather type by the game's name; "free" releases it. Optional (used to
+        repeat a scene across game restarts, e.g. tools/upscaler_sweep.py)."""
+        raise NotImplementedError
+
+    def press_key(self, key):
+        """Press a key in the game window ("F13"), for mods that are switched by a key, e.g.
+        OptiScaler's DLSS 5 toggle in tools/upscaler_ab.py. Optional."""
+        raise NotImplementedError
+
+    def screen_grab(self):
+        """A picture of the game as it is on screen (PIL image), or None. For checking captures."""
+        return None
+
     def instant(self):
         """A value that changes whenever the frozen world moves (e.g. the game timer)."""
         raise NotImplementedError

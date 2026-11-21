@@ -88,6 +88,19 @@ def press(hwnd, key, hold_s=0.08):
     return True
 
 
+def press_vk(hwnd, vk, scan=0, hold_s=0.08):
+    """Presses one key by virtual-key code (with its scan code), for hooks that read either;
+    only while the game window is in front."""
+    if not is_foreground(hwnd):
+        return False
+    for flags in (0, 0x0002):  # key down, then KEYEVENTF_KEYUP
+        i = _INPUT(type=1)
+        i.ki = _KEYBDINPUT(vk, scan, flags, 0, 0)
+        user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(_INPUT))
+        time.sleep(hold_s)
+    return True
+
+
 def grab(hwnd):
     """A picture of the window's client area as it is on screen (PIL image), or None."""
     from PIL import ImageGrab

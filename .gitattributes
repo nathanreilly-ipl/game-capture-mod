@@ -1,0 +1,2 @@
+# Visual sets are installed byte for byte (the installer compares hashes): no line-ending conversion
+adapters/*/visual/** -text

@@ -8,15 +8,114 @@ pluggable providers (`rigs/`). The first game is Red Dead Redemption 2 in story 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
                     per-shot checks, packaging, sheets, locations, the job queue, the worker, the CLI
+capture/install/    game-agnostic installer: steps, where mod files come from, and the components
+                    every game shares (ReShade, our capture add-on, optional OptiScaler)
+addons/capture/     our ReShade add-on that saves frames (game-agnostic)
 rigs/               rig providers, one file per rig format (rigs/README.md has the contract)
 third_party/        the camera-rig repository as an optional git submodule (for the camrigs provider)
-adapters/rdr2/      everything RDR2: the adapter, Lua jobs, the ReShade add-on, launch and
-                    recovery scripts, the render camera writer, research probes
+adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockfile, Lua jobs, launch
+                    and recovery scripts, the render camera writer, research probes
+docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
 tools/              generic helpers (frame reports, documentation media)
-tests/              checks that need no game (obstacle policy, rig providers)
-out/                all capture outputs (gitignored; CAPTURE_OUT moves it)
-BACKLOG.md          designed-for but not built: per-game mod sets and an install CLI, shot reuse
+tests/              checks that need no game (installer, obstacle policy, rig providers)
+out/                all outputs, mod files and this machine's config (gitignored; CAPTURE_OUT moves it)
+BACKLOG.md          designed-for but not built
 ```
+
+## Install
+
+On a fresh PC: install the game and start it once, clone this repository
+(`git clone --recurse-submodules`), install [uv](https://docs.astral.sh/uv/), then:
+
+```powershell
+.\capture.ps1 mods status rdr2          # which third-party files are found, which are missing
+.\capture.ps1 mods fetch rdr2           # downloads the ones that may be downloaded, checks their hashes
+#   ...put the ones you must supply yourself into out\mods\ (docs/MOD_FILES.md says where to get them)
+.\capture.ps1 install rdr2 --dry-run    # every step and what it would change
+.\capture.ps1 install rdr2 --dlss-nr <nvngx_dlssnr.dll>   # game closed; the full capture setup (below)
+.\capture.ps1 verify rdr2 --launch      # starts the game, checks scripts, a test frame, a small take
+```
+
+After that the machine can scout, run a worker, or be driven by an agent (see Workflow).
+
+The RDR2 default (since 2026-11-20) is the full capture setup: Direct3D 12, a 2560x1440 window,
+the visual set's ReShade preset, ray tracing (Reality Redemption 2) and DLSS 5 (OptiScaler, which
+needs your `nvngx_dlssnr.dll`). `--no-ray-tracing`, `--no-optiscaler`, `--no-preset`,
+`--api vulkan` (with `--no-ray-tracing`) and `--resolution WxH` change it; an install without one
+of them stops it from loading (its loader file goes, backed up).
+
+- **What it does.** Game-agnostic components install ReShade for the game's graphics API, build
+  and deploy our capture add-on, and optionally OptiScaler; the game's adapter adds the game's own
+  mods, our scripts and a few game settings. For RDR2: Script Hook RDR2 and its ASI loader, RedLua
+  (autorun on, natives patched), Native Trainer (`--no-native-trainer` to leave out), our Lua
+  scripts, the game's visual set, VSync off.
+- **Visual set** (`adapters/<game>/visual/`). The add-on saves frames after ReShade's effects, so
+  the preset is part of what a capture looks like. RDR2's is `visual/ReShadePreset.ini` (CAS,
+  chromatic aberration, colour matrix, deband, fake HDR, vibrance), installed as the game's
+  `ReShadePreset.ini` together with the eight shader files it uses, pinned in the lockfile and
+  downloaded from their repositories by `mods fetch`. `--no-preset` captures without effects
+  instead. A preset you change in game is backed up before an install replaces it; to make the
+  change the default, copy it over `adapters/rdr2/visual/ReShadePreset.ini`.
+- **Direct3D 12** (`--api d3d12`): ReShade goes into the game folder as `ReShade.asi` and loads
+  itself through Script Hook's loader, with or without OptiScaler (OptiScaler preloads Windows'
+  own `dxgi.dll`, so a `dxgi.dll` ReShade never loads next to it). Two copies of ReShade in the
+  game crash it (out of memory), so RDR2 comes off ReShade's machine-wide Vulkan app list, and the
+  Vulkan layer itself is unregistered once no Vulkan app uses it (`--only machine`, an
+  administrator prompt each); its copy loads into the game even when the game is not listed.
+  Until then, start Steam with `DISABLE_VK_LAYER_reshade_1=1` set, so games it starts keep that
+  copy out. The game rewrites its settings on its first Direct3D 12 start (window size, DLSS
+  mode, VSync); run install again after it.
+  Captures target 2560x1440 (`--resolution 2560x1440`, the portrait crops are then native).
+- **Ray tracing** (`--ray-tracing`, Direct3D 12 only): Reality Redemption 2 Beta 2, pinned in the
+  RDR2 lockfile (the RAR is read as downloaded). Its effect is added to the visual set's preset,
+  and three presets switch live: F14 with ray tracing, F15 ray tracing off, F16 the mod off.
+  `tools/preset_ab.py --location ID --clock HH:MM` captures all three at one frozen instant
+  (player, street, building fronts, ground, overview, people) and sheets them.
+- **Comparison sheets** (`tools/compare_sheets.py [folder]`, also run at the end of every
+  comparison tool): pages of four views with a title band, column titles and per-view numbers,
+  a centre-crop version of each page, and NVIDIA's FLIP error map (the `flip-evaluator` package,
+  LDR, 67 pixels per degree) next to each pair: where and how much two pictures differ as a
+  viewer would see it. Mean FLIP, 2026-11-20: ray tracing off to on 0.074 and 0.079 on the sunny
+  street, 0.047 at the lakeshore, 0.040 at night; DLSS 5 off to on 0.038 to 0.044.
+- **OptiScaler** (`--optiscaler`, the DLSS 5 fork). The game must have DLSS turned on; OptiScaler
+  takes over that call and runs NVIDIA's DLSS 5 model on the result. Installed with frame
+  generation off and the model running every frame (its edit cache off, so nothing is carried
+  from one camera to the next); its menu is on End (ReShade's is Home by default), and in RDR2 its F6
+  comparison key is unbound (F6 is the game's camera mode). F13 switches DLSS 5 on and off live.
+  `nvngx_dlssnr.dll` is yours to supply (`--dlss-nr <file>` or out/mods). Installing again
+  without `--optiscaler` does not remove it; press F13, or `capture uninstall`.
+  `tools/upscaler_ab.py [--location <id>] [--npcs N]` compares DLSS 5 off and on at the same
+  frozen instant (views of the player, the street and close-ups of nearby people, as off/on
+  sheets) and measures how long the picture takes to settle after a cut. Measured in RDR2 on
+  Vulkan, 2026-11-20 (Rhodes, Saint Denis): DLSS 5 engages after the game's own DLSS
+  (1066x600 to 1600x900); it adds contrast and local detail, most on faces; the mean change is
+  1.1-2.9 levels of 255, against 1.1 between two captures of the same pose; settling after a cut
+  and repeatability are the same with and without it (40 frames is enough).
+  `tools/upscaler_sweep.py` repeats that for several OptiScaler settings, one game start each
+  (OptiScaler reads TransferStrength and Style only at start on Vulkan), at the same location,
+  clock and weather, with traffic cleared around the player; it puts OptiScaler.ini back at the
+  end. Measured 2026-11-20 in Saint Denis (8 views per setting): TransferStrength 1.0, 1.5,
+  2.5, 4.0 gave a mean change of 1.5, 1.9, 1.5, 1.7 levels of 255; on the player's face it grew
+  from 1.4 to 2.8 (the strongest 1% of pixels from 10 to 30). The Natural and Cinematic styles
+  change about as much as Default (1.4, 1.6). Thin things the scene probes miss (fences,
+  leaves) can still stand in front of a close-up.
+- **Mod files** are never in git. Lockfiles pin each one by SHA-256
+  (`capture/install/mods.lock.json` for every game, `adapters/<game>/mods.lock.json` per game);
+  the installer finds them by hash in `out/mods/` or `--mods <folder, archive or bundle>`, inside
+  archives as downloaded. `capture mods bundle rdr2 --with-supplied` zips everything one machine
+  has for your other machines (keep it out of git and off the internet).
+- **Safe to repeat.** Steps already satisfied are skipped; `--dry-run` changes nothing; a missing
+  file stops the install before anything is changed. Everything written is recorded in
+  `out/install/<game>/installed.json` with backups, and `capture uninstall <game>` puts it back
+  (files or settings you changed since are left alone; ReShade's machine-wide Vulkan layer stays).
+- **One administrator prompt** on a machine where ReShade's Vulkan layer is not registered yet
+  (it is registered machine-wide, as ReShade's own setup does).
+- **Iterating.** `capture install rdr2 --only scripts` copies changed Lua scripts (the game can
+  be running; then `adapters\rdr2\scripts\reload_scripts.ps1`); `--only addon` rebuilds and
+  deploys the add-on (game closed).
+- `--game-dir` is only needed when the game is not found through Steam; the folder is remembered
+  in `out/config.json`.
+- `tests/test_install.py --mods <folder>` runs the whole RDR2 plan in a sandbox.
 
 ## Workflow
 
@@ -170,33 +269,22 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
 
 ## Adding a game
 
-Implement `capture.adapter.Adapter` in `adapters/<game>/` and register it in
-`capture/adapters_registry.py`. The adapter supplies the world conventions (how the rig
-frame maps into the world for a facing, the heading basis) and the operations: go to a
-location, ground point, clock, hide the subject, a preview view, freeze, write a camera,
-capture, advance by exact seconds, health, recover. Optional capabilities (`snapshot`,
-`scene_mesh`) are for the backlog items.
+- **Adapter**: implement `capture.adapter.Adapter` in `adapters/<game>/` and register it in
+  `capture/adapters_registry.py`. It supplies the world conventions (how the rig frame maps into
+  the world for a facing, the heading basis) and the operations: go to a location, ground point,
+  clock, hide the subject, a preview view, freeze, write a camera, capture, advance by exact
+  seconds, health, recover. Optional capabilities: `obstacles`, `raycast`, `snapshot`.
+- **Install plan**: `adapters/<game>/install.py` (registered in `capture/install/__init__.py`)
+  with the game's lockfile `mods.lock.json`. It names the game's exe, finds its folder, calls the
+  shared components with the game's choices (graphics API for ReShade, how OptiScaler is loaded)
+  and adds the steps only this game needs. `adapters/<game>/visual/` holds the game's visual set
+  (the ReShade preset for captures).
 
 ## RDR2 adapter
 
 ### Setup
 
-Script Hook RDR2 and the dinput8 ASI loader in the game folder, then:
-
-1. **RedLua** (https://github.com/igor725/RedLua/releases, v0.6.4): extract into the game
-   folder so `RedLua.asi` sits next to `RDR2.exe`. Scripts live in `<game>\RedLua\Scripts`.
-2. **ReShade 6.8** (Vulkan) with add-on support.
-3. **Build tools**: Visual Studio or Build Tools with "Desktop development with C++" (includes CMake).
-4. Build and deploy (game closed):
-
-```powershell
-.\adapters\rdr2\scripts\fetch_deps.ps1     # ReShade v6.8.0 headers into adapters\rdr2\deps
-.\adapters\rdr2\scripts\build.ps1          # adapters\rdr2\build\Release\capture_mod.addon64
-.\adapters\rdr2\scripts\deploy.ps1         # add-on and Lua scripts into the game folder
-.\adapters\rdr2\scripts\patch_natives.ps1  # names for the photo-mode exposure natives (backup: natives.json.orig)
-```
-
-The game-side scripts and the add-on exchange files in
+`capture install rdr2` (see Install). The game-side scripts and the add-on exchange files in
 `%USERPROFILE%\Documents\RDR2Modding\captures` (fixed in `capture_loader.lua` and
 `ReShade.ini`). Frames only pass through it; the worker moves them into `out/`.
 
@@ -261,9 +349,10 @@ foreground during a take (a lost focus is detected and recovered, see Per-shot c
 - **Ped heights.** A ped set to height z reads back at z + 1 (its origin is about 1 m above
   its feet), and the ground probe hits the player's own collision; the teleport probes with
   collision off and sets the ground height itself, so a held player stands on the ground.
-- **Frame rate.** RDR2's VSync setting holds the game at 60 fps, which makes a shot take 0.75 s
-  (40 ticks of settle); without the cap it ran at about 210 fps, 0.20 s per shot. Turn VSync off
-  in the game's graphics settings for capture machines.
+- **Frame rate.** A shot waits 40 ticks to settle, so the frame rate sets the shot time: 0.75 s
+  at 60 fps, 0.3 s at 134 fps, 0.20 s at about 210 fps. All three were seen on 2026-11-20 with
+  VSync on in the game's settings, so the cap is not VSync alone (not tracked down). The
+  installer turns VSync off; `capture verify` reports the frame rate.
 - **Speed.** 0.20 s per shot at 1600x900; the full ST-DM rig (12,356 shots, 24,387 camera
   frames) takes 41 min and 50 GB of BMP; 1.3 GB packaged.
 
@@ -280,8 +369,11 @@ orbit, geometry and step checks). They are not part of the pipeline.
 
 ## Known gaps
 
-- The ReShade preset's effects (sharpening, chromatic aberration, colour matrix, fake HDR) are in
-  every frame: the add-on reads the frame after them.
+- The add-on reads the frame after ReShade's effects. `capture install` points ReShade at a
+  preset without effects for captures; on a machine where it has not been applied, the active
+  preset's effects are in every frame.
+- Anything another mod draws on screen is in the frames too: an open Native Trainer menu, for
+  example. Nothing detects that yet; keep such menus closed during a take.
 - Frames saved before 2026-11-20 12:07 (every take in `out/takes/_before_queue/` and the
   lakeshore sample) have red and blue swapped: ReShade's `capture_screenshot` returns the swap
   chain's own BGRA layout, not RGBA as documented. The add-on now orders channels by the back

@@ -1,0 +1,755 @@
+{
+ "schema": "capture_mods_lock/v1",
+ "mods": {
+  "scripthook_rdr2": {
+   "title": "Script Hook RDR2 1.0.1491.17 (with its ASI loader and Native Trainer)",
+   "version": "1.0.1491.17",
+   "what": "Loads script plug-ins into the game (the ASI loader, dinput8.dll) and lets them call the game's functions. Everything that drives RDR2 runs through it. Native Trainer is optional (--no-native-trainer).",
+   "required": true,
+   "source": "supplied",
+   "page": "http://www.dev-c.com/rdr2/scripthookrdr2/",
+   "archive": {
+    "name": "ScriptHookRDR2_1.0.1491.17.zip",
+    "url": null,
+    "size": 294614,
+    "sha256": "a3be69dcd33e6cffe316d7c17ee5c4f7fcedf0c7b7fa8cf68177398e6594c39f"
+   },
+   "note": "Its readme forbids redistributing the archive, so download it from the page above.",
+   "licence": "Alexander Blade; free to use, no redistribution",
+   "redistributable": false,
+   "files": [
+    {
+     "name": "ScriptHookRDR2.dll",
+     "size": 185344,
+     "sha256": "3ac29fbe8c92b664e358f7d4f0af2ec9f1ca674885975087ef76bd98bf972a4c"
+    },
+    {
+     "name": "dinput8.dll",
+     "size": 131072,
+     "sha256": "956fb3765572d00f6c08bcae11e9856a00a68107464a87b6ccc6c1ffed46b88a"
+    },
+    {
+     "name": "NativeTrainer.asi",
+     "size": 401408,
+     "sha256": "9b22cf7900e2de297a013dfece1f594203970a9ca4b03d7075753aec7a602a80",
+     "option": "native_trainer"
+    }
+   ]
+  },
+  "redlua": {
+   "title": "RedLua 0.6.4 for RDR2",
+   "version": "0.6.4",
+   "what": "Runs Lua scripts inside the game (LuaJIT). Our loader, the session job and the scout overlay are RedLua scripts.",
+   "required": true,
+   "source": "download",
+   "page": "https://github.com/igor725/RedLua/releases/tag/v0.6.4",
+   "archive": {
+    "name": "RedLuaRDR2-v0.6.4.zip",
+    "url": "https://github.com/igor725/RedLua/releases/download/v0.6.4/RedLuaRDR2-v0.6.4.zip",
+    "size": 3732336,
+    "sha256": "2094f3fbcaa7e719db1ace0cd32a18abd8e0c5677c9658a018d4d03f18ac60b4"
+   },
+   "licence": "MIT",
+   "redistributable": true,
+   "files": [
+    {
+     "name": "RedLua.asi",
+     "size": 2470400,
+     "sha256": "68837ea6f9787b85024153596b2afe6841dad52ba734c06a6c114f6dcef81a66"
+    },
+    {
+     "name": "lua51.dll",
+     "size": 533504,
+     "sha256": "0d4d79fe1e4829298b3b67da34a195a34e3229df94bb8f91aba6f3c8f89bd554"
+    },
+    {
+     "name": "RedLua/natives.json",
+     "size": 2247953,
+     "sha256": "1fb75eebb05af3fcf2fb6f29ffbd98c7c899abc39a12cb2f40a6369c8c327a74"
+    },
+    {
+     "name": "RedLua/Langs/en.lng",
+     "size": 2234,
+     "sha256": "4d4aa030d467fd4b1ebe94f5416e5f91f3a2875fdc4aeb1851185eccd433cbec"
+    },
+    {
+     "name": "RedLua/Langs/ru.lng",
+     "size": 3231,
+     "sha256": "7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3"
+    }
+   ]
+  },
+  "reshade_shaders": {
+   "title": "ReShade standard effects (crosire/reshade-shaders, slim branch)",
+   "version": "fd0022170615",
+   "what": "Deband and the two headers every effect includes (ReShade.fxh, ReShadeUI.fxh). Needed by RDR2's ReShade preset (adapters/rdr2/visual/ReShadePreset.ini); not installed with --no-preset.",
+   "required": true,
+   "source": "download",
+   "page": "https://github.com/crosire/reshade-shaders/tree/fd0022170615ce0d8162d219bff07232fa6dd84f",
+   "note": "The files ReShade's own setup installs as 'Standard effects', pinned at commit fd0022170615ce0d8162d219bff07232fa6dd84f. Each file is downloaded on its own.",
+   "licence": "per file (see each file's header)",
+   "redistributable": false,
+   "files": [
+    {
+     "name": "Deband.fx",
+     "size": 9551,
+     "sha256": "8959ca995090bc89762cc0bf4ba3bb1ffcffdf143e9e0ddaf84f0e004b53dd29",
+     "install": "reshade-shaders/Shaders/Deband.fx",
+     "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/Deband.fx"
+    },
+    {
+     "name": "ReShade.fxh",
+     "size": 4250,
+     "sha256": "6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f",
+     "install": "reshade-shaders/Shaders/ReShade.fxh",
+     "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh"
+    },
+    {
+     "name": "ReShadeUI.fxh",
+     "size": 9930,
+     "sha256": "78adf672df47460297eb9fe6dd238d2aafa24510b52b84feb1a745dff70eb901",
+     "install": "reshade-shaders/Shaders/ReShadeUI.fxh",
+     "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShadeUI.fxh"
+    }
+   ]
+  },
+  "sweetfx": {
+   "title": "SweetFX by CeeJay.dk",
+   "version": "93ddf39b357f",
+   "what": "The SweetFX effects RDR2's ReShade preset uses: CAS, ChromaticAberration, ColorMatrix, FakeHDR, Vibrance. Not installed with --no-preset.",
+   "required": true,
+   "source": "download",
+   "page": "https://github.com/CeeJayDK/SweetFX/tree/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361",
+   "note": "The files ReShade's own setup installs as 'SweetFX by CeeJay.dk', pinned at commit 93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361. Each file is downloaded on its own.",
+   "licence": "per file (see each file's header)",
+   "redistributable": false,
+   "files": [
+    {
+     "name": "CAS.fx",
+     "size": 7005,
+     "sha256": "5cbf1468b75d0d221067bdc7bca658f531816c3b24e0eef8654d9d2a7d1a1c46",
+     "install": "reshade-shaders/Shaders/SweetFX/CAS.fx",
+     "url": "https://raw.githubusercontent.com/CeeJayDK/SweetFX/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361/Shaders/SweetFX/CAS.fx"
+    },
+    {
+     "name": "ChromaticAberration.fx",
+     "size": 1187,
+     "sha256": "a6bfe5c0770c09be949b3548c4979dab1dd347478b7fa50108ef144c82beab72",
+     "install": "reshade-shaders/Shaders/SweetFX/ChromaticAberration.fx",
+     "url": "https://raw.githubusercontent.com/CeeJayDK/SweetFX/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361/Shaders/SweetFX/ChromaticAberration.fx"
+    },
+    {
+     "name": "ColorMatrix.fx",
+     "size": 1692,
+     "sha256": "5162503f77e4d3af52e068ab74778226105d065199a25302c3583890fed75a3b",
+     "install": "reshade-shaders/Shaders/SweetFX/ColorMatrix.fx",
+     "url": "https://raw.githubusercontent.com/CeeJayDK/SweetFX/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361/Shaders/SweetFX/ColorMatrix.fx"
+    },
+    {
+     "name": "FakeHDR.fx",
+     "size": 2879,
+     "sha256": "f6ca5ed2c4f0698695cca7fc0a2b917e1934b6cb34064a0bc7aa098051727cf9",
+     "install": "reshade-shaders/Shaders/SweetFX/FakeHDR.fx",
+     "url": "https://raw.githubusercontent.com/CeeJayDK/SweetFX/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361/Shaders/SweetFX/FakeHDR.fx"
+    },
+    {
+     "name": "Vibrance.fx",
+     "size": 2217,
+     "sha256": "b9189a28ca4a645a0e188f8396c81889d217e3c706e8900dfe6594d43e7c33eb",
+     "install": "reshade-shaders/Shaders/SweetFX/Vibrance.fx",
+     "url": "https://raw.githubusercontent.com/CeeJayDK/SweetFX/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361/Shaders/SweetFX/Vibrance.fx"
+    }
+   ]
+  },
+  "reality_redemption2": {
+   "title": "Reality Redemption 2 Beta 2 (ray tracing for RDR2, by BadassBaboon)",
+   "version": "beta2",
+   "what": "Optional (--ray-tracing, Direct3D 12 only): hardware ray-traced global illumination (up to 3 bounces), ambient occlusion, sun shadows (static geometry) and reflections (windows, water, wet ground), as a ReShade add-on with its control effect, plus sharper game water reflections and its own tonemappers.",
+   "required": false,
+   "option": "ray_tracing",
+   "source": "download",
+   "page": "https://www.patreon.com/badassbaboon",
+   "archive": {
+    "name": "RealityRedemption2 BETA2.rar",
+    "url": "https://drive.usercontent.google.com/download?id=1mCX0QtaRA9_vCUiOMAyY7G27w1P3bJCz&export=download",
+    "size": 2333350,
+    "sha256": "fad77c7edcf5ac7d34a183a5751c65de0fe16b09a2bc1b75e657e49468b32ad6"
+   },
+   "note": "From the Google Drive link in the author's public Patreon post (Beta 2, November 2026). A RAR archive: the installer unpacks it with Windows' own tar. Its ReShade.ini is not used (the installer adds what it needs to the game's), and its two ReShade headers are the standard ones already installed.",
+   "licence": "no licence stated; free download",
+   "redistributable": false,
+   "files": [
+    {
+     "name": "RealityFX.addon64",
+     "size": 1790976,
+     "sha256": "5eb0d98c9fedef27e28a2d840d47fce74ff9dc457f8b71c822cb9384ac05f8e1",
+     "install": "RealityFX.addon64"
+    },
+    {
+     "name": "RealityFX.ini",
+     "size": 2710,
+     "sha256": "e3029228eff68d2e9f35c8f8ecb0500d6ecf4e4bc92fd41f369cd3523249df78",
+     "install": "RealityFX.ini"
+    },
+    {
+     "name": "RealityFX/0x01BD2B20.cso",
+     "size": 32884,
+     "sha256": "e83e83bbda48bd06e63bb8c7de28deb378160bc38a666ab59fa473ad798130a7",
+     "install": "RealityFX/0x01BD2B20.cso"
+    },
+    {
+     "name": "RealityFX/0x0910D00B.cso",
+     "size": 37216,
+     "sha256": "4f4ad99cf63f82ebd6dec1fad56004ced4ca44559fb6317f04468ea41a6c46c0",
+     "install": "RealityFX/0x0910D00B.cso"
+    },
+    {
+     "name": "RealityFX/0x093E2F18.cso",
+     "size": 39320,
+     "sha256": "2e3aeaa31d203367368642e35498ada85d64233d5decef03bf1272b0ccda36a2",
+     "install": "RealityFX/0x093E2F18.cso"
+    },
+    {
+     "name": "RealityFX/0x0D01D497.cso",
+     "size": 37428,
+     "sha256": "2c958c740b1b51616918c330e77973c2f5310b174f3bf3a9e9f6158703783355",
+     "install": "RealityFX/0x0D01D497.cso"
+    },
+    {
+     "name": "RealityFX/0x1D1EEAC6.cso",
+     "size": 35076,
+     "sha256": "f56a3af527c26dfe9d4140f0975458eda85e1af274b4c691922b92f11e3ff3ef",
+     "install": "RealityFX/0x1D1EEAC6.cso"
+    },
+    {
+     "name": "RealityFX/0x20270B14.cso",
+     "size": 33008,
+     "sha256": "566aca3093e75f2481fe76d9537b9d8715221fd14b3702632c45c0d5d1a04f2b",
+     "install": "RealityFX/0x20270B14.cso"
+    },
+    {
+     "name": "RealityFX/0x21561845.cso",
+     "size": 38216,
+     "sha256": "0e1c6054d78f3298a210061ae68c871232feef8bad1b6d011dca38e54a2b7c84",
+     "install": "RealityFX/0x21561845.cso"
+    },
+    {
+     "name": "RealityFX/0x21F68E2F.cso",
+     "size": 39452,
+     "sha256": "a0df7e952bedb9afc85cd4999bcf6984fb7ca5fa4a584c2842c3ec9895f1429a",
+     "install": "RealityFX/0x21F68E2F.cso"
+    },
+    {
+     "name": "RealityFX/0x28216413.cso",
+     "size": 37344,
+     "sha256": "f2f314b683804c61f2c6d0071547a48c8e3eb212f95c2529ae9188fd003fcadd",
+     "install": "RealityFX/0x28216413.cso"
+    },
+    {
+     "name": "RealityFX/0x2A201E85.cso",
+     "size": 5104,
+     "sha256": "403cabda31f6190d3cff9cf41d9f06feadbc263a4e0955fcf4ff717848091d0d",
+     "install": "RealityFX/0x2A201E85.cso"
+    },
+    {
+     "name": "RealityFX/0x2C861BF6.cso",
+     "size": 39408,
+     "sha256": "379ad1d4d0306202b4527b3317250c079b99acb00cedba37774f58da6621cdf4",
+     "install": "RealityFX/0x2C861BF6.cso"
+    },
+    {
+     "name": "RealityFX/0x33C70CCE.cso",
+     "size": 35056,
+     "sha256": "69276e105cc8824739289ee1896da8382943c3de28e4389fb9ff878e1a388e3f",
+     "install": "RealityFX/0x33C70CCE.cso"
+    },
+    {
+     "name": "RealityFX/0x34295E45.cso",
+     "size": 34864,
+     "sha256": "e84e22b5f3ffca0cd5b92eefa709fda010976e9d9e97497196eb571537b63595",
+     "install": "RealityFX/0x34295E45.cso"
+    },
+    {
+     "name": "RealityFX/0x3CE6B67A.cso",
+     "size": 35376,
+     "sha256": "7fac0bedafd1d573128d1da62d734811c401917380e05ebabeb8d15f1000d679",
+     "install": "RealityFX/0x3CE6B67A.cso"
+    },
+    {
+     "name": "RealityFX/0x41894978.cso",
+     "size": 38380,
+     "sha256": "c2db50a6ef1eb8040fd30f1d4c25e869e1096f4c727e41e17c7ae71d8becb70b",
+     "install": "RealityFX/0x41894978.cso"
+    },
+    {
+     "name": "RealityFX/0x45EACF5B.cso",
+     "size": 35736,
+     "sha256": "0f11284a7835696cadc61e97b1bb1ea4a9199ff9576defe2340c3df9382a3bb3",
+     "install": "RealityFX/0x45EACF5B.cso"
+    },
+    {
+     "name": "RealityFX/0x4EDD9B24.cso",
+     "size": 4028,
+     "sha256": "59943825191e6c86c3fb4580c714abe8edb351dea0c068d8b9259fe759269d31",
+     "install": "RealityFX/0x4EDD9B24.cso"
+    },
+    {
+     "name": "RealityFX/0x4FF4CC58.cso",
+     "size": 39540,
+     "sha256": "5b9a09a7bd95553bf84119ee1e1839895d15438e7bf0d45523b48c02afa8a39b",
+     "install": "RealityFX/0x4FF4CC58.cso"
+    },
+    {
+     "name": "RealityFX/0x5110115B.cso",
+     "size": 37344,
+     "sha256": "f2f314b683804c61f2c6d0071547a48c8e3eb212f95c2529ae9188fd003fcadd",
+     "install": "RealityFX/0x5110115B.cso"
+    },
+    {
+     "name": "RealityFX/0x522919F5.cso",
+     "size": 10908,
+     "sha256": "3bf62b92f1aeac7ca06394344b477df3bbe8dcacf22ab3460aaff9b140aad427",
+     "install": "RealityFX/0x522919F5.cso"
+    },
+    {
+     "name": "RealityFX/0x55BC7A29.cso",
+     "size": 40204,
+     "sha256": "cb59c5c928294ffb2c680881d39d5623f0b2f1d1e119ce1d07aea0580de57a33",
+     "install": "RealityFX/0x55BC7A29.cso"
+    },
+    {
+     "name": "RealityFX/0x56CAFDC5.cso",
+     "size": 34980,
+     "sha256": "3362e5787cb49afc82976d295095e013ee9dc817ced12df6625f95f4c7f31099",
+     "install": "RealityFX/0x56CAFDC5.cso"
+    },
+    {
+     "name": "RealityFX/0x5C21A903.cso",
+     "size": 39452,
+     "sha256": "a0df7e952bedb9afc85cd4999bcf6984fb7ca5fa4a584c2842c3ec9895f1429a",
+     "install": "RealityFX/0x5C21A903.cso"
+    },
+    {
+     "name": "RealityFX/0x5C2F0AB3.cso",
+     "size": 40080,
+     "sha256": "cd9126b10804d2fd1eb8940e334618ca46c1f89311b521dc63fbc9c483addb47",
+     "install": "RealityFX/0x5C2F0AB3.cso"
+    },
+    {
+     "name": "RealityFX/0x6057DDD8.cso",
+     "size": 39540,
+     "sha256": "88bcdc0a08652304a3c716af0be6d6228d737d56c48137536702ab132234f47d",
+     "install": "RealityFX/0x6057DDD8.cso"
+    },
+    {
+     "name": "RealityFX/0x606D0675.cso",
+     "size": 15012,
+     "sha256": "0e081c66e5cfb256bbdfdbea909c08dda5d97c532b418a0cd54c192aa8456b96",
+     "install": "RealityFX/0x606D0675.cso"
+    },
+    {
+     "name": "RealityFX/0x67E6A596.cso",
+     "size": 35056,
+     "sha256": "69276e105cc8824739289ee1896da8382943c3de28e4389fb9ff878e1a388e3f",
+     "install": "RealityFX/0x67E6A596.cso"
+    },
+    {
+     "name": "RealityFX/0x6A85FA79.cso",
+     "size": 40344,
+     "sha256": "251b2c73e71517f648fc4f6a37e628fdd7062283ff3026f631e43e45c3132e24",
+     "install": "RealityFX/0x6A85FA79.cso"
+    },
+    {
+     "name": "RealityFX/0x6F990851.cso",
+     "size": 39420,
+     "sha256": "7f86fc2f1bb709e7a4e8876b912fe4bc33d269ae5cd1b6ae56da506735b48eaf",
+     "install": "RealityFX/0x6F990851.cso"
+    },
+    {
+     "name": "RealityFX/0x709AA886.cso",
+     "size": 36152,
+     "sha256": "a29a3d9d13c3df362a36e2e7cd88c66799e3819eef97ed2f9fb47b66b0ba2e39",
+     "install": "RealityFX/0x709AA886.cso"
+    },
+    {
+     "name": "RealityFX/0x732887E3.cso",
+     "size": 39320,
+     "sha256": "2e3aeaa31d203367368642e35498ada85d64233d5decef03bf1272b0ccda36a2",
+     "install": "RealityFX/0x732887E3.cso"
+    },
+    {
+     "name": "RealityFX/0x74196D28.cso",
+     "size": 37500,
+     "sha256": "bfe123d81db863c9177696b6fa13c926a430c383f79f51e9be4998435c43b8cd",
+     "install": "RealityFX/0x74196D28.cso"
+    },
+    {
+     "name": "RealityFX/0x806890C2.cso",
+     "size": 35376,
+     "sha256": "7fac0bedafd1d573128d1da62d734811c401917380e05ebabeb8d15f1000d679",
+     "install": "RealityFX/0x806890C2.cso"
+    },
+    {
+     "name": "RealityFX/0x8704771A.cso",
+     "size": 37376,
+     "sha256": "b262031d9b464503c52b256814f44436242f058e300d6c8b68f5575ef51e5401",
+     "install": "RealityFX/0x8704771A.cso"
+    },
+    {
+     "name": "RealityFX/0x8AB0885E.cso",
+     "size": 37960,
+     "sha256": "f183b195cce10101a4474ac08f3de8dd1ba746480c78f41659984137d32fa82f",
+     "install": "RealityFX/0x8AB0885E.cso"
+    },
+    {
+     "name": "RealityFX/0x8E317661.cso",
+     "size": 37296,
+     "sha256": "e2fb7d71a2b6e05988569a107db8692a5948657644322708cfbe02bd466753bf",
+     "install": "RealityFX/0x8E317661.cso"
+    },
+    {
+     "name": "RealityFX/0x955DF19E.cso",
+     "size": 39540,
+     "sha256": "88bcdc0a08652304a3c716af0be6d6228d737d56c48137536702ab132234f47d",
+     "install": "RealityFX/0x955DF19E.cso"
+    },
+    {
+     "name": "RealityFX/0x9CCF855F.cso",
+     "size": 35248,
+     "sha256": "557f3b754438f50c92269e498ed3c0c4f42ce97a09989e96a2a8aa8be44c7ce1",
+     "install": "RealityFX/0x9CCF855F.cso"
+    },
+    {
+     "name": "RealityFX/0x9EF865AE.cso",
+     "size": 35592,
+     "sha256": "26c0362fedba398ca7da2aff0c0c5eb4c00c22be6576a86c22447aca9c9be10b",
+     "install": "RealityFX/0x9EF865AE.cso"
+    },
+    {
+     "name": "RealityFX/0x9FD618C9.cso",
+     "size": 36032,
+     "sha256": "035668eaa349cfb48cac8375c176a4d9f2fe12603ffc8c4a3d6107f536b4b102",
+     "install": "RealityFX/0x9FD618C9.cso"
+    },
+    {
+     "name": "RealityFX/0xA2D1DB3F.cso",
+     "size": 40604,
+     "sha256": "a997bb5f5df05ab259f754dd83d6d9c29df6baf4da801eb653fb44b56ee63e90",
+     "install": "RealityFX/0xA2D1DB3F.cso"
+    },
+    {
+     "name": "RealityFX/0xA700DE24.cso",
+     "size": 5104,
+     "sha256": "971762badcff0fa6e13d107d1caf8fc57fec43432b66e52335ad48bba0a7973c",
+     "install": "RealityFX/0xA700DE24.cso"
+    },
+    {
+     "name": "RealityFX/0xAC08C11E.cso",
+     "size": 37500,
+     "sha256": "bfe123d81db863c9177696b6fa13c926a430c383f79f51e9be4998435c43b8cd",
+     "install": "RealityFX/0xAC08C11E.cso"
+    },
+    {
+     "name": "RealityFX/0xAD51E5E6.cso",
+     "size": 34940,
+     "sha256": "512fe51fca93dfe50dccaec682f0cdaf441f62fd86ad17ab3dd98198fcb50964",
+     "install": "RealityFX/0xAD51E5E6.cso"
+    },
+    {
+     "name": "RealityFX/0xB2BFFB5F.cso",
+     "size": 3144,
+     "sha256": "6da5862acb7334a708abc1d0fe27aeeee9bd9702140d23c3242e73af2e151818",
+     "install": "RealityFX/0xB2BFFB5F.cso"
+    },
+    {
+     "name": "RealityFX/0xB3439814.cso",
+     "size": 7236,
+     "sha256": "b424c00e45a4cd122dffefc3f12d53b88892ab63c240eefcc66a5672af96dc35",
+     "install": "RealityFX/0xB3439814.cso"
+    },
+    {
+     "name": "RealityFX/0xB4D42B08.cso",
+     "size": 7260,
+     "sha256": "6a49d71e8752c5454ee9b4096598dc3210f83af697c09bc082e8b056f054fa70",
+     "install": "RealityFX/0xB4D42B08.cso"
+    },
+    {
+     "name": "RealityFX/0xB8901CAB.cso",
+     "size": 39408,
+     "sha256": "379ad1d4d0306202b4527b3317250c079b99acb00cedba37774f58da6621cdf4",
+     "install": "RealityFX/0xB8901CAB.cso"
+    },
+    {
+     "name": "RealityFX/0xBF4D60F5.cso",
+     "size": 4456,
+     "sha256": "baa3faa93c699cebb94cb7172d0355d35581e54aabf3e5def726bce88643274e",
+     "install": "RealityFX/0xBF4D60F5.cso"
+    },
+    {
+     "name": "RealityFX/0xBF7C33C4.cso",
+     "size": 34948,
+     "sha256": "dd781c0422d89ed4d4c7bc892cafb76a3a8d53f27b8ce8222e73c72946470d41",
+     "install": "RealityFX/0xBF7C33C4.cso"
+    },
+    {
+     "name": "RealityFX/0xC4CD519D.cso",
+     "size": 34940,
+     "sha256": "512fe51fca93dfe50dccaec682f0cdaf441f62fd86ad17ab3dd98198fcb50964",
+     "install": "RealityFX/0xC4CD519D.cso"
+    },
+    {
+     "name": "RealityFX/0xC62955AB.cso",
+     "size": 37428,
+     "sha256": "2c958c740b1b51616918c330e77973c2f5310b174f3bf3a9e9f6158703783355",
+     "install": "RealityFX/0xC62955AB.cso"
+    },
+    {
+     "name": "RealityFX/0xC9928026.cso",
+     "size": 35248,
+     "sha256": "557f3b754438f50c92269e498ed3c0c4f42ce97a09989e96a2a8aa8be44c7ce1",
+     "install": "RealityFX/0xC9928026.cso"
+    },
+    {
+     "name": "RealityFX/0xCE7223DA.cso",
+     "size": 37296,
+     "sha256": "e2fb7d71a2b6e05988569a107db8692a5948657644322708cfbe02bd466753bf",
+     "install": "RealityFX/0xCE7223DA.cso"
+    },
+    {
+     "name": "RealityFX/0xCE7CCD9F.cso",
+     "size": 35472,
+     "sha256": "23ead234dc547aa28b3529ad3ee9ca9dd1c1228efc239840ae50ab1c3751bf37",
+     "install": "RealityFX/0xCE7CCD9F.cso"
+    },
+    {
+     "name": "RealityFX/0xD2039B40.cso",
+     "size": 5104,
+     "sha256": "ba0b5bc68995ea68ed8e570178ad7e40080aec8a19826c56f459cc48f5671c56",
+     "install": "RealityFX/0xD2039B40.cso"
+    },
+    {
+     "name": "RealityFX/0xD4A31B12.cso",
+     "size": 40332,
+     "sha256": "9043b5ea6a0ce210eb2de0a9a5ce2b6f7f36761399308c2409b9fd557e615a57",
+     "install": "RealityFX/0xD4A31B12.cso"
+    },
+    {
+     "name": "RealityFX/0xE09D5812.cso",
+     "size": 37840,
+     "sha256": "5e9e5c8cc971ef1fb13afdb0cd6f0f72c568e6e0a05bded1b3574e68042ebbd8",
+     "install": "RealityFX/0xE09D5812.cso"
+    },
+    {
+     "name": "RealityFX/0xE3ECD92C.cso",
+     "size": 37376,
+     "sha256": "b262031d9b464503c52b256814f44436242f058e300d6c8b68f5575ef51e5401",
+     "install": "RealityFX/0xE3ECD92C.cso"
+    },
+    {
+     "name": "RealityFX/0xE4B68D55.cso",
+     "size": 39944,
+     "sha256": "6ef2497dbb5f8890ee80e644f38ee7382cd94cbccdc5d008fd529b72a4333e17",
+     "install": "RealityFX/0xE4B68D55.cso"
+    },
+    {
+     "name": "RealityFX/0xE712B9E8.cso",
+     "size": 34864,
+     "sha256": "e84e22b5f3ffca0cd5b92eefa709fda010976e9d9e97497196eb571537b63595",
+     "install": "RealityFX/0xE712B9E8.cso"
+    },
+    {
+     "name": "RealityFX/0xE752E203.cso",
+     "size": 34980,
+     "sha256": "3362e5787cb49afc82976d295095e013ee9dc817ced12df6625f95f4c7f31099",
+     "install": "RealityFX/0xE752E203.cso"
+    },
+    {
+     "name": "RealityFX/0xEA13ECE5.cso",
+     "size": 38496,
+     "sha256": "407dfb2556bb80336674131ac3e0968a55cefadbc2e268bc9d493fc82d50cdc5",
+     "install": "RealityFX/0xEA13ECE5.cso"
+    },
+    {
+     "name": "RealityFX/0xEA2B684C.cso",
+     "size": 38096,
+     "sha256": "df392899e6e6be2f1864c13f3e0c135d335a40c06edd6893f489565885e0c3bb",
+     "install": "RealityFX/0xEA2B684C.cso"
+    },
+    {
+     "name": "RealityFX/0xEB14E2ED.cso",
+     "size": 35856,
+     "sha256": "dfc2cda87fc316075a2592d5d4c440b3e92e7d0e950209010b83abc852cac485",
+     "install": "RealityFX/0xEB14E2ED.cso"
+    },
+    {
+     "name": "RealityFX/0xEB7BF2E4.cso",
+     "size": 40480,
+     "sha256": "1d674d963e7b364cb4f52f26309f5e2094854f94736176a98226005ada4448f6",
+     "install": "RealityFX/0xEB7BF2E4.cso"
+    },
+    {
+     "name": "RealityFX/0xF039556F.cso",
+     "size": 32884,
+     "sha256": "e83e83bbda48bd06e63bb8c7de28deb378160bc38a666ab59fa473ad798130a7",
+     "install": "RealityFX/0xF039556F.cso"
+    },
+    {
+     "name": "RealityFX/0xF30A0310.cso",
+     "size": 37440,
+     "sha256": "70b3a34598244cd49e87384ab3500909eedd0e7c7c3ec4883f1333d5a1be90fa",
+     "install": "RealityFX/0xF30A0310.cso"
+    },
+    {
+     "name": "RealityFX/0xF6DB1FEB.cso",
+     "size": 37216,
+     "sha256": "4f4ad99cf63f82ebd6dec1fad56004ced4ca44559fb6317f04468ea41a6c46c0",
+     "install": "RealityFX/0xF6DB1FEB.cso"
+    },
+    {
+     "name": "RealityFX/0xFBBCFC3F.cso",
+     "size": 33008,
+     "sha256": "566aca3093e75f2481fe76d9537b9d8715221fd14b3702632c45c0d5d1a04f2b",
+     "install": "RealityFX/0xFBBCFC3F.cso"
+    },
+    {
+     "name": "RealityFX/0xFC787CD2.cso",
+     "size": 37312,
+     "sha256": "9dcf63dd7e539a609649373ea2f9ec5b7ba72467829671e170356fa264572fec",
+     "install": "RealityFX/0xFC787CD2.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_ao.ps.cso",
+     "size": 20728,
+     "sha256": "7052f5fc1656d33ce01f72e3a6c8834d0e4012b0798503249b9b74fff101595a",
+     "install": "RealityFX/passes/rt_ao.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_ao.vs.cso",
+     "size": 4564,
+     "sha256": "cdf83fdf2f31caf24e4c54231344c915dc04d74117113098fac7804e461c543b",
+     "install": "RealityFX/passes/rt_ao.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_ao_depth.vs.cso",
+     "size": 4760,
+     "sha256": "ee11dd7842184ea82491752d108c1acbb105391de94dbc6ba30f683fe2d3e164",
+     "install": "RealityFX/passes/rt_ao_depth.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_bake.cs.cso",
+     "size": 13244,
+     "sha256": "129d554d13ac386542473eff9013665cd288490113cbd95670e4ebefe4d679c3",
+     "install": "RealityFX/passes/rt_bake.cs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_chars.cs.cso",
+     "size": 7192,
+     "sha256": "0018c7ef3fba9732018c4112897d1e92fec2907c644903cc0ba84729800f2768",
+     "install": "RealityFX/passes/rt_chars.cs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_debug.cs.cso",
+     "size": 4036,
+     "sha256": "c6f1b63c43fcc5e74a57ba2a700a8ba05dae56e872ce48c31b75a62bbc52119f",
+     "install": "RealityFX/passes/rt_debug.cs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_gi.ps.cso",
+     "size": 77200,
+     "sha256": "5ff9d7938ac4ec874c8732a676d8831f0e1b03fea32b96b5e9b5f279ed7c76ef",
+     "install": "RealityFX/passes/rt_gi.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_gi.vs.cso",
+     "size": 4472,
+     "sha256": "3e3dd5403b9b3c23a4bda3d1576b44ad071b99b0182ae8eb8c98b39af916d287",
+     "install": "RealityFX/passes/rt_gi.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_gi_composite.ps.cso",
+     "size": 22644,
+     "sha256": "dceeaeca5eb6d4435628042e5e8b16931ba4d932b4a940d2721e1395aa6a39cd",
+     "install": "RealityFX/passes/rt_gi_composite.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_gi_filter.ps.cso",
+     "size": 26988,
+     "sha256": "e0269a0d4dd411031ee944d73309dd31a608b60e725903a0f10c6ecb6ffb9a5a",
+     "install": "RealityFX/passes/rt_gi_filter.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_instances.cs.cso",
+     "size": 10932,
+     "sha256": "c9635d61660f882814991ec46aef65f1a9635ce265c0980a0b70de710387ab06",
+     "install": "RealityFX/passes/rt_instances.cs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_memory.cs.cso",
+     "size": 6576,
+     "sha256": "f107b1ca384a8d90218485de6b42a8aa6393b6471316827fea38ff263ac3a3d0",
+     "install": "RealityFX/passes/rt_memory.cs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_refl.ps.cso",
+     "size": 29916,
+     "sha256": "f88c6f87199e5fa5b4fcd4a3e5a87cb04f27d4a78cb625e5c5499d3ea12bbbea",
+     "install": "RealityFX/passes/rt_refl.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_refl_comp.ps.cso",
+     "size": 9208,
+     "sha256": "61337d8c00e446ae790baddf1ab9e164af073d02d7c4a3a8c892a992d6e10670",
+     "install": "RealityFX/passes/rt_refl_comp.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_refl_comp.vs.cso",
+     "size": 2900,
+     "sha256": "71ce7f6580340796dc94f99b9da338935ef7217ee889049c41b4ad2578158ca8",
+     "install": "RealityFX/passes/rt_refl_comp.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_refl_glass_hook.ps.cso",
+     "size": 42536,
+     "sha256": "09bf7ab0098497408f2f4b6c29f7c35bd35a2ff545b247789ebd10c0460de595",
+     "install": "RealityFX/passes/rt_refl_glass_hook.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_refl_glass_hook.vs.cso",
+     "size": 8740,
+     "sha256": "749d4b6a4bb9d75efd9c970399eaaf96ff3f08da6ad125be60b6fe24a7157657",
+     "install": "RealityFX/passes/rt_refl_glass_hook.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_shadows.ps.cso",
+     "size": 40296,
+     "sha256": "b434aac40f535b8ee9a09f62f6b4e6778b238e7b3086f8b0b154e74569ad07db",
+     "install": "RealityFX/passes/rt_shadows.ps.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_shadows.vs.cso",
+     "size": 4476,
+     "sha256": "5d2edb7ac4e3bf6edb3fa7de5a492c4d838a745fa831e3fed6188a5161ba2541",
+     "install": "RealityFX/passes/rt_shadows.vs.cso"
+    },
+    {
+     "name": "RealityFX/passes/rt_uvs.cs.cso",
+     "size": 7204,
+     "sha256": "cfa227c5abd111e8ea602f886a9eeabadde4d5824a774191d4a616d24ab3ff2d",
+     "install": "RealityFX/passes/rt_uvs.cs.cso"
+    },
+    {
+     "name": "RealityRedemption2.ini",
+     "size": 1804,
+     "sha256": "e51e65724a0dcfadc53fe5723c5a9371ea94e6ea27a77a8d9657ea8a58814b9b",
+     "install": null
+    },
+    {
+     "name": "reshade-shaders/Shaders/RealityRedemption2.fx",
+     "size": 33285,
+     "sha256": "5db765e61edf659ee9202036e3d30eb13c96f456fe27dba7245425484d8b8cda",
+     "install": "reshade-shaders/Shaders/RealityRedemption2.fx"
+    }
+   ]
+  }
+ }
+}

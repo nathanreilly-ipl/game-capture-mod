@@ -1,0 +1,92 @@
+{
+ "schema": "capture_mods_lock/v1",
+ "mods": {
+  "reshade": {
+   "title": "ReShade 6.8.0 with add-on support",
+   "version": "6.8.0",
+   "what": "Hooks the game's renderer so our capture add-on can save frames. Every game needs it.",
+   "required": true,
+   "source": "download",
+   "page": "https://reshade.me/#download",
+   "archive": {
+    "name": "ReShade_Setup_6.8.0_Addon.exe",
+    "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
+    "size": 4318424,
+    "sha256": "afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445"
+   },
+   "note": "The build with full add-on support (the file name ends in _Addon). The setup file is read as an archive; it is not run.",
+   "licence": "BSD-3-Clause",
+   "redistributable": true,
+   "files": [
+    {
+     "name": "ReShade64.dll",
+     "size": 5592064,
+     "sha256": "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7"
+    },
+    {
+     "name": "ReShade64.json",
+     "size": 526,
+     "sha256": "aa21713718843e531da396e2bfc80772c9cb3c369d6c30b836be6b0ae812d503"
+    }
+   ]
+  },
+  "optiscaler_dlss5": {
+   "title": "OptiScaler DLSS 5 fork 1.3.0",
+   "version": "1.3.0",
+   "what": "Turned on with --optiscaler. Feeds the game's frames to NVIDIA's DLSS 5 model for higher visual fidelity.",
+   "required": false,
+   "option": "optiscaler",
+   "source": "download",
+   "page": "https://github.com/Skynizz/optiscaler-dlss5/releases/tag/v1.3.0",
+   "archive": {
+    "name": "OptiScaler-DLSS5-1.3.0-win-x64.zip",
+    "url": "https://github.com/Skynizz/optiscaler-dlss5/releases/download/v1.3.0/OptiScaler-DLSS5-1.3.0-win-x64.zip",
+    "size": 6714186,
+    "sha256": "2f0ee88ac00848602c1422db19c29b3c992d3e0039675aa900a3cde9cf05dd8a"
+   },
+   "note": "The release's DLSS5-Optimised folder: OptiScaler itself (installed under the name the game loads it by), the forwarder NVIDIA's model needs, and the settings file as shipped, which the installer then edits. Its own INSTALL.bat, install.py and tools are not used.",
+   "licence": "GPL-3.0",
+   "redistributable": true,
+   "files": [
+    {
+     "name": "OptiScaler.dll",
+     "size": 26570240,
+     "sha256": "90b813108f8aea5a0a9335c6b0cd6a8927bdce438d512c07435f2071209045e9",
+     "install": "{loader}"
+    },
+    {
+     "name": "nvngx.dll_dlssnr.dll",
+     "size": 115200,
+     "sha256": "903d1b39889ddb4893a45825783d1b5d79387ba0645872d7dbe6938e9b37b9ec",
+     "install": "nvngx.dll_dlssnr.dll"
+    },
+    {
+     "name": "OptiScaler.ini",
+     "size": 78438,
+     "sha256": "4bfe7a4ec6ed7ebdc024ab4be15f21a898d53a99249e8bd34ddadc8dfa9309b5",
+     "install": "OptiScaler.ini",
+     "config": true
+    }
+   ]
+  },
+  "nvngx_dlssnr": {
+   "title": "NVIDIA DLSS 5 Neural Rendering runtime (nvngx_dlssnr.dll)",
+   "version": "yours (none tested yet)",
+   "what": "Needed by --optiscaler. NVIDIA's DLSS 5 model. Take it from a game you own that ships it and put it in the mods folder, or pass --dlss-nr.",
+   "required": false,
+   "option": "optiscaler",
+   "source": "supplied",
+   "page": "https://www.nvidia.com/en-us/geforce/news/dlss-5-3d-guided-neural-rendering/",
+   "note": "NVIDIA does not offer it as a download and it may not be redistributed. Matched by file name, any version.",
+   "licence": "NVIDIA proprietary",
+   "redistributable": false,
+   "files": [
+    {
+     "name": "nvngx_dlssnr.dll",
+     "sha256": null,
+     "size": null
+    }
+   ]
+  }
+ }
+}

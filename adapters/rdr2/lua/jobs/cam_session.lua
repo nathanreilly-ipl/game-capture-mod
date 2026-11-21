@@ -399,6 +399,50 @@ return function(ctx)
 		return { string.format('clock=%02d:%02d', ctx.call('CLOCK', 'GET_CLOCK_HOURS'), ctx.call('CLOCK', 'GET_CLOCK_MINUTES')) }
 	end
 
+	-- A Hash argument as a RedLua object: RedLua turns a plain Lua number into a float before the
+	-- int a Hash parameter takes, which rounds any hash above 2^24 (nearly all of them) to another
+	-- value, so the game silently ignores the call (RedLua 0.6.4, src/native/call.hpp; found
+	-- 2026-11-20: SET_WEATHER_TYPE did nothing, IS_MODEL_VALID said a real model did not exist).
+	-- An object's value is pushed as is.
+	local function hash_arg(v)
+		local o = native.new('Hash', 1)
+		o[0] = v
+		return o
+	end
+
+	local function weather_state()
+		return { 'weather_prev=' .. tostring(ctx.call('MISC', '_GET_PREV_WEATHER_TYPE_HASH_NAME')),
+			'weather_next=' .. tostring(ctx.call('MISC', '_GET_NEXT_WEATHER_TYPE_HASH_NAME')) }
+	end
+
+	-- weather NAME: change to a weather type at once (SUNNY, CLOUDS, OVERCAST, RAIN, THUNDERSTORM, FOG, ...);
+	-- weather hold: keep the weather as it is now (send it a moment after a change: holding in the
+	-- same frame keeps the old one); weather free: let it change again; weather state: the game's
+	-- previous and next weather type, as hashes.
+	function handlers.weather(args)
+		local name = (args or ''):match('^(%S+)')
+		if name == 'state' then
+			return weather_state()
+		end
+		if name == 'hold' then
+			ctx.call('MISC', '_SET_WEATHER_TYPE_FROZEN', true)
+			return weather_state()
+		end
+		if not name or name == 'free' then
+			ctx.call('MISC', '_SET_WEATHER_TYPE_FROZEN', false)
+			ctx.call('MISC', 'CLEAR_OVERRIDE_WEATHER')
+			ctx.call('MISC', 'CLEAR_WEATHER_TYPE_PERSIST')
+			return { 'weather=free' }
+		end
+		local h = hash_arg(ctx.call('MISC', 'GET_HASH_KEY', name:upper()))
+		ctx.call('MISC', '_SET_WEATHER_TYPE_FROZEN', false)   -- a held weather does not change
+		ctx.call('MISC', 'SET_WEATHER_TYPE', h, true, true, true, 0.0, false)
+		local out = weather_state()
+		out[#out + 1] = 'weather=' .. name:upper()
+		out[#out + 1] = 'weather_hash=' .. tostring(h[0])
+		return out
+	end
+
 	-- shoot n stem: let n ticks pass, then capture (one round trip per shot).
 	function handlers.shoot(args)
 		local n, stem = (args or ''):match('^(%d+)%s+(%S+)$')

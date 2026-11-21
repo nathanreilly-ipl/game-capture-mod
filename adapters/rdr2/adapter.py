@@ -21,6 +21,7 @@ import time
 
 import numpy as np
 
+from capture import config
 from capture import obstacles as obstacles_geom
 from capture.adapter import Adapter, AdapterError
 
@@ -30,7 +31,10 @@ from .mem import Process, find_pid
 from .session import CAPTURES, CamSession, heartbeat_age, vec
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME_DIR = os.environ.get("RDR2_DIR", r"C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2")
+def game_dir():
+    """The game folder: RDR2_DIR, then this machine's config (written by `capture install`), then Steam's default."""
+    return (os.environ.get("RDR2_DIR") or config.game("rdr2").get("game_dir")
+            or r"C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2")
 
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
@@ -58,7 +62,7 @@ def _write_text(path, text):
 
 def _reshade_preset():
     try:
-        with open(os.path.join(GAME_DIR, "ReShade.ini"), encoding="utf-8", errors="replace") as f:
+        with open(os.path.join(game_dir(), "ReShade.ini"), encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.strip().startswith("PresetPath="):
                     return line.split("=", 1)[1].strip()
@@ -96,15 +100,21 @@ class RDR2Adapter(Adapter):
         if not restart:
             raise AdapterError("RDR2 is not running with capture_loader.lua (no heartbeat)")
         script = os.path.join(HERE, "scripts", "restart_game.ps1")
-        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
-                           capture_output=True, text=True, timeout=600)
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+                            "-GameDir", game_dir(), "-CaptureDir", CAPTURES], capture_output=True, text=True, timeout=600)
         if r.returncode != 0 or not self._running():
             raise AdapterError("game restart failed: %s" % (r.stdout[-500:] + r.stderr[-500:]))
 
     def open(self):
         self.hwnd = window.find_game_window(find_pid())
-        # The game must be the foreground window: it may pause without focus.
-        if self.hwnd and not window.focus(self.hwnd):
+        # The game must be the foreground window: it may pause without focus. Right after a
+        # start, RedLua's console window holds the front and the game does not take focus for
+        # a while (over 20 s seen on 2026-11-20), so keep trying for up to two minutes.
+        for _ in range(120):
+            if not self.hwnd or window.focus(self.hwnd):
+                break
+            time.sleep(1.0)
+        else:
             raise AdapterError("could not bring the game window to the front")
         if self.sess is None:
             self.sess = CamSession(idle_s=900, timeout_s=12 * 3600)
@@ -193,6 +203,18 @@ class RDR2Adapter(Adapter):
         self.sess.cmd("wait", self.settings["clock_settle"])
         return clock
 
+    def set_weather(self, name):
+        """Changes to a weather type at once and holds it (SUNNY, CLOUDS, OVERCAST, RAIN, THUNDERSTORM,
+        FOG, ...); "free" lets it change again. Checked: the game reads back the type asked for."""
+        if name.lower() == "free":
+            return self.sess.cmd("weather", "free")["weather"]
+        r = self.sess.cmd("weather", name)
+        self.sess.cmd("wait", 30)       # holding in the same frame keeps the old weather
+        st = self.sess.cmd("weather", "hold")
+        if st["weather_next"] != r["weather_hash"]:
+            raise AdapterError("the weather did not change to %s (the game has %s)" % (name, st["weather_next"]))
+        return r["weather"]
+
     def hide_subject(self, hidden):
         """Takes the player out of the scene: invisible, plus the "ghost" natives (everyone
         ignores the player, law off, silent, invincible, no collision), so NPCs and traffic
@@ -261,6 +283,17 @@ class RDR2Adapter(Adapter):
 
     def instant(self):
         return int(self.sess.cmd("state")["game_timer"])
+
+    def screen_grab(self):
+        return window.grab(self.hwnd) if self.hwnd else None
+
+    # keys no keyboard has, for mods switched by key: virtual-key code, scan code
+    KEYS = {"F13": (0x7C, 0x64), "F14": (0x7D, 0x65), "F15": (0x7E, 0x66), "F16": (0x7F, 0x67)}
+
+    def press_key(self, key):
+        vk, scan = self.KEYS[key]
+        if not window.press_vk(self.hwnd, vk, scan):
+            raise AdapterError("the game window is not in front; %s not sent" % key)
 
     def wait_frames(self, n):
         self.sess.cmd("wait", int(n))
