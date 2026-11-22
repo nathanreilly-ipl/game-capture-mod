@@ -287,6 +287,9 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
 
 ## Adding a game
 
+`AGENTS.md` is the full workflow (what a capture must be, what a finished game provides, the
+order to build and prove it in, and the problems every game has had). In short:
+
 - **Adapter**: implement `capture.adapter.Adapter` in `adapters/<game>/` and register it in
   `capture/adapters_registry.py`. It supplies the world conventions (how the rig frame maps into
   the world for a facing, the heading basis) and the operations: go to a location, ground point,
