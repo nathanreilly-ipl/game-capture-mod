@@ -67,7 +67,9 @@ def verify(game, launch=False, quick=False, log=print):
         adapter.wait_frames(240)
         fps = 240 / (time.time() - t)
         settle = adapter.settings.get("settle", 40)
-        check("frame rate", fps >= 55, "%.0f frames/s, so about %.2f s per shot (settle %s frames)" % (fps, settle / fps + 0.05, settle))
+        # an adapter that trades frame rate for quality (path tracing) says how low is still fine
+        check("frame rate", fps >= getattr(adapter, "min_fps", 55),
+              "%.0f frames/s, so about %.2f s per shot (settle %s frames)" % (fps, settle / fps + 0.05, settle))
 
         fwd, right, up = (np.asarray(v, float) for v in adapter.heading_basis(st["facing_deg"]))
         eye = np.asarray(st["position"]) + up * 1.6 - fwd * 3.0

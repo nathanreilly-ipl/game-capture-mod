@@ -94,15 +94,34 @@ def minimize_console():
     return n
 
 
-def run_job(exchange, job_file, timeout_s=60, wait=True, **args):
-    """Runs one Lua job through the loader; returns its result.txt as a dict (waits for it)."""
+def job_ref(exchange, job_file, staged):
+    """What the loader is told to load. RedLua loads the job file where it is. A loader that can
+    only read inside its own folder (Cyber Engine Tweaks: the exchange folder is a subfolder of
+    the mod) gets a copy in <exchange>/job_src and its path relative to the mod's folder."""
+    if not staged:
+        return os.path.abspath(job_file)
+    dst = os.path.join(exchange, "job_src", os.path.basename(job_file))
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(job_file, "rb") as f:
+        data = f.read()
+    if not os.path.exists(dst) or open(dst, "rb").read() != data:
+        with open(dst, "wb") as f:
+            f.write(data)
+    return "%s/job_src/%s" % (os.path.basename(os.path.normpath(exchange)), os.path.basename(job_file))
+
+
+def run_job(exchange, job_file, timeout_s=60, wait=True, staged=False, **args):
+    """Runs one Lua job through the loader; returns its result.txt as a dict (waits for it).
+    staged: the loader cannot read outside its folder or make folders (see job_ref)."""
     if heartbeat_age(exchange) > 5:
         raise RuntimeError("capture_loader.lua is not running in the game (no heartbeat in %s)" % exchange)
     stem = re.sub(r"[^A-Za-z0-9_-]", "_", os.path.splitext(os.path.basename(job_file))[0])
     job_id = "%s_%s" % (stem, time.strftime("%Y%m%d_%H%M%S"))
-    lines = ["id=%s" % job_id, "file=%s" % os.path.abspath(job_file), "timeout_s=%d" % timeout_s]
+    lines = ["id=%s" % job_id, "file=%s" % job_ref(exchange, job_file, staged), "timeout_s=%d" % timeout_s]
     lines += ["%s=%s" % (k, v) for k, v in args.items()]
     result = os.path.join(exchange, "jobs", job_id, "result.txt")
+    if staged:
+        os.makedirs(os.path.dirname(result), exist_ok=True)
     write_atomic(os.path.join(exchange, "command.txt"), "\n".join(lines) + "\n")
     if not wait:
         return {"id": job_id}
@@ -119,7 +138,8 @@ def run_job(exchange, job_file, timeout_s=60, wait=True, **args):
 class Session:
     """A long job (job_file) driven one command at a time: cmd(name, *args) -> answer dict."""
 
-    def __init__(self, exchange, job_file, job_id=None, idle_s=300, timeout_s=3600):
+    def __init__(self, exchange, job_file, job_id=None, idle_s=300, timeout_s=3600, staged=False):
+        """staged: the loader cannot read outside its folder or make folders (see job_ref)."""
         if heartbeat_age(exchange) > 5:
             raise RuntimeError("capture_loader.lua is not running (stale heartbeat in %s)" % exchange)
         self.exchange = exchange
@@ -131,8 +151,10 @@ class Session:
                 os.remove(os.path.join(exchange, name))
             except OSError:
                 pass
+        if staged:
+            os.makedirs(self.job_dir, exist_ok=True)
         write_atomic(os.path.join(exchange, "command.txt"),  # the loader runs in the game's folder
-                     "id=%s\nfile=%s\ntimeout_s=%d\nidle_s=%d\n" % (self.job_id, os.path.abspath(job_file), timeout_s, idle_s))
+                     "id=%s\nfile=%s\ntimeout_s=%d\nidle_s=%d\n" % (self.job_id, job_ref(exchange, job_file, staged), timeout_s, idle_s))
         self.state = self._wait_for(0, 30)
 
     def _wait_for(self, seq, timeout):

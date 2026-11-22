@@ -55,7 +55,7 @@ def config_path(game_dir, config_dir=None):
 
 
 def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_preset=False, asi_loader=False,
-          config_dir=None):
+          config_dir=None, asi_dir=None):
     """preset: path of the game's preset file, or None for no effects. effects: [(FileRef,
     path relative to the game folder)] of the shader files the preset uses. keep_preset: another
     step writes ReShadePreset.ini (e.g. a game's preset with an added effect); only the effects,
@@ -63,8 +63,12 @@ def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_p
     are installed (OptiScaler is told not to load it). asi_loader: the game loads .asi plug-ins
     (e.g. Script Hook's loader); on Direct3D ReShade then goes in as ReShade.asi, since a mod like
     OptiScaler preloads Windows' own dxgi.dll and a dxgi.dll ReShade would never load
-    (measured in RDR2 on Direct3D 12, 2026-11-20)."""
+    (measured in RDR2 on Direct3D 12, 2026-11-20). asi_dir: where the game's ASI loader looks for
+    plug-ins when that is not the game folder (Cyber Engine Tweaks' loader only reads its plugins
+    folder). ReShade keeps its config, presets and add-ons in the folder its own file is in
+    (seen in Cyberpunk 2077, 2026-11-21), so they go there too."""
     game_dir = os.path.dirname(exe_path)
+    home = asi_dir if (asi_loader and asi_dir) else game_dir   # the folder ReShade's own file is in
     out = []
     dll = ctx.file(MOD, "ReShade64.dll")
     if api == "vulkan":
@@ -102,9 +106,10 @@ def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_p
                      closed=True)]
     elif api in API_DLL:
         name = ASI_NAME if asi_loader else API_DLL[api]
-        out.append(CopyFile(dll, os.path.join(game_dir, name), tag="reshade", what="ReShade64.dll as " + name))
+        elsewhere = os.path.normcase(os.path.normpath(home)) != os.path.normcase(os.path.normpath(game_dir))
+        out.append(CopyFile(dll, os.path.join(home, name), tag="reshade", what="ReShade64.dll as " + name))
         # a copy under any other name would load a second time (two ReShades crash RDR2)
-        for other in {OTHER_NAME, ASI_NAME, API_DLL[api]} - {name}:
+        for other in sorted(({OTHER_NAME, ASI_NAME, API_DLL[api]} - {name}) | ({name} if elsewhere else set())):
             out.append(RemoveFile(os.path.join(game_dir, other), dll.sha256, tag="reshade",
                                   why="a second copy of ReShade; it must load once"))
         apps_ini = os.path.join(common_dir(ctx), "ReShadeApps.ini")
@@ -146,12 +151,12 @@ def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_p
         raise ValueError("ReShade cannot hook graphics API %r" % api)
 
     # relative paths in ReShade's config (presets, search paths) are relative to its base folder
-    base = config_dir or game_dir
+    base = config_dir or home
     if config_dir:
         out += [MakeDir(config_dir, tag="reshade"),
-                IniSet(os.path.join(game_dir, "ReShade.ini"), "INSTALL", "BasePath", config_dir, tag="reshade",
+                IniSet(os.path.join(home, "ReShade.ini"), "INSTALL", "BasePath", config_dir, tag="reshade",
                        why="ReShade's config, preset and log live there: the game denies writes to its own folder")]
-    ini = config_path(game_dir, config_dir)
+    ini = config_path(home, config_dir)
     if keep_preset:
         for ref, rel in effects:
             out.append(CopyFile(ref, os.path.join(base, *rel.split("/")), tag="reshade"))
