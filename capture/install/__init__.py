@@ -20,7 +20,7 @@ from .plan import Ctx, InstallError, Record, System, run, uninstall as _uninstal
 from .sources import SHARED_LOCK, Files, load_locks
 
 INSTALLERS = {"rdr2": "adapters.rdr2.install", "gtav": "adapters.gtav.install",
-              "gtave": "adapters.gtav.install_enhanced"}
+              "gtave": "adapters.gtav.install_enhanced", "cyberpunk": "adapters.cyberpunk.install"}
 
 
 def installer(game):
@@ -39,9 +39,10 @@ def context(game, game_dir=None, options=None, mods=(), system=None, work=None, 
     mod = installer(game)
     system = system or System()
     game_dir = game_dir or mod.find_game_dir()
-    if not game_dir or not os.path.exists(os.path.join(game_dir, mod.EXE)):
+    exe_path = getattr(mod, "EXE_PATH", mod.EXE)   # a game whose exe is not at the top of its folder
+    if not game_dir or not os.path.exists(os.path.join(game_dir, exe_path)):
         raise InstallError("%s not found%s: pass --game-dir <the folder holding %s>" % (
-            mod.TITLE, " in %s" % game_dir if game_dir else "", mod.EXE))
+            mod.TITLE, " in %s" % game_dir if game_dir else "", exe_path))
     game_dir = os.path.abspath(game_dir)
     record = Record(work or work_dir(game))
     if options is None:  # verify, mods status: the options the last install used

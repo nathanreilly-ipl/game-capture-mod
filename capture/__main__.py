@@ -384,8 +384,8 @@ def main(argv=None):
                    help="the DLSS mode under DLSS 5 (with --optiscaler; default dlaa, the full resolution in); "
                         "RDR2 takes dlaa or quality")
     s.add_argument("--only", action="append",
-                   choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "graphicsmod",
-                            "machine"),
+                   choices=("mods", "reshade", "addon", "clock", "scripts", "settings", "optiscaler", "raytracing",
+                            "graphicsmod", "machine"),
                    help="only these parts (repeatable), e.g. --only scripts after editing a script")
     s.add_argument("--dry-run", action="store_true", help="show every step and what it would change; change nothing")
     s.add_argument("--no-verify", action="store_true", help=argparse.SUPPRESS)

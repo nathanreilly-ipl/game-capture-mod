@@ -102,6 +102,8 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     take.update({"placement": shots["placement"], "n_shots": total, "n_camera_frames": shots["n_camera_frames"],
                  "sample": shots.get("sample")})
 
+    if hasattr(adapter, "prepare_take"):   # optional: what an adapter must set before the world is held
+        adapter.prepare_take(shots)
     check = PictureCheck()
     fps = float(shots.get("fps") or 30)
     cap_log = open(os.path.join(take_dir, "capture_log.jsonl"), "w", encoding="utf-8")
