@@ -24,6 +24,7 @@ from capture import install as inst  # noqa: E402
 from capture.install import plan, sources  # noqa: E402
 from capture.install.components import addon  # noqa: E402
 from capture.util import sha256_bytes, sha256_file, write_json  # noqa: E402
+from adapters.gtav import install as gtav_install  # noqa: E402
 
 
 class FakeSystem(plan.System):
@@ -272,6 +273,8 @@ def part_b(tmp, mods):
            "cache": ("DlssNr", "CacheEnabled"), "up": ("Upscalers", "VulkanUpscaler"), "f6": ("DlssNr", "CompareKey"),
            "menu": ("Menu", "ShortcutKey"), "dlss": ("DLSS", "Enabled")}.items()}
     assert got == {"fg": "false", "nr": "true", "cache": "false", "up": "dlss", "f6": "-1", "menu": "0x23", "dlss": "auto"}, got
+    assert (oi.get("DlssNr", "SkinStructure"), oi.get("QualityOverrides", "QualityRatioOverrideEnabled"),
+            oi.get("QualityOverrides", "QualityRatioQuality")) == ("2", "true", "1.0"), "skin structure 2, DLAA by default"
     ri = plan.Ini(os.path.join(game3, "ReShade.ini"))
     assert ri.get("GENERAL", "EffectSearchPaths") == r"C:\Elsewhere\Shaders\**,.\reshade-shaders\Shaders\**"
     assert ri.get("INPUT", "KeyOverlay") == "45,0,0,0", "ReShade's own menu key is left alone"
@@ -392,6 +395,7 @@ def part_e(tmp, mods, shv_loader):
     open(xml, "wb").write(b'<Settings>\r\n  <ScreenWidth value="3072" />\r\n  <ScreenHeight value="1728" />\r\n'
                           b'  <Windowed value="0" />\r\n  <VSync value="1" />\r\n  <PauseOnFocusLoss value="1" />\r\n'
                           b'  <FrameGenType value="1" />\r\n  <ResScalingType value="0" />\r\n'
+                          b'  <dlssQuality value="0" />\r\n  <dlssSharpen value="0.500000" />\r\n'
                           b'  <Raytracing_Enabled value="false" />\r\n  <MotionBlurStrength value="1.000000" />\r\n'
                           b'</Settings>\r\n')
     exchange = os.path.join(root, "exchange")
@@ -441,10 +445,24 @@ def part_e(tmp, mods, shv_loader):
     if probe.ref("optiscaler_dlss5", "OptiScaler.dll").found and probe.ref("nvngx_dlssnr", "nvngx_dlssnr.dll").found:
         inst.install("gtave", game, dict(opts, optiscaler=True), mods, system=system, work=work, log=lines.append)
         assert os.path.exists(os.path.join(game, "OptiScaler.asi")), "OptiScaler loads through the ASI loader"
-        assert 'ResScalingType value="4"' in open(xml).read(), "the game's DLSS on, for OptiScaler to take over"
+        x = open(xml).read()
+        assert 'ResScalingType value="4"' in x, "the game's DLSS on, for OptiScaler to take over"
+        mode = inst.installer("gtave").ENHANCED["dlss_mode"]
+        assert 'dlssQuality value="%s"' % gtav_install.DLSS_MODES[mode] in x and 'dlssSharpen value="0.800000"' in x, \
+            "the DLSS mode and sharpening are pinned"
         oi = plan.Ini(os.path.join(game, "OptiScaler.ini"))
         assert oi.get("DlssNr", "Enabled") == "true" and oi.get("Upscalers", "Dx12Upscaler") == "dlss"
-        note += ", --optiscaler turns the game's DLSS on"
+        other = "quality" if mode == "dlaa" else "dlaa"
+        inst.install("gtave", game, dict(opts, optiscaler=True, dlss_mode=other), mods, system=system, work=work,
+                     log=lines.append)
+        assert 'dlssQuality value="%s"' % gtav_install.DLSS_MODES[other] in open(xml).read(), "--dlss-mode"
+        try:
+            inst.install("gtave", game, dict(opts, optiscaler=True, dlss_mode="ultra_quality"), mods, dry_run=True,
+                         system=system, work=work, log=lines.append)
+            raise AssertionError("an unknown DLSS mode was taken")
+        except ValueError:
+            pass
+        note += ", --optiscaler turns the game's DLSS on in mode %s (--dlss-mode %s too)" % (mode, other)
     else:
         note += " (--optiscaler not tried: OptiScaler or nvngx_dlssnr.dll not found)"
     if all(probe.ref(m, f).found for m, f in (("quint", "qUINT_lightroom.fx"), ("astrayfx", "Clarity.fx"),

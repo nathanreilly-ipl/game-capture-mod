@@ -185,13 +185,18 @@ def build_rt_dlss(folder):
 
 
 PRESET_TITLES = {"plain": "no effects", "grade": "colour grade", "grade_ss": "grade + screen-space",
-                 "grade_clarity": "grade + Clarity"}
-PRESET_SHORT = {"plain": "none", "grade": "grade", "grade_ss": "+ screen-space", "grade_clarity": "+ Clarity"}
+                 "grade_clarity": "grade + Clarity",
+                 # the game's DLSS modes (preset_ab.py --dlss-modes; GTA V Enhanced at 2560x1440)
+                 "quality": "DLSS Quality (1706x960 in)", "dlaa": "DLAA (2560x1440 in)",
+                 "balanced": "DLSS Balanced", "performance": "DLSS Performance"}
+PRESET_SHORT = {"plain": "none", "grade": "grade", "grade_ss": "+ screen-space", "grade_clarity": "+ Clarity",
+                "quality": "Quality", "dlaa": "DLAA", "balanced": "Balanced", "performance": "Performance"}
 SETUPS = {"gtave": "GTA V Enhanced, Direct3D 12, 2560x1440, the game's ray tracing"}
 
 
 def build_presets(folder):
-    """ReShade presets side by side (tools/preset_ab.py --presets): a set of pages per DLSS 5 state,
+    """ReShade presets (tools/preset_ab.py --presets) or the game's DLSS modes (--dlss-modes) side by
+    side: a set of pages per DLSS 5 state,
     each preset, then a FLIP map from each preset to the next."""
     rep = _report(folder)
     labs = rep["presets"]
@@ -212,7 +217,8 @@ def build_presets(folder):
         cols = [name(lab) for lab in labs] + ["FLIP: %s" % PRESET_SHORT.get(labs[i], labs[i]) for i in range(1, len(labs))]
         flips = set(range(len(labs), len(cols)))
         tag = "" if d is None else ("_dlss_on" if d else "_dlss_off")
-        title = "ReShade presets%s · %s" % ("" if d is None else (", DLSS 5 on" if d else ", DLSS 5 off"), _scene(rep))
+        title = "%s%s · %s" % ("The game's DLSS modes" if rep.get("switch") == "dlss_mode" else "ReShade presets",
+                               "" if d is None else (", DLSS 5 on" if d else ", DLSS 5 off"), _scene(rep))
         sub = "%s, one frozen instant per row, settle %s frames%s" % (
             SETUPS.get(rep.get("game"), GAME_LABELS.get(rep.get("game"), "")), rep.get("settle", "?"),
             ("; " + rep["note"]) if rep.get("note") else "")

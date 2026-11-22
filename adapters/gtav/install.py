@@ -31,6 +31,7 @@ from capture.install.components import addon, optiscaler, pack, reshade
 from capture.install.plan import CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText, XmlSet
 
 from ..common import redlua
+from . import settings_menu
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = "gtav"
@@ -44,6 +45,10 @@ OPTIONS = {"native_trainer": True, "preset": False, "api": "d3d11", "resolution"
 REDLUA_SETTINGS = {"auto_updates": False, "autorun": True, "menu_hotkey": 118, "menu_language": "ingame",
                    "menu_position": 0}
 DX_VERSION = {"d3d10": "0", "d3d10_1": "1", "d3d11": "2"}   # settings.xml <DX_Version>
+# Enhanced's DLSS mode (settings.xml <dlssQuality>, the order of its menu; Quality renders 1706x960
+# for 2560x1440, DLAA 2560x1440, as OptiScaler's log shows)
+DLSS_MODES = settings_menu.DLSS_MODES
+DLSS_SHARPEN = "0.800000"   # the value on the development machine
 
 
 def settings_xml():
@@ -98,6 +103,9 @@ def steps(ctx, ed=LEGACY):
         raise ValueError("--ray-tracing is RDR2's Reality Redemption 2; there is none for GTA V")
     if opt.get("graphics_mod") and not ed.get("graphics_mod"):
         raise ValueError("--graphics-mod: none is pinned for %s" % ed["title"])
+    if opt.get("dlss_mode") and (not ed.get("dlss_mode") or opt["dlss_mode"] not in DLSS_MODES):
+        raise ValueError("--dlss-mode %s: %s" % (opt["dlss_mode"], "one of " + ", ".join(DLSS_MODES) if ed.get("dlss_mode")
+                                                 else "%s has no DLSS" % ed["title"]))
     exchange = opt.get("exchange_dir") or ed["exchange"]      # tests point these two elsewhere
     xml = opt.get("settings_xml") or ed["settings_xml"]()
     out = []
@@ -169,6 +177,10 @@ def steps(ctx, ed=LEGACY):
         if opt.get("optiscaler"):
             # ResScalingType: 0 off, 1 SSAA, 2 FSR 1, 3 FSR 3, 4 DLSS/DLAA (PCGamingWiki, 2026-11-21)
             out.append(XmlSet(xml, "ResScalingType", "4", why="the game's DLSS on: OptiScaler takes over that call"))
+            mode = opt.get("dlss_mode") or ed["dlss_mode"]
+            out.append(XmlSet(xml, "dlssQuality", DLSS_MODES[mode], why="DLSS mode: %s" % mode))
+            out.append(XmlSet(xml, "dlssSharpen", DLSS_SHARPEN, why="pinned (DLSS itself does not sharpen: "
+                                                                     "OptiScaler logs SharpenEnabled false)"))
     out.append(XmlSet(xml, "VSync", "0", why="uncapped frame rate"))
     out.append(XmlSet(xml, "PauseOnFocusLoss", "0", why="the game keeps running if focus is lost"))
     if opt.get("resolution"):

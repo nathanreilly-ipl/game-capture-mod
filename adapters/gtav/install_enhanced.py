@@ -66,6 +66,10 @@ ENHANCED = {"title": "GTA V Enhanced", "exe": EXE, "exchange": EXCHANGE, "settin
             "apis": ("d3d12",), "default_api": "d3d12", "dx_version_setting": False, "optiscaler": True,
             "asi_loader": ("ultimate_asi_loader", "dinput8.dll", "xinput1_4.dll"), "reshade_outside": True,
             "ray_tracing_setting": True,
+            # the game's DLSS mode under DLSS 5 (--dlss-mode; settings_menu.DLSS_MODES): DLAA, the full
+            # 2560x1440 in, for DLSS 5's guides too; more fine detail than Quality in all 13 views at
+            # Vinewood (4-16%), cleaner edges, the same frame rate (2026-11-22)
+            "dlss_mode": "dlaa",
             # DLSS 5's skin structure: 2 (more pore and edge detail on skin only), Nathan's pick after
             # tools/dlss5_skin_sweep.py at Vinewood, 2026-11-21; the model's default is -1
             "optiscaler_settings": [("DlssNr", "SkinStructure", "2", "skin structure 2: more skin detail (chosen 2026-11-21)")],

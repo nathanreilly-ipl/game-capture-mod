@@ -5,6 +5,7 @@ with its own ray tracing that its adapter switches live (GTA V Enhanced) takes -
 
     uv run --project . python tools/preset_ab.py --location rdr2-city-street-001 --clock 14:00 --weather SUNNY
     uv run --project . python tools/preset_ab.py --game gtave --with-dlss5 --location gtave-vinewood-walk-001 --clock 14:00
+    uv run --project . python tools/preset_ab.py --game gtave --dlss-modes quality,dlaa --with-dlss5 --location gtave-vinewood-walk-001
 
 Views: the player and the street, people nearby (tools/upscaler_ab.py), and views it finds for
 materials and reflections: building fronts in up to four directions (found with the scene probes),
@@ -75,14 +76,18 @@ class PresetKeys:
     tracing the adapter switches live (capability "ray_tracing_switch": GTA V Enhanced, through
     its settings menu), through the adapter."""
 
-    def __init__(self, adapter, log, native=True):
+    def __init__(self, adapter, log, native=True, dlss_modes=False):
         self.adapter, self.log, self.mode = adapter, log, None
         self.native = native and "ray_tracing_switch" in adapter.capabilities
+        self.dlss_modes = dlss_modes
 
     def set(self, mode, key):
         if mode == self.mode:
             return
-        if self.native:
+        if self.dlss_modes:   # key is the game's DLSS mode (--dlss-modes)
+            self.adapter.set_dlss_mode(key, log=self.log)
+            time.sleep(2.0)
+        elif self.native:
             self.adapter.set_ray_tracing(mode.startswith("rt_on"), log=self.log)
             time.sleep(2.0)
         else:
@@ -109,6 +114,9 @@ def main():
     ap.add_argument("--presets", metavar="LABEL:KEY,...",
                     help="compare these ReShade presets, switched by their shortcut keys, e.g. "
                          "plain:F14,grade:F15,grade_ss:F16 (GTA V's --preset install), instead of ray tracing")
+    ap.add_argument("--dlss-modes", metavar="MODE,...",
+                    help="compare the game's DLSS modes instead, switched live through its settings menu (adapter "
+                         "capability dlss_mode_switch: GTA V Enhanced), e.g. quality,dlaa; the first is set again at the end")
     ap.add_argument("--restore", metavar="KEY", help="the preset key to press at the end (the capture preset)")
     ap.add_argument("--note", default="", help="a line for the sheets, e.g. the DLSS 5 settings in use")
     ap.add_argument("--clear-people", type=float, default=0.0, metavar="M",
@@ -121,10 +129,14 @@ def main():
     adapter = adapters_registry.get(a.game)()
     if "ray_tracing_switch" in adapter.capabilities and not a.with_dlss5 and not a.presets:
         ap.error("%s has no ray tracing mod to turn off; use --with-dlss5 (ray tracing off/on x DLSS 5 off/on)" % a.game)
+    if a.dlss_modes and (a.presets or "dlss_mode_switch" not in adapter.capabilities):
+        ap.error("--dlss-modes: not with --presets, and only for a game whose adapter switches the DLSS mode")
     adapter.ensure_ready(restart=False)
     adapter.open()
-    keys = PresetKeys(adapter, log, native=not a.presets)
+    keys = PresetKeys(adapter, log, native=not a.presets, dlss_modes=bool(a.dlss_modes))
     pairs = [p.split(":") for p in a.presets.split(",")] if a.presets else []
+    if a.dlss_modes:   # compared as presets would be, the mode as the key
+        pairs = [(m, m) for m in a.dlss_modes.split(",")]
     if pairs:   # all presets with DLSS 5 on, then all with it off: one DLSS switch
         states = [True, False] if a.with_dlss5 else [None]
         modes = [(lab + ("_dlss" if d else ""), key, lab + (" + DLSS 5" if d else ""), d) for d in states for lab, key in pairs]
@@ -146,6 +158,7 @@ def main():
     report = {"game": a.game, "location": a.location, "clock": a.clock, "weather": a.weather, "settle": a.settle,
               "modes": [list(m) for m in modes], "views": {}, "note": a.note,
               "kind": "presets" if pairs else ("rt_dlss" if a.with_dlss5 else "rt"),
+              "switch": "dlss_mode" if a.dlss_modes else ("preset_keys" if pairs else "ray_tracing"),
               "presets": [lab for lab, _ in pairs], "dlss_states": [m[3] for m in modes][::max(1, len(pairs))] if pairs else None}
     if a.clear_people:
         adapter.settings["crowd"] = 0   # no walkers of our own
@@ -227,6 +240,8 @@ def main():
             if pairs:
                 if not dlss["on"]:
                     set_mode(None, None, True)
+                if a.dlss_modes:
+                    keys.set(pairs[0][0], pairs[0][1])
                 if a.restore:
                     adapter.press_key(a.restore)
                     time.sleep(2.0)

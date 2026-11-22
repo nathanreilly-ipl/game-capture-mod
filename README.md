@@ -3,8 +3,8 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V (Legacy and Enhanced), all
-in story mode.
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V Enhanced, all in story mode
+(GTA V Legacy still works but is dropped: see GTA V adapter).
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -44,11 +44,12 @@ On a fresh PC: install the game and start it once, clone this repository
 ```
 
 After that the machine can scout, run a worker, or be driven by an agent (see Workflow). The same
-commands take `gtav` for GTA V Legacy and `gtave` for GTA V Enhanced (see GTA V adapter).
+commands take `gtave` for GTA V Enhanced (see GTA V adapter; `gtav`, Legacy, is dropped).
 
 The RDR2 default (since 2026-11-20) is the full capture setup: Direct3D 12, a 2560x1440 window,
 the visual set's ReShade preset, ray tracing (Reality Redemption 2) and DLSS 5 (OptiScaler, which
-needs your `nvngx_dlssnr.dll`). `--no-ray-tracing`, `--no-optiscaler`, `--no-preset`,
+needs your `nvngx_dlssnr.dll`; skin structure 2, over DLAA since 2026-11-22). `--no-ray-tracing`,
+`--no-optiscaler`, `--no-preset`, `--dlss-mode quality`,
 `--api vulkan` (with `--no-ray-tracing`) and `--resolution WxH` change it; an install without one
 of them stops it from loading (its loader file goes, backed up).
 
@@ -93,6 +94,15 @@ of them stops it from loading (its loader file goes, backed up).
   `nvngx_dlssnr.dll` is yours to supply (`--dlss-nr <file>` or out/mods). Installing again
   with `--no-optiscaler` stops it from loading (its loader file goes, backed up); F13 switches
   it off live.
+  **DLAA** (`--dlss-mode`, default `dlaa` since 2026-11-22, Nathan): the game's own DLSS modes stay
+  at Quality (`dlssQuality` 2: on Direct3D 12 the game once wrote 5 and then never created a DLSS
+  feature), and OptiScaler answers the game's render-size query with a ratio of 1.0 for Quality
+  (`[QualityOverrides] QualityRatioOverrideEnabled=true`, `QualityRatioQuality=1.0`), so the game
+  renders the full 2560x1440 and DLSS 5's guides are full size (OptiScaler's log: "Render
+  Resolution: 2560x1440 ... Quality: 2", "guides 2560x1440"; Quality rendered 1706x960). The frame
+  rate stays at the game's usual cap of about 60 frames/s. `--dlss-mode quality` goes back.
+  **Skin structure 2** (DLSS 5's skin control, as in GTA V Enhanced; Nathan, 2026-11-22, after the
+  sweep below), written to OptiScaler.ini.
   `tools/upscaler_ab.py [--location <id>] [--npcs N]` compares DLSS 5 off and on at the same
   frozen instant (views of the player, the street and close-ups of nearby people, as off/on
   sheets) and measures how long the picture takes to settle after a cut. Measured in RDR2 on
@@ -108,6 +118,16 @@ of them stops it from loading (its loader file goes, backed up).
   from 1.4 to 2.8 (the strongest 1% of pixels from 10 to 30). The Natural and Cinematic styles
   change about as much as Default (1.4, 1.6). Thin things the scene probes miss (fences,
   leaves) can still stand in front of a close-up.
+  DLSS 5's skin controls (`tools/dlss5_skin_sweep.py --game rdr2`, as for GTA V Enhanced below;
+  OptiScaler's menu has the same layout here, its DLSS 5 page and "Model tuning" expanded by hand
+  once per game start) at Saint Denis, 14:00, sunny, Direct3D 12, 2026-11-22
+  (`out/checks/upscaler_ab/rdr2_skin_sweep/`, `skin_faces_large.jpg`): smaller than in GTA V. In
+  four face regions skin structure 0, 0.5 and 2 differ from the default (-1) by 2.0-3.2 levels of
+  255, against 1.6-2.7 for skin 1 (which matches the default, as in GTA V). The default makes one
+  face warmer and blotchy orange (red minus blue 27.6, against 24-25 at 0, 0.5 and 2); 0 and 0.5
+  smooth skin; 2 keeps the even tone and adds wrinkle and pore detail. Nathan picked 2, which the
+  install now sets. DLSS 5 off to on with DLAA and skin 2, same place
+  (`out/checks/upscaler_ab/rdr2_dlaa_skin2/`): mean change 2.0-6.2 levels of 255 per view.
 - **Mod files** are never in git. Lockfiles pin each one by SHA-256
   (`capture/install/mods.lock.json` for every game, `adapters/<game>/mods.lock.json` per game);
   the installer finds them by hash in `out/mods/` or `--mods <folder, archive or bundle>`, inside
@@ -396,6 +416,10 @@ GTA V Legacy (`gtav`: Steam app 271590, Direct3D 11, game build 1.0.3889.0) and 
 (`gtave`: Steam app 3240220, Direct3D 12 with ray tracing, build 1.0.1158.13), story mode only.
 Both run the same adapter, session script and freeze; what differs is under "GTA V Enhanced" below.
 
+**Legacy is dropped** (Nathan, 2026-11-22): GTA V Enhanced is the GTA V capture target. `gtav`
+still installs and runs as described here (Enhanced builds on its plan and adapter), but nothing
+more is planned for it: no visual set, no DLSS 5, no further checks.
+
 ### Setup
 
 ```powershell
@@ -425,7 +449,7 @@ Both run the same adapter, session script and freeze; what differs is under "GTA
 
 ```powershell
 .\capture.ps1 install gtave --mods "C:\...\Grand Theft Auto V Enhanced" --dlss-nr "C:\...\nvngx_dlssnr.dll"
-#   NaturalVision Enhanced, ray tracing and DLSS 5 (skin structure 2) by default, no ReShade effects
+#   NaturalVision Enhanced, ray tracing and DLSS 5 (skin structure 2, DLAA) by default, no ReShade effects
 #   (NVE's archive in out/mods or a --mods folder)
 .\capture.ps1 verify gtave --launch
 .\capture.ps1 scout --game gtave --name vinewood-walk --at "300,177,103.13" --facing 180
@@ -460,12 +484,27 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
 - **DLSS 5** (`--optiscaler`, measured 2026-11-21): OptiScaler loads as `OptiScaler.asi` through
   the same loader, and the install turns the game's DLSS on (`ResScalingType` 4; 0 off, 1 SSAA,
   2 FSR 1, 3 FSR 3, per PCGamingWiki). Enhanced calls DLSS through NVIDIA Streamline, which
-  OptiScaler hooks. The game's mode (`dlssQuality` 2) renders 1707x960; DLSS 5 then runs on every
-  2560x1440 frame (2.2 ms). Verify passes with it on. `tools/upscaler_ab.py --game gtave` at
+  OptiScaler hooks. The game's DLSS mode is pinned too (below: DLAA, so it renders the full
+  2560x1440); DLSS 5 then runs on every 2560x1440 frame (2.2 ms). The game's DLSS sharpening
+  (`dlssSharpen`) is pinned at 0.8, this machine's value, though DLSS itself is not asked to
+  sharpen (OptiScaler logs SharpenEnabled false). Verify passes with it on. Measured in Quality
+  mode (1706x960 in): `tools/upscaler_ab.py --game gtave` at
   Vinewood: off to on, mean FLIP 0.16 to 0.21 (RDR2: about 0.055), largest on faces and clothes;
   settle after a cut and the same pose twice are about as with it off (40 frames: 1.58 against
   1.45; twice: 0.87 against 0.66). OptiScaler's ini cannot be saved from its menu while the game
   runs (the folder lock); the install sets it beforehand.
+- **DLAA, not Quality** (Nathan asked for the better of the two, 2026-11-22; `--dlss-mode`, default
+  `dlaa`). The game's menu offers Quality, DLAA, Performance and Balanced; settings.xml
+  `dlssQuality` holds them as 2, 3, 0, 1 (the menu's order, not NVIDIA's numbers: the game passes
+  DLAA on as NVIDIA's 5, and a 5 in the file is reset to 2 at start). With DLAA the game renders
+  2560x1440 and DLSS 5's depth and motion guides are full size as well (OptiScaler's log: guides
+  2560x1440, against 1707x960 in Quality); the model takes DLAA (its own ratios list DLAA 1.0).
+  `tools/preset_ab.py --game gtave --dlss-modes quality,dlaa --with-dlss5` at Vinewood, 14:00, 13
+  views, one frozen instant (`out/checks/preset_ab/20261122_132123_gtave_dlss_modes/`): DLAA has
+  more fine detail in every view (mean absolute Laplacian of the luma +4% to +16%, +7% on average,
+  with DLSS 5 on or off); eyelids, lashes and window frames lose their stair-steps and skin pores
+  are sharper; mean FLIP Quality to DLAA 0.047 with DLSS 5, 0.036 without. Frame rate is about the
+  same (88-98 frames/s against 76-97 at three views; DLSS 5 dominates the frame time).
 - **DLSS 5's skin controls** (`tools/dlss5_skin_sweep.py`): Skin structure (-1, the default, follows
   local structure; 0 and above set skin on its own) and Auto skin mask (the model finds skin
   itself). OptiScaler's live settings file does not take them (only Passes, Style, PreSr), so the
@@ -485,9 +524,13 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   settings.xml, and freezes the world again afterwards. Keys are sometimes dropped, so each one is
   confirmed before the next. Scripts do not run while the pause menu is open. About 25 s per
   switch. Vinewood at 14:00, extra sunny, 13 views: mean FLIP 0.172 for ray tracing, 0.174 for
-  DLSS 5 over it, 0.259 for both (RDR2's Saint Denis: 0.055, 0.054, 0.069).
+  DLSS 5 over it, 0.259 for both (RDR2's Saint Denis: 0.055, 0.054, 0.069). The DLSS mode switches
+  the same way (capability `dlss_mode_switch`, `set_dlss_mode`, `preset_ab.py --dlss-modes`): 19
+  entries down, Right steps through the modes; its place was counted with ray tracing on, so the
+  switch refuses with it off.
 - **The capture default** (Nathan, 2026-11-21): NaturalVision Enhanced (`--graphics-mod`), the
-  game's ray tracing and DLSS 5 (`--optiscaler`, skin structure 2), with no ReShade effects on top
+  game's ray tracing and DLSS 5 (`--optiscaler`, skin structure 2, over the game's DLSS in DLAA
+  mode since 2026-11-22), with no ReShade effects on top
   and the game's motion blur off. `capture install gtave` installs all of it; `--no-graphics-mod`,
   `--no-optiscaler` and `--preset` change it. Before NVE the default was the grade + Clarity
   preset; with NVE that would grade twice (NVE has its own tonemapping and day and night

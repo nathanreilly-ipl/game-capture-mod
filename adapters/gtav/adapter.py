@@ -388,12 +388,19 @@ class GTAVEnhancedAdapter(GTAVAdapter):
     name = "gtave"
     edition = launch.ENHANCED
     exchange = EXCHANGE_ENHANCED
-    capabilities = GTAVAdapter.capabilities | {"ray_tracing_switch"}
+    capabilities = GTAVAdapter.capabilities | {"ray_tracing_switch", "dlss_mode_switch"}
 
     def set_ray_tracing(self, on, log=print):
         """The game's ray tracing on or off, live, through its settings menu (settings_menu.py),
         also while frozen; True if it changed."""
-        changed = settings_menu.set_ray_tracing(self.hwnd, on, log=log)
+        return self._after_menu(settings_menu.set_ray_tracing(self.hwnd, on, log=log))
+
+    def set_dlss_mode(self, mode, log=print):
+        """The game's DLSS mode (quality, dlaa, balanced, performance), live, through its settings
+        menu, also while frozen; True if it changed."""
+        return self._after_menu(settings_menu.set_dlss_mode(self.hwnd, mode, log=log))
+
+    def _after_menu(self, changed):
         if changed and self.frozen:
             # the pause menu paused and resumed the game: hold the world again and check it is held
             self.sess.cmd("freeze", "timescale")

@@ -195,7 +195,8 @@ def _install_options(a):
         return False if off else True if on else None
     return {"optiscaler": flag(a.optiscaler, a.no_optiscaler), "native_trainer": False if a.no_native_trainer else None,
             "preset": flag(getattr(a, "preset", False), a.no_preset), "ray_tracing": flag(a.ray_tracing, a.no_ray_tracing),
-            "graphics_mod": flag(a.graphics_mod, a.no_graphics_mod), "api": a.api, "resolution": a.resolution}
+            "graphics_mod": flag(a.graphics_mod, a.no_graphics_mod), "api": a.api, "resolution": a.resolution,
+            "dlss_mode": getattr(a, "dlss_mode", None)}
 
 
 def _mods_roots(a):
@@ -379,6 +380,9 @@ def main(argv=None):
                         "Direct3D 12 for RDR2)")
     s.add_argument("--resolution", metavar="WxH",
                    help="the game's windowed size, 16:9 (default for RDR2: 2560x1440, the capture size)")
+    s.add_argument("--dlss-mode", choices=("dlaa", "quality", "balanced", "performance"),
+                   help="the DLSS mode under DLSS 5 (with --optiscaler; default dlaa, the full resolution in); "
+                        "RDR2 takes dlaa or quality")
     s.add_argument("--only", action="append",
                    choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "graphicsmod",
                             "machine"),

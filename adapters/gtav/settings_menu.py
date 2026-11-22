@@ -1,8 +1,9 @@
 """GTA V Enhanced's graphics settings through its pause menu, by key presses (game-specific).
 
-For what has no native and must change at one frozen instant: ray tracing on or off, so
-tools/preset_ab.py can compare both (and DLSS 5 over each) on the same frozen world. Enhanced
-applies the change live, without a restart (measured 2026-11-21, build 1.0.1158.13).
+For what has no native and must change at one frozen instant: ray tracing on or off, and the DLSS
+mode, so tools/preset_ab.py can compare them (and DLSS 5 over each) on the same frozen world.
+Enhanced applies both live, without a restart (measured 2026-11-21 and 2026-11-22, build
+1.0.1158.13; OptiScaler logs the new render size at once).
 
 The path, the same every time (the menu opens on MAP and every list on its first entry):
     Esc            pause menu, tabs MAP BRIEF STATS SETTINGS GAME ONLINE
@@ -12,6 +13,10 @@ The path, the same every time (the menu opens on MAP and every list on its first
     Enter, Down x10  Enable Ray Tracing (after Ignore Suggested Limits, the video settings and the
                    graphics preset)
     Left / Right   Off / On; "Apply Changes" appears
+      or Down x19  NVIDIA DLSS Quality (after the ray tracing entries and Frame Scaling, while Frame
+                   Scaling is NVIDIA DLSS)
+    Right          Quality, DLAA, Performance, Balanced, Quality, ... (settings.xml dlssQuality
+                   2, 3, 0, 1; not NVIDIA's own numbers: the game passes DLAA on as NVIDIA's 5)
     Space          applies; settings.xml is rewritten
     Esc x3         back to the game
 Each step is checked on a grab of the window (which tab and which row are highlighted, the
@@ -35,6 +40,10 @@ GRAPHICS_ROW = 6
 BOTTOM_ROW_Y, PANEL_X = 0.801, (0.41, 0.70)    # where the selection sits after scrolling down
 APPLY_PROMPT = (0.652, 0.718, 0.957, 0.978)     # "Apply Changes" in the bottom bar (x0, x1, y0, y1)
 PANEL = (0.39, 0.84, 0.29, 0.83)                 # the settings panel's rows (x0, x1, y0, y1)
+# entries below the first of the Graphics list, by the settings.xml key they set
+ENTRY = {"Raytracing_Enabled": 10, "dlssQuality": 19}
+# settings.xml dlssQuality by mode; Right steps 0, 1, 2, 3, 0, ... (the menu lists no Ultra Performance)
+DLSS_MODES = {"performance": "0", "balanced": "1", "quality": "2", "dlaa": "3"}
 
 
 class MenuError(RuntimeError):
@@ -129,10 +138,32 @@ def _close(hwnd):
 
 def set_ray_tracing(hwnd, on, log=print, xml=None):
     """Switches the game's ray tracing; True if it changed, False if it already was so."""
-    xml = xml or settings_xml()
     want = "true" if on else "false"
+    return _change(hwnd, "Raytracing_Enabled", want, lambda cur: ["Right" if on else "Left"],
+                   "ray tracing %s" % ("on" if on else "off"), log, xml)
+
+
+def set_dlss_mode(hwnd, mode, log=print, xml=None):
+    """Sets the game's DLSS mode (DLSS_MODES: quality, dlaa, ...); True if it changed. Needs Frame
+    Scaling on NVIDIA DLSS (settings.xml ResScalingType 4; the install sets it with --optiscaler)."""
+    if mode not in DLSS_MODES:
+        raise ValueError("DLSS mode %s: one of %s" % (mode, ", ".join(DLSS_MODES)))
+    s = read_settings(xml or settings_xml())
+    if s.get("ResScalingType") != "4":
+        raise MenuError("Frame Scaling is not NVIDIA DLSS (settings.xml ResScalingType %s)" % s.get("ResScalingType"))
+    if s.get("Raytracing_Enabled") != "true":   # the entry was counted with the ray tracing entries above it
+        raise MenuError("the DLSS entry's place was measured with ray tracing on")
+    want = DLSS_MODES[mode]
+    return _change(hwnd, "dlssQuality", want, lambda cur: ["Right"] * ((int(want) - int(cur)) % len(DLSS_MODES)),
+                   "DLSS mode %s" % mode, log, xml)
+
+
+def _change(hwnd, key, want, presses, label, log, xml):
+    """One Graphics entry (ENTRY[key] down the list) changed by the presses presses(current value)
+    gives, applied, and checked in settings.xml; True if it changed."""
+    xml = xml or settings_xml()
     before = read_settings(xml)
-    if before.get("Raytracing_Enabled") == want:
+    if before.get(key) == want:
         return False
     if not window.focus(hwnd):
         raise MenuError("the game window is not in front")
@@ -167,7 +198,7 @@ def set_ray_tracing(hwnd, on, log=print, xml=None):
         if selected_row(_gray(hwnd)) != GRAPHICS_ROW:
             raise MenuError("could not reach Graphics in the settings list")
         _press(hwnd, "Enter", pause=0.8)
-        for i in range(10):   # Enable Ray Tracing is ten entries down; each step must move the panel
+        for i in range(ENTRY[key]):   # each step must move the panel
             before_step = _box(_gray(hwnd), *PANEL)
             for attempt in range(3):
                 _press(hwnd, "Down", pause=0.1)
@@ -178,28 +209,29 @@ def set_ray_tracing(hwnd, on, log=print, xml=None):
         time.sleep(0.4)
         a0 = _gray(hwnd)
         if not bottom_row_selected(a0):
-            raise MenuError("Enable Ray Tracing is not where expected")
-        _press(hwnd, "Right" if on else "Left", pause=0.6)
+            raise MenuError("the %s entry is not where expected" % key)
+        for k in presses(before.get(key)):
+            _press(hwnd, k, pause=0.6)
         if not prompt_appeared(a0, _gray(hwnd)):
-            raise MenuError("no Apply Changes prompt after switching Enable Ray Tracing")
+            raise MenuError("no Apply Changes prompt after changing the %s entry" % key)
         # Space applies; once in a frozen run it did not take (2026-11-21), so wait for settings.xml
         # and press it once more if nothing was written
         for attempt in range(2):
             _press(hwnd, "Space", pause=0.2)
             deadline = time.time() + 6.0
-            while time.time() < deadline and read_settings(xml).get("Raytracing_Enabled") != want:
+            while time.time() < deadline and read_settings(xml).get(key) != want:
                 time.sleep(0.5)
-            if read_settings(xml).get("Raytracing_Enabled") == want:
+            if read_settings(xml).get(key) == want:
                 break
             log("  settings.xml unchanged after Apply; pressing Space again")
         time.sleep(1.5)
     finally:
         _close(hwnd)
     after = read_settings(xml)
-    if after.get("Raytracing_Enabled") != want:
-        raise MenuError("settings.xml has Raytracing_Enabled=%s, not %s" % (after.get("Raytracing_Enabled"), want))
-    other = sorted(k for k in set(before) | set(after) if k != "Raytracing_Enabled" and before.get(k) != after.get(k))
+    if after.get(key) != want:
+        raise MenuError("settings.xml has %s=%s, not %s" % (key, after.get(key), want))
+    other = sorted(k for k in set(before) | set(after) if k != key and before.get(k) != after.get(k))
     if other:
         log("  settings.xml also changed: %s" % ", ".join("%s %s -> %s" % (k, before.get(k), after.get(k)) for k in other))
-    log("  ray tracing %s (the game's settings menu)" % ("on" if on else "off"))
+    log("  %s (the game's settings menu)" % label)
     return True

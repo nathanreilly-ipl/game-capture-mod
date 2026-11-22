@@ -42,10 +42,20 @@ SCRIPTS = ("capture_loader.lua", "scout_overlay.lua")
 # so Direct3D 12, at the 2560x1440 capture size. --no-optiscaler, --no-ray-tracing, --api vulkan
 # and --resolution change it.
 OPTIONS = {"native_trainer": True, "optiscaler": True, "preset": True, "ray_tracing": True, "api": "d3d12",
-           "resolution": "2560x1440"}
+           "resolution": "2560x1440", "dlss_mode": "dlaa"}
 VISUAL = os.path.join(HERE, "visual")
 PRESET_MODS = ("reshade_shaders", "sweetfx")     # the effects visual/ReShadePreset.ini uses
-OPTISCALER_SETTINGS = [("DlssNr", "CompareKey", "-1", "F6 is the game's camera mode")]
+OPTISCALER_SETTINGS = [("DlssNr", "CompareKey", "-1", "F6 is the game's camera mode"),
+                       # DLSS 5's skin structure 2 (more skin detail, an even tone), as for GTA V Enhanced;
+                       # Nathan's pick after tools/dlss5_skin_sweep.py in Saint Denis, 2026-11-22
+                       ("DlssNr", "SkinStructure", "2", "skin structure 2: more skin detail (chosen 2026-11-22)")]
+# The DLSS mode (--dlss-mode). The game's own modes stay at Quality (dlssQuality 2, the one it
+# creates the DLSS feature for); DLAA comes from OptiScaler answering the game's render-size query
+# with a ratio of 1.0 for Quality, so the game renders the full window size.
+DLSS_MODES = {
+    "dlaa": [("QualityOverrides", "QualityRatioOverrideEnabled", "true", "DLAA: OptiScaler's own ratio for Quality"),
+             ("QualityOverrides", "QualityRatioQuality", "1.0", "DLAA: the game renders the full window size")],
+    "quality": [("QualityOverrides", "QualityRatioOverrideEnabled", "false", "the game's Quality mode (1.5x up)")]}
 REDLUA_SETTINGS = {"auto_updates": False, "autorun": True, "menu_hotkey": 118, "menu_language": "ingame",
                    "menu_position": 0}
 
@@ -144,6 +154,9 @@ def steps(ctx):
     xml = opt.get("settings_xml") or settings_xml()
     if opt.get("graphics_mod"):
         raise ValueError("--graphics-mod: none is pinned for RDR2 (its look is the visual set and Reality Redemption 2)")
+    if opt.get("dlss_mode") and opt["dlss_mode"] not in DLSS_MODES:
+        raise ValueError("--dlss-mode %s: RDR2 takes %s (its own modes stay at Quality; DLAA goes through OptiScaler)"
+                         % (opt["dlss_mode"], " or ".join(DLSS_MODES)))
     out = []
 
     # Script Hook, RedLua, Native Trainer
@@ -187,7 +200,8 @@ def steps(ctx):
         out += raytracing.not_loaded(ctx, g)
     out += addon.steps(ctx, g, exchange)
     if opt.get("optiscaler"):
-        out += optiscaler.steps(ctx, g, api, loader="asi", settings=OPTISCALER_SETTINGS)  # Script Hook's ASI loader
+        out += optiscaler.steps(ctx, g, api, loader="asi",   # Script Hook's ASI loader
+                                settings=OPTISCALER_SETTINGS + DLSS_MODES[opt.get("dlss_mode") or OPTIONS["dlss_mode"]])
     else:  # optional: without --optiscaler it is not loaded (its loader file goes; its other files stay)
         out += optiscaler.not_loaded(ctx, g, loader="asi")
 

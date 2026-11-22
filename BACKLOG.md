@@ -26,14 +26,14 @@ Left:
    Script Hook RDR2 and nvngx_dlssnr.dll still come from the person installing (never
    redistributed).
 
-## GTA V (Legacy and Enhanced): what is left
+## GTA V Enhanced: what is left
 
-`capture install/verify gtav`, the unattended launcher, scouting with place titles and queued
-takes work (README: GTA V adapter); verify passes everything but the machine-wide administrator
-step above. A full ST-DM take ran on 2026-11-21 (Legion Square: 9,411 shots in 48.4 min, every
-step exactly 1/30 s, QC passed). GTA V Enhanced (`gtave`) works the same way since 2026-11-21:
-verify passes (same exception), and a 32-camera moving sample at Vinewood passed QC; no full take
-yet. Left:
+GTA V Legacy (`gtav`) is dropped (Nathan, 2026-11-22): it still installs and runs, and a full ST-DM
+take ran on it on 2026-11-21 (Legion Square: 9,411 shots in 48.4 min, every step exactly 1/30 s,
+QC passed), but nothing more is planned for it. GTA V Enhanced (`gtave`) works the same way since
+2026-11-21: `capture install/verify gtave`, the unattended launcher, scouting with place titles and
+queued takes (README: GTA V adapter); verify passes everything but the machine-wide administrator
+step above, and a 32-camera moving sample at Vinewood passed QC; no full take yet. Left:
 
 - **Enhanced: the game's protection crashes it now and then.** Four times in about 18 sessions;
   all four of Rockstar's crash dumps (`%LOCALAPPDATA%\Rockstar Games\GTAV Enhanced\CrashLogs`)
@@ -50,18 +50,18 @@ yet. Left:
   through the settings menu, so `tools/preset_ab.py --game gtave --with-dlss5` compares all four
   at one frozen instant. Left: DLSS 5 and the game's ray tracing each change GTA V far more than
   their RDR2 counterparts (mean FLIP 0.17 each, 0.26 together, against 0.055, 0.054 and 0.069),
-  so their consistency between adjacent cameras of one instant needs measuring before DLSS 5
-  becomes the default here. The game's
-  DLSS mode renders at 1707x960 (`dlssQuality` 2); which value is DLAA (native 2560x1440 input)
-  is not mapped (OptiScaler's wiki: the game's presets are hard-coded). No moving sample or full
-  take with DLSS 5 yet.
+  so their consistency between adjacent cameras of one instant needs measuring. The game's DLSS
+  mode is pinned to DLAA since 2026-11-22 (`dlssQuality` 3, 2560x1440 in; README) and switches
+  live like ray tracing. No moving sample or full take with DLSS 5 yet.
 - **Enhanced: launcher.** Steam keeps a window titled like its launch dialog up for about two
   minutes after Play, so the launcher answers it up to four times (30 s apart); harmless so far.
-- **DLSS 5 skin controls** (`tools/dlss5_skin_sweep.py`, README): swept once at Vinewood; Nathan
-  picked skin structure 2, now set by Enhanced's install. Left: RDR2 still uses the model's
-  default (-1); the tool drives OptiScaler's menu by fixed positions (2560x1440, OptiScaler
-  10.0.0-dev), so a menu change breaks it; the repo copy has not yet run end to end (the sweep ran
-  from the same code as a scratch script). No capture yet with skin 2 and the colour grade together.
+- **DLSS 5 skin controls** (`tools/dlss5_skin_sweep.py`, README): swept at Vinewood; Nathan
+  picked skin structure 2, now set by Enhanced's install. Swept in RDR2 too (Saint Denis,
+  2026-11-22, the repo tool end to end): smaller effects, the default warms one face to a blotchy
+  orange; Nathan picked 2 for RDR2 too, which its install sets (with DLAA through OptiScaler's
+  ratio override). Left: neither game's DLAA + skin 2 checked between adjacent cameras. The tool drives
+  OptiScaler's menu by fixed positions (2560x1440, OptiScaler 10.0.0-dev), so a menu change breaks
+  it, and the DLSS 5 page and its "Model tuning" section must be opened by hand once per start.
 - **Enhanced capture default: NaturalVision Enhanced** + ray tracing + DLSS 5 (skin 2), no
   ReShade effects (Nathan, 2026-11-21; README). Installed from its pinned archive
   (`components/pack.py`), with its lens effects, lateral chromatic aberration and screen-space AO
@@ -84,7 +84,9 @@ yet. Left:
   English; another window size or language needs its positions measured again. DLSS mode and
   frame scaling could go through the same menu if a comparison needs them.
 
-- **RedLua faults.** lua51.dll faulted four times in its interpreter core, always at or just
+- **RedLua faults** (seen on Legacy; Enhanced runs the same RedLua). On Enhanced, 2026-11-22: the
+  loader stopped (no heartbeat) right after a session job ended, while the game played on, with
+  no crash dump; a game restart fixed it. Legacy: lua51.dll faulted four times in its interpreter core, always at or just
   after the start or end of a session job (once 90 s after the full take ended, the loader idle).
   Suspected: RedLua's garbage collection of a finished job's native objects. Script Hook V then
   closes the game. The worker restarts a game that went away mid-take and takes again (up to
@@ -92,26 +94,6 @@ yet. Left:
   not yet seen live), and starts a closed game before the next job. To try: keep one session for
   the game's lifetime, or stop Lua's collector during a session.
 - **Street names** are still hashes (the session returns them); titles use the zone only.
-- **DLSS 5 and a visual set** (options scanned 2026-11-21, nothing tried yet):
-  - OptiScaler takes over a game's own DLSS/FSR2/XeSS call; Legacy has none (FXAA, MSAA, TXAA).
-    DLSS5-Feeder (github jlrouzies-fr/DLSS5-Feeder), a ReShade add-on, makes that call itself
-    from ReShade's colour, depth and estimated motion vectors, for Direct3D 11 among others; we
-    already load ReShade, so it is the likeliest route. NVIDIA's DLSS 5 model reportedly refuses
-    Direct3D 11 itself, so it may also need a Direct3D 12 bridge (OptiScaler's "w/Dx12"
-    upscalers, DLSS5oneclick's dlss5-bridge). Enhanced has DLSS natively (OptiScaler would take
-    it over directly; see the Enhanced DLSS item above). nvngx_dlssnr.dll is the user's, as for RDR2.
-  - Visual mods for Legacy: NaturalVision Evolved (Razed, free beta, installed as OpenIV packages
-    into a mods folder, tens of GB), QuantV (paid), and many ReShade presets, most made for one of
-    those two. The installer copies files and edits settings; OpenIV packages (RPF archives)
-    would need a new component. A ReShade-only visual set, as in RDR2, works with what exists.
-  - For multi-view data: changes in the world (NVE's textures, lighting, weather) look the same
-    from every camera; screen-space effects and DLSS 5 work per view, so their consistency
-    between adjacent cameras needs measuring (as for RDR2).
-- **Exposure.** Not locked as in RDR2: the frozen world holds eye adaptation too (moving a camera
-  away and back gave the same frame within 0.04), so every shot of a take has the exposure of the
-  view the freeze started on. Not yet checked across a bright and a dark view.
-- **Settle.** 40 frames, carried over from RDR2 (TAA there). GTA V Legacy's anti-aliasing here is
-  not temporal, so far fewer frames may do; measuring it would cut the 0.32 s per shot.
 - **The game timer** does not count the frozen world's steps, so `instant()` cannot see the world
   move during a recovery; frozen frames are checked by their frame time instead.
 - **Locations** are not shown in game: no scout overlay for GTA V yet (`--at x,y,z` scouts).
