@@ -46,7 +46,15 @@ def _mod(mod_id, m):
     if m.get("note"):
         lines.append("| Note | %s |" % m["note"])
     lines.append("| Lockfile | `%s`, id `%s` |" % (m["lock"], mod_id))
-    if m.get("files"):
+    if m.get("pack") and m.get("files"):
+        fs = m["files"]
+        lines += ["", "Installed straight from the archive (its `%s` folder onto the game folder): %d files, %s bytes, "
+                      "each pinned with its SHA-256 in the lockfile. The largest:" % (
+                      m["archive"].get("root", "").rstrip("/") or "top", len(fs), "{:,}".format(sum(f["size"] for f in fs))),
+                  "", "| File used | Size |", "|---|---|"]
+        for f in sorted(fs, key=lambda f: -f["size"])[:5]:
+            lines.append("| `%s` | %s |" % (f["name"], "{:,}".format(f["size"])))
+    elif m.get("files"):
         lines += ["", "| File used | Size | SHA-256 |", "|---|---|---|"]
         for f in m["files"]:
             lines.append("| %s%s | %s | %s |" % (

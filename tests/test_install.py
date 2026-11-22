@@ -4,6 +4,7 @@
 
 A. The framework on made-up files: steps, dry run, backups, the install record, uninstall,
    files found by hash inside archives, missing files stop the install before any change.
+P. A pack (a large mod installed from its archive) and nested JSON settings, on made-up files.
 B. The RDR2 plan in a sandbox (a fake game folder, a fake ProgramData and registry), when the
    real mod files are available (--mods, or out/mods): install, install again (nothing to do),
    uninstall (everything back), then a bundle made from the sandbox installs into a second one
@@ -118,6 +119,70 @@ def part_a(tmp):
     del after[kept]
     assert after == before, (sorted(set(after) ^ set(before)), [k for k in before if after.get(k) != before[k]])
     print("A ok: steps, dry run, missing-file stop, backups, record, second run, game-running refusal, uninstall")
+
+
+def part_p(tmp):
+    """A pack (a large mod installed from its archive, components/pack.py) and nested JSON settings,
+    on made-up files: found by archive name and size, streamed and hashed, then removed again."""
+    from capture.install.components import pack
+    game = os.path.join(tmp, "game")
+    os.makedirs(os.path.join(game, "keep"))
+    open(os.path.join(game, "keep", "own.txt"), "wb").write(b"the game's own file")
+    payloads = {"Big.asi": b"asi " * 5000, "loader/packs/one/dlc.rpf": b"rpf one " * 9000,
+                "loader/packs/two/dlc.rpf": b"rpf two " * 9000, "loader/data.xml": b"<x/>"}
+    mods_dir = os.path.join(tmp, "mods", "deep", "deeper", "deepest")
+    os.makedirs(mods_dir)
+    archive = os.path.join(mods_dir, "Toy Pack v2.zip")
+    with zipfile.ZipFile(archive, "w") as z:
+        for name, data in payloads.items():
+            z.writestr("Main Package/" + name, data)
+        z.writestr("Main Package/ReShade.ini", "[GENERAL]\r\n")       # in the archive, not pinned: never installed
+        z.writestr("Optional/extra.fx", "// no")
+    lock = os.path.join(tmp, "lock.json")
+    write_json(lock, {"schema": "capture_mods_lock/v1", "mods": {"toypack": {
+        "title": "Toy Pack v2", "page": "https://example.invalid/toypack", "pack": True, "redistributable": False,
+        "archive": {"name": "Toy Pack v2.zip", "size": os.path.getsize(archive), "root": "Main Package/"},
+        "files": [{"name": n, "size": len(d), "sha256": sha256_bytes(d)} for n, d in payloads.items()]}}})
+    files = sources.Files(sources.load_locks(lock), roots=[os.path.join(tmp, "mods")])
+    assert files.status() == [] and [m for m, _ in files.packs()] == ["toypack"], "packs stay out of the file search"
+    quiet = lambda *a: None  # noqa: E731
+    work = os.path.join(tmp, "work")
+    ctx = plan.Ctx("toy", game, "game.exe", {}, files, plan.Record(work), FakeSystem(tmp), quiet)
+    before = tree(game)
+    cfg = os.path.join(tmp, "AppData", "Toy", "settings.json")
+    steps = pack.steps(ctx, game, "toypack", "graphicsmod") + [
+        plan.JsonSet(cfg, ["graphics", "lens"], False), plan.JsonSet(cfg, ["graphics", "fringe"], False)]
+    assert plan.run(ctx, steps) == 3
+    for name, data in payloads.items():
+        assert open(os.path.join(game, *name.split("/")), "rb").read() == data, name
+    assert not os.path.exists(os.path.join(game, "ReShade.ini")), "only the pinned files are installed"
+    assert plan.read_json(cfg) == {"graphics": {"lens": False, "fringe": False}}
+    assert plan.run(ctx, steps) == 0, "a second run has nothing to do"
+    # a folder holding the files (the archive unpacked by hand) is a source too
+    unpacked = os.path.join(tmp, "unpacked")
+    for name, data in payloads.items():
+        os.makedirs(os.path.dirname(os.path.join(unpacked, *name.split("/"))), exist_ok=True)
+        open(os.path.join(unpacked, *name.split("/")), "wb").write(data)
+    src = pack.find_source(files.mods["toypack"], [unpacked])
+    assert src is not None and not src.is_archive and os.path.samefile(str(src), unpacked)
+    # a wrong file in the archive stops the install, and nothing half-written stays
+    os.remove(os.path.join(game, "Big.asi"))
+    bad =dict(files.mods["toypack"], files=[dict(f, sha256="0" * 64) if f["name"] == "Big.asi" else f
+                                            for f in files.mods["toypack"]["files"]])
+    files.mods["toypack"] = bad
+    try:
+        plan.run(ctx, pack.steps(ctx, game, "toypack", "graphicsmod"))
+        raise AssertionError("expected the hash mismatch to stop the install")
+    except plan.InstallError as e:
+        assert "sha256" in str(e) and not os.path.exists(os.path.join(game, "Big.asi.part")), e
+    # turned off: its files and the folders it made go, the game's own stay
+    assert plan.run(ctx, pack.not_installed(ctx, game, "toypack", "graphicsmod")) == 1
+    assert tree(game) == before, sorted(set(tree(game)) ^ set(before))
+    assert not os.path.exists(os.path.join(game, "loader")), "the pack's empty folders are removed"
+    plan.uninstall(plan.Record(work), quiet)
+    assert not os.path.exists(cfg) and tree(game) == before
+    print("P ok: a pack from its archive (found by name and size, three folders down), nested JSON settings, a second "
+          "run with nothing to do, an unpacked folder as a source, a hash mismatch stops it, removal, uninstall")
 
 
 def sandbox(tmp, name, mods, monkey_no_tools=False):
@@ -326,10 +391,16 @@ def part_e(tmp, mods, shv_loader):
     xml = os.path.join(root, "settings.xml")
     open(xml, "wb").write(b'<Settings>\r\n  <ScreenWidth value="3072" />\r\n  <ScreenHeight value="1728" />\r\n'
                           b'  <Windowed value="0" />\r\n  <VSync value="1" />\r\n  <PauseOnFocusLoss value="1" />\r\n'
-                          b'  <FrameGenType value="1" />\r\n  <ResScalingType value="0" />\r\n</Settings>\r\n')
+                          b'  <FrameGenType value="1" />\r\n  <ResScalingType value="0" />\r\n'
+                          b'  <Raytracing_Enabled value="false" />\r\n  <MotionBlurStrength value="1.000000" />\r\n'
+                          b'</Settings>\r\n')
     exchange = os.path.join(root, "exchange")
     base = os.path.join(exchange, "reshade")
-    opts = {"exchange_dir": exchange, "settings_xml": xml}
+    nve_json = os.path.join(root, "AppData", "NVE", "settings-gen9.json")
+    # Enhanced's defaults include OptiScaler and NVE (6.5 GB); the plain plan first, OptiScaler and
+    # the visual presets below, NVE as a dry run only
+    opts = {"exchange_dir": exchange, "settings_xml": xml, "optiscaler": False, "preset": False, "graphics_mod": False,
+            "graphics_mod_settings": nve_json}
     system, work = FakeSystem(root), os.path.join(root, "work")
     before, xml_before = tree(game), open(xml, "rb").read()
     n = inst.install("gtave", game, opts, mods, system=system, work=work, log=lines.append)
@@ -348,8 +419,24 @@ def part_e(tmp, mods, shv_loader):
     x = open(xml).read()
     assert "DX_Version" not in x, "Enhanced has no DX_Version setting"
     assert 'FrameGenType value="0"' in x and 'ResScalingType value="0"' in x, "no frame generation; upscaler left alone"
+    assert 'Raytracing_Enabled value="true"' in x, "the game's ray tracing is on"
+    assert 'MotionBlurStrength value="0.000000"' in x, "the game's motion blur is off"
+    assert not os.path.exists(nve_json), "without the graphics mod its settings are left alone"
     assert inst.install("gtave", game, opts, mods, system=system, work=work, log=lines.append) == 0
-    note = ""
+    # NVE (the default): its files from the archive and its per-camera effects off, shown by a dry run
+    dry, snapshot = [], tree(game)
+    try:
+        inst.install("gtave", game, dict(opts, graphics_mod=True), mods, dry_run=True, system=system, work=work,
+                     log=dry.append)
+        nve_seen = "found"
+    except inst.InstallError as e:
+        assert "NaturalVision Enhanced" in str(e), e
+        nve_seen = "archive not on this machine"
+    for want in ("[graphicsmod] nve: its files into the game folder", "graphics.enable_lens_effects=false",
+                 "graphics.LateralChromaticAberration=false"):
+        assert any(want in line for line in dry), want
+    assert not os.path.exists(nve_json) and tree(game) == snapshot, "a dry run changes nothing"
+    note = ", NVE planned (dry run; %s)" % nve_seen
     probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("gtave").LOCK), roots=mods)
     if probe.ref("optiscaler_dlss5", "OptiScaler.dll").found and probe.ref("nvngx_dlssnr", "nvngx_dlssnr.dll").found:
         inst.install("gtave", game, dict(opts, optiscaler=True), mods, system=system, work=work, log=lines.append)
@@ -357,9 +444,24 @@ def part_e(tmp, mods, shv_loader):
         assert 'ResScalingType value="4"' in open(xml).read(), "the game's DLSS on, for OptiScaler to take over"
         oi = plan.Ini(os.path.join(game, "OptiScaler.ini"))
         assert oi.get("DlssNr", "Enabled") == "true" and oi.get("Upscalers", "Dx12Upscaler") == "dlss"
-        note = ", --optiscaler turns the game's DLSS on"
+        note += ", --optiscaler turns the game's DLSS on"
     else:
-        note = " (--optiscaler not tried: OptiScaler or nvngx_dlssnr.dll not found)"
+        note += " (--optiscaler not tried: OptiScaler or nvngx_dlssnr.dll not found)"
+    if all(probe.ref(m, f).found for m, f in (("quint", "qUINT_lightroom.fx"), ("astrayfx", "Clarity.fx"),
+                                              ("reshade_shaders", "DisplayDepth.fx"))):
+        inst.install("gtave", game, dict(opts, preset=True), mods, system=system, work=work, log=lines.append)
+        for rel in ("ReShadePreset.ini", "ReShadePreset.capture.ini", "ReShadePreset.grade_ss.ini", "ReShadePreset.depth.ini",
+                    "ReShadePreset.grade.ini", os.path.join("reshade-shaders", "Shaders", "qUINT_lightroom.fx"),
+                    os.path.join("reshade-shaders", "Shaders", "Clarity.fx")):
+            assert os.path.exists(os.path.join(base, rel)), rel
+        bi = plan.Ini(os.path.join(base, "ReShade.ini"))
+        assert bi.get("GENERAL", "PresetPath") == ".\\ReShadePreset.ini", "the grade with Clarity is the capture preset"
+        assert bi.get("GENERAL", "PresetShortcutKeys") == "125,0,0,0,126,0,0,0,127,0,0,0,128,0,0,0,129,0,0,0"
+        cap = open(os.path.join(base, "ReShadePreset.ini")).read()
+        assert "Techniques=Clarity@Clarity.fx,Lightroom@qUINT_lightroom.fx" in cap and "MXAO" not in cap
+        inst.install("gtave", game, dict(opts, preset=False), mods, system=system, work=work, log=lines.append)
+        assert plan.Ini(os.path.join(base, "ReShade.ini")).get("GENERAL", "PresetPath") == ".\\ReShadePreset.capture.ini"
+        note += ", --preset installs the five presets on F14-F18 (grade + Clarity the capture preset)"
     inst.uninstall("gtave", work=work, log=lines.append)
     after = tree(game)
     assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
@@ -376,6 +478,8 @@ def main():
     a = ap.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         part_a(os.path.join(tmp, "a"))
+    with tempfile.TemporaryDirectory() as tmp:
+        part_p(os.path.join(tmp, "p"))
     with tempfile.TemporaryDirectory() as tmp:
         probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("rdr2").LOCK), roots=a.mods)
         need = [("scripthook_rdr2", "ScriptHookRDR2.dll"), ("redlua", "RedLua.asi"), ("reshade", "ReShade64.dll"),

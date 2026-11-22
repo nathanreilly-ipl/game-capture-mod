@@ -75,9 +75,9 @@ class PresetKeys:
     tracing the adapter switches live (capability "ray_tracing_switch": GTA V Enhanced, through
     its settings menu), through the adapter."""
 
-    def __init__(self, adapter, log):
+    def __init__(self, adapter, log, native=True):
         self.adapter, self.log, self.mode = adapter, log, None
-        self.native = "ray_tracing_switch" in adapter.capabilities
+        self.native = native and "ray_tracing_switch" in adapter.capabilities
 
     def set(self, mode, key):
         if mode == self.mode:
@@ -104,18 +104,34 @@ def main():
     ap.add_argument("--settle-test", action="store_true")
     ap.add_argument("--label", default="")
     ap.add_argument("--with-dlss5", action="store_true",
-                    help="ray tracing off/on x DLSS 5 off/on (needs OptiScaler, F13 its toggle)")
+                    help="ray tracing off/on x DLSS 5 off/on (needs OptiScaler, F13 its toggle); with --presets, "
+                         "every preset with DLSS 5 on and off")
+    ap.add_argument("--presets", metavar="LABEL:KEY,...",
+                    help="compare these ReShade presets, switched by their shortcut keys, e.g. "
+                         "plain:F14,grade:F15,grade_ss:F16 (GTA V's --preset install), instead of ray tracing")
+    ap.add_argument("--restore", metavar="KEY", help="the preset key to press at the end (the capture preset)")
+    ap.add_argument("--note", default="", help="a line for the sheets, e.g. the DLSS 5 settings in use")
+    ap.add_argument("--clear-people", type=float, default=0.0, metavar="M",
+                    help="no crowd, and people and vehicles within M metres removed once frozen (the player stays): "
+                         "for comparing separate game starts, e.g. a world mod off and on")
     a = ap.parse_args()
     out = os.path.join(paths.OUT, "checks", "preset_ab", stamp() + ("_" + a.label if a.label else ""))
     os.makedirs(out)
     log = print
     adapter = adapters_registry.get(a.game)()
-    if "ray_tracing_switch" in adapter.capabilities and not a.with_dlss5:
+    if "ray_tracing_switch" in adapter.capabilities and not a.with_dlss5 and not a.presets:
         ap.error("%s has no ray tracing mod to turn off; use --with-dlss5 (ray tracing off/on x DLSS 5 off/on)" % a.game)
     adapter.ensure_ready(restart=False)
     adapter.open()
-    keys = PresetKeys(adapter, log)
-    modes = [(m, k, t, d) for m, k, t, d in MODES_DLSS] if a.with_dlss5 else [(m, k, t, None) for m, k, t in MODES]
+    keys = PresetKeys(adapter, log, native=not a.presets)
+    pairs = [p.split(":") for p in a.presets.split(",")] if a.presets else []
+    if pairs:   # all presets with DLSS 5 on, then all with it off: one DLSS switch
+        states = [True, False] if a.with_dlss5 else [None]
+        modes = [(lab + ("_dlss" if d else ""), key, lab + (" + DLSS 5" if d else ""), d) for d in states for lab, key in pairs]
+    elif a.with_dlss5:
+        modes = [(m, k, t, d) for m, k, t, d in MODES_DLSS]
+    else:
+        modes = [(m, k, t, None) for m, k, t in MODES]
     dlss = {"on": True}
 
     def set_mode(mode, key, want_dlss):
@@ -124,10 +140,15 @@ def main():
             time.sleep(4.0)
             dlss["on"] = want_dlss
             log("  DLSS 5 %s" % ("on" if want_dlss else "off"))
-        keys.set(mode, key)
+        if key:
+            keys.set(mode, key)
 
     report = {"game": a.game, "location": a.location, "clock": a.clock, "weather": a.weather, "settle": a.settle,
-              "modes": [list(m) for m in modes], "kind": "rt_dlss" if a.with_dlss5 else "rt", "views": {}}
+              "modes": [list(m) for m in modes], "views": {}, "note": a.note,
+              "kind": "presets" if pairs else ("rt_dlss" if a.with_dlss5 else "rt"),
+              "presets": [lab for lab, _ in pairs], "dlss_states": [m[3] for m in modes][::max(1, len(pairs))] if pairs else None}
+    if a.clear_people:
+        adapter.settings["crowd"] = 0   # no walkers of our own
     try:
         if a.location:
             loc = locs.get(paths.LOCATIONS, a.location)
@@ -147,6 +168,12 @@ def main():
         set_mode(*modes[0][:2], modes[0][3])
         adapter.begin_frozen(u.views(adapter, st)["portrait"])
         st = adapter.subject_state()
+        if a.clear_people and "obstacles" in adapter.capabilities:
+            obs = adapter.obstacles(st["position"], a.clear_people)
+            r = adapter.remove_obstacles([o["id"] for o in obs])
+            report["cleared"] = {"found": len(obs), "removed": r["removed"], "skipped": len(r["skipped"])}
+            log("  cleared %d of %d people, animals and vehicles within %.0f m" % (r["removed"], len(obs), a.clear_people))
+            adapter.wait_frames(30)
         boxes = u.people(adapter, st["position"])
         vs = u.views(adapter, st, boxes)
         vs.update(surface_views(adapter, st, boxes))
@@ -172,11 +199,19 @@ def main():
                 shot(name, mode, a.settle, "landscape" if name != "landscape" else "portrait")
         for name in vs:
             f = {m[0]: os.path.join(out, "%s_%s.png" % (name, m[0])) for m in modes}
-            report["views"][name] = {"rt_off_vs_on": u.diff(f["rt_off"], f["rt_on"])}
-            if a.with_dlss5:
-                report["views"][name]["neither_vs_both"] = u.diff(f["rt_off"], f["rt_on_dlss"])
+            if pairs:
+                r, labs = {}, [lab for lab, _ in pairs]
+                for d in report["dlss_states"]:
+                    suf = "_dlss" if d else ""
+                    for lab in labs[1:]:
+                        r["%s_vs_%s%s" % (labs[0], lab, suf)] = u.diff(f[labs[0] + suf], f[lab + suf])
+                report["views"][name] = r
             else:
-                report["views"][name]["mod_off_vs_rt_on"] = u.diff(f["mod_off"], f["rt_on"])
+                report["views"][name] = {"rt_off_vs_on": u.diff(f["rt_off"], f["rt_on"])}
+                if a.with_dlss5:
+                    report["views"][name]["neither_vs_both"] = u.diff(f["rt_off"], f["rt_on_dlss"])
+                else:
+                    report["views"][name]["mod_off_vs_rt_on"] = u.diff(f["mod_off"], f["rt_on"])
             log("  %-10s %s" % (name, report["views"][name]))
 
         if a.settle_test:
@@ -189,7 +224,15 @@ def main():
                 mode, ", ".join("%d: %.2f" % kv for kv in curve.items())))
     finally:
         try:
-            set_mode("rt_on", "F14", True if a.with_dlss5 else None)
+            if pairs:
+                if not dlss["on"]:
+                    set_mode(None, None, True)
+                if a.restore:
+                    adapter.press_key(a.restore)
+                    time.sleep(2.0)
+                    log("  preset key %s pressed (the capture preset)" % a.restore)
+            else:
+                set_mode("rt_on", "F14", True if a.with_dlss5 else None)
         except Exception:
             pass
         adapter.close()

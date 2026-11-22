@@ -289,10 +289,13 @@ class GTAVAdapter(Adapter):
     def screen_grab(self):
         return window.grab(self.hwnd) if self.hwnd else None
 
-    KEYS = {"F13": (0x7C, 0x64), "F14": (0x7D, 0x65), "F15": (0x7E, 0x66), "F16": (0x7F, 0x67)}
+    KEYS = {"F13": (0x7C, 0x64), "F14": (0x7D, 0x65), "F15": (0x7E, 0x66), "F16": (0x7F, 0x67), "F17": (0x80, 0x68),
+            "F18": (0x81, 0x69)}
 
     def press_key(self, key):
         vk, scan = self.KEYS[key]
+        if self.hwnd and not window.is_foreground(self.hwnd):
+            window.focus(self.hwnd)   # another window took the front (a dialog, another session's tool)
         if not window.press_vk(self.hwnd, vk, scan):
             raise AdapterError("the game window is not in front; %s not sent" % key)
 

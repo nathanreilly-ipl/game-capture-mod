@@ -126,6 +126,79 @@ The lockfiles pin the versions this repository was tested with:
 | `RedLua/Langs/en.lng` | 2,234 | `4d4aa030d467fd4b1ebe94f5416e5f91f3a2875fdc4aeb1851185eccd433cbec` |
 | `RedLua/Langs/ru.lng` | 3,231 | `7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3` |
 
+### ReShade standard effects (crosire/reshade-shaders, slim branch)
+
+**Optional.** The two headers every effect includes, and DisplayDepth (shows the depth buffer the screen-space effects read). For GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/crosire/reshade-shaders/tree/fd0022170615ce0d8162d219bff07232fa6dd84f |
+| Licence | per file (see each file's header) (may NOT be redistributed) |
+| Note | Pinned at commit fd0022170615ce0d8162d219bff07232fa6dd84f (the same as RDR2's). Each file is downloaded on its own. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `reshade_shaders` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`ReShade.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh) | 4,250 | `6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f` |
+| [`ReShadeUI.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShadeUI.fxh) | 9,930 | `78adf672df47460297eb9fe6dd238d2aafa24510b52b84feb1a745dff70eb901` |
+| [`DisplayDepth.fx`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth.fx) | 10,368 | `b67944bb8a5c6c8127813d332f1fb271222f7aa2c365927b4cbac42bebf749c9` |
+| [`DisplayDepth_L10N.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth_L10N.fxh) | 17,519 | `f7d896885ecdb3f4953e069a09c16381ceb0c3a87d12025c3496d6986e67507d` |
+
+### qUINT by Marty McFly (Lightroom, MXAO, SSR)
+
+**Optional.** Lightroom (the colour grade: levels, curves, contrast, saturation, white balance; one fixed formula per pixel), MXAO (screen-space ambient occlusion) and SSR (screen-space reflections), for GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/martymcmodding/qUINT/tree/98fed77b26669202027f575a6d8f590426c21ebd |
+| Licence | no licence stated: all rights reserved by the author (may NOT be redistributed) |
+| Note | Pinned at commit 98fed77b26669202027f575a6d8f590426c21ebd. Each file is downloaded on its own. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `quint` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`qUINT_common.fxh`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_common.fxh) | 7,053 | `30cf03a1869e33e9b92f09f79ac9217c001472d014ab91ef3e87e0d41e3f55ec` |
+| [`qUINT_lightroom.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_lightroom.fx) | 31,564 | `99a0d6ffadca4ab8af74415580a1810dc9d28031ddac942936137ea2c114c53c` |
+| [`qUINT_mxao.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_mxao.fx) | 26,449 | `fdd84443706a92753ac255d9912ceb5f8e03a4bba88ddfb06a85b5654a9590e1` |
+| [`qUINT_ssr.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_ssr.fx) | 15,010 | `41accc9496acd27d5a2ab9c040f7ef8e98ea546fdf097d9aebcefc5b15a3c877` |
+
+### AstrayFX Clarity by BlueSkyDefender
+
+**Optional.** Clarity: local contrast (a screen-space effect), for GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/BlueSkyDefender/AstrayFX/tree/59bae8b33e34f37a8e521e666864085ccbf08535 |
+| Licence | no licence stated: all rights reserved by the author (may NOT be redistributed) |
+| Note | Pinned at commit 59bae8b33e34f37a8e521e666864085ccbf08535. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `astrayfx` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`Clarity.fx`](https://raw.githubusercontent.com/BlueSkyDefender/AstrayFX/59bae8b33e34f37a8e521e666864085ccbf08535/Shaders/Clarity.fx) | 20,714 | `4a7903d5ee47c744dfc0124d25ba89d050c65f92f681cc90d5e2248de7a11623` |
+
+### NaturalVision Enhanced, July 2026 build ("Next-Gen Graphics Update #2 Updated")
+
+**Optional.** A graphics overhaul for GTA V Enhanced by Razed: its own lighting, weather, clouds, tonemapping and colours, roads, vegetation, interiors and vehicles (the onigiri loader and its DLC packs), and shader replacements loaded through ReShade's add-on API (NVE.asi). The capture default for Enhanced (--no-graphics-mod leaves it out). Only its own files: its ASI loader (xinput1_4.dll), ReShade.asi, ReShade.ini and photo-mode effects are left out, since ours are installed.
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: https://razedmods.com/gtavenhanced |
+| File as downloaded | `NaturalVision Enhanced - Next-Gen Graphics Update #2 Updated.zip`, 6,524,541,017 bytes, SHA-256 `3efbcfe5173501044e983079677c792c532b94e8bdaf7ab93a651f26992beeea` |
+| Licence | Razed; free to use, no redistribution stated (may NOT be redistributed) |
+| Note | Free from the page above (its download links, under older versions). The newer "#3 V2" build hangs Enhanced 1.0.1158.13 while loading; this build runs. Its settings live in %APPDATA%\NVE\settings-gen9.json. 6.5 GB, so it is installed straight from the archive (capture/install/components/pack.py) and never bundled. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `nve` |
+
+Installed straight from the archive (its `Main Package` folder onto the game folder): 110 files, 6,491,172,772 bytes, each pinned with its SHA-256 in the lockfile. The largest:
+
+| File used | Size |
+|---|---|
+| `onigiri/dlcpacks/NVE_roads/dlc.rpf` | 2,762,677,248 |
+| `onigiri/dlcpacks/NVE_vehicles/dlc.rpf` | 928,013,312 |
+| `onigiri/dlcpacks/NVE_interiors/dlc.rpf` | 840,675,840 |
+| `onigiri/dlcpacks/NVE_3/dlc.rpf` | 535,879,168 |
+| `onigiri/dlcpacks/NVE_props_replace/dlc.rpf` | 405,273,600 |
+
 ## Grand Theft Auto V Enhanced (story mode, Steam)
 
 ### Script Hook V 3889.0 / 1158.13 (with its ASI loader and Native Trainer)
@@ -180,6 +253,79 @@ The lockfiles pin the versions this repository was tested with:
 | `RedLua/natives.json` | 2,635,963 | `f9bd96b777f9534c7b313366f9fc22011e6575f208bc25e527f02d04ad471ba5` |
 | `RedLua/Langs/en.lng` | 2,234 | `4d4aa030d467fd4b1ebe94f5416e5f91f3a2875fdc4aeb1851185eccd433cbec` |
 | `RedLua/Langs/ru.lng` | 3,231 | `7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3` |
+
+### ReShade standard effects (crosire/reshade-shaders, slim branch)
+
+**Optional.** The two headers every effect includes, and DisplayDepth (shows the depth buffer the screen-space effects read). For GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/crosire/reshade-shaders/tree/fd0022170615ce0d8162d219bff07232fa6dd84f |
+| Licence | per file (see each file's header) (may NOT be redistributed) |
+| Note | Pinned at commit fd0022170615ce0d8162d219bff07232fa6dd84f (the same as RDR2's). Each file is downloaded on its own. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `reshade_shaders` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`ReShade.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh) | 4,250 | `6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f` |
+| [`ReShadeUI.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShadeUI.fxh) | 9,930 | `78adf672df47460297eb9fe6dd238d2aafa24510b52b84feb1a745dff70eb901` |
+| [`DisplayDepth.fx`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth.fx) | 10,368 | `b67944bb8a5c6c8127813d332f1fb271222f7aa2c365927b4cbac42bebf749c9` |
+| [`DisplayDepth_L10N.fxh`](https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth_L10N.fxh) | 17,519 | `f7d896885ecdb3f4953e069a09c16381ceb0c3a87d12025c3496d6986e67507d` |
+
+### qUINT by Marty McFly (Lightroom, MXAO, SSR)
+
+**Optional.** Lightroom (the colour grade: levels, curves, contrast, saturation, white balance; one fixed formula per pixel), MXAO (screen-space ambient occlusion) and SSR (screen-space reflections), for GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/martymcmodding/qUINT/tree/98fed77b26669202027f575a6d8f590426c21ebd |
+| Licence | no licence stated: all rights reserved by the author (may NOT be redistributed) |
+| Note | Pinned at commit 98fed77b26669202027f575a6d8f590426c21ebd. Each file is downloaded on its own. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `quint` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`qUINT_common.fxh`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_common.fxh) | 7,053 | `30cf03a1869e33e9b92f09f79ac9217c001472d014ab91ef3e87e0d41e3f55ec` |
+| [`qUINT_lightroom.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_lightroom.fx) | 31,564 | `99a0d6ffadca4ab8af74415580a1810dc9d28031ddac942936137ea2c114c53c` |
+| [`qUINT_mxao.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_mxao.fx) | 26,449 | `fdd84443706a92753ac255d9912ceb5f8e03a4bba88ddfb06a85b5654a9590e1` |
+| [`qUINT_ssr.fx`](https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_ssr.fx) | 15,010 | `41accc9496acd27d5a2ab9c040f7ef8e98ea546fdf097d9aebcefc5b15a3c877` |
+
+### AstrayFX Clarity by BlueSkyDefender
+
+**Optional.** Clarity: local contrast (a screen-space effect), for GTA V's visual presets (--preset).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/BlueSkyDefender/AstrayFX/tree/59bae8b33e34f37a8e521e666864085ccbf08535 |
+| Licence | no licence stated: all rights reserved by the author (may NOT be redistributed) |
+| Note | Pinned at commit 59bae8b33e34f37a8e521e666864085ccbf08535. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `astrayfx` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| [`Clarity.fx`](https://raw.githubusercontent.com/BlueSkyDefender/AstrayFX/59bae8b33e34f37a8e521e666864085ccbf08535/Shaders/Clarity.fx) | 20,714 | `4a7903d5ee47c744dfc0124d25ba89d050c65f92f681cc90d5e2248de7a11623` |
+
+### NaturalVision Enhanced, July 2026 build ("Next-Gen Graphics Update #2 Updated")
+
+**Optional.** A graphics overhaul for GTA V Enhanced by Razed: its own lighting, weather, clouds, tonemapping and colours, roads, vegetation, interiors and vehicles (the onigiri loader and its DLC packs), and shader replacements loaded through ReShade's add-on API (NVE.asi). The capture default for Enhanced (--no-graphics-mod leaves it out). Only its own files: its ASI loader (xinput1_4.dll), ReShade.asi, ReShade.ini and photo-mode effects are left out, since ours are installed.
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: https://razedmods.com/gtavenhanced |
+| File as downloaded | `NaturalVision Enhanced - Next-Gen Graphics Update #2 Updated.zip`, 6,524,541,017 bytes, SHA-256 `3efbcfe5173501044e983079677c792c532b94e8bdaf7ab93a651f26992beeea` |
+| Licence | Razed; free to use, no redistribution stated (may NOT be redistributed) |
+| Note | Free from the page above (its download links, under older versions). The newer "#3 V2" build hangs Enhanced 1.0.1158.13 while loading; this build runs. Its settings live in %APPDATA%\NVE\settings-gen9.json. 6.5 GB, so it is installed straight from the archive (capture/install/components/pack.py) and never bundled. |
+| Lockfile | `adapters/gtav/mods.lock.json`, id `nve` |
+
+Installed straight from the archive (its `Main Package` folder onto the game folder): 110 files, 6,491,172,772 bytes, each pinned with its SHA-256 in the lockfile. The largest:
+
+| File used | Size |
+|---|---|
+| `onigiri/dlcpacks/NVE_roads/dlc.rpf` | 2,762,677,248 |
+| `onigiri/dlcpacks/NVE_vehicles/dlc.rpf` | 928,013,312 |
+| `onigiri/dlcpacks/NVE_interiors/dlc.rpf` | 840,675,840 |
+| `onigiri/dlcpacks/NVE_3/dlc.rpf` | 535,879,168 |
+| `onigiri/dlcpacks/NVE_props_replace/dlc.rpf` | 405,273,600 |
 
 ## Red Dead Redemption 2 (story mode, Steam)
 

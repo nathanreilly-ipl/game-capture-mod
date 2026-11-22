@@ -14,15 +14,21 @@ Game-agnostic components do ReShade and the capture add-on; this file says how G
   off the game cannot go online.
 - Game settings: Direct3D 11, VSync off, no pause on focus loss, and the windowed capture size.
 
-No visual set yet: captures are taken without ReShade effects (an empty preset). OptiScaler is
-not offered: GTA V Legacy has no upscaler call for it to take over.
+Visual presets (--preset; off by default): the colour grade (qUINT Lightroom) with Clarity as the
+capture preset, plus no effects, the grade with screen-space effects (MXAO, SSR, Clarity), a depth
+check and the grade alone, switched live by F14-F18 (visual_steps). Without --preset captures have
+no ReShade effects.
+A graphics mod (--graphics-mod; Enhanced only, on by default there): NaturalVision Enhanced,
+installed from its archive (components/pack.py), with the settings the edition gives
+(install_enhanced.py). Without it, an install removes its files.
+OptiScaler is not offered for Legacy: it has no upscaler call for it to take over.
 """
 import os
 import re
 
 from capture import config
-from capture.install.components import addon, optiscaler, reshade
-from capture.install.plan import CopyFile, JsonSet, MakeDir, RemoveFile, WriteText, XmlSet
+from capture.install.components import addon, optiscaler, pack, reshade
+from capture.install.plan import CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText, XmlSet
 
 from ..common import redlua
 
@@ -90,8 +96,8 @@ def steps(ctx, ed=LEGACY):
         raise ValueError("--optiscaler: GTA V Legacy has no upscaler (DLSS, FSR, XeSS) for OptiScaler to take over")
     if opt.get("ray_tracing"):
         raise ValueError("--ray-tracing is RDR2's Reality Redemption 2; there is none for GTA V")
-    if opt.get("preset"):
-        raise ValueError("GTA V has no visual set yet (adapters/gtav/visual/); leave out --preset")
+    if opt.get("graphics_mod") and not ed.get("graphics_mod"):
+        raise ValueError("--graphics-mod: none is pinned for %s" % ed["title"])
     exchange = opt.get("exchange_dir") or ed["exchange"]      # tests point these two elsewhere
     xml = opt.get("settings_xml") or ed["settings_xml"]()
     out = []
@@ -125,21 +131,41 @@ def steps(ctx, ed=LEGACY):
 
     # game-agnostic components, as GTA V wants them: ReShade through Script Hook V's loader, no effects
     config_dir = os.path.join(exchange, "reshade") if ed.get("reshade_outside") else None
-    out += reshade.steps(ctx, exe, api, asi_loader=True, config_dir=config_dir)
+    if opt.get("preset"):
+        out += visual_steps(ctx, g, exe, api, config_dir)
+    else:
+        out += reshade.steps(ctx, exe, api, asi_loader=True, config_dir=config_dir)
     out += addon.steps(ctx, g, exchange, config_dir=config_dir)
 
     # OptiScaler (Enhanced has DLSS for it to take over), loaded as an .asi like ReShade
     if ed.get("optiscaler"):
         if opt.get("optiscaler"):
-            out += optiscaler.steps(ctx, g, api, loader="asi")
+            out += optiscaler.steps(ctx, g, api, loader="asi", settings=ed.get("optiscaler_settings", ()))
         else:
             out += optiscaler.not_loaded(ctx, g, loader="asi")
+
+    # the edition's graphics mod (Enhanced: NaturalVision Enhanced), straight from its archive
+    gm = ed.get("graphics_mod")
+    if gm:
+        if opt.get("graphics_mod"):
+            out += pack.steps(ctx, g, gm["mod"], tag="graphicsmod")
+            gm_settings = opt.get("graphics_mod_settings") or gm["settings_file"]()     # tests point it elsewhere
+            for key, value, why in gm["settings"]:
+                out.append(JsonSet(gm_settings, key, value, tag="graphicsmod", why=why))
+        else:
+            out += pack.not_installed(ctx, g, gm["mod"], tag="graphicsmod", why="not part of this install "
+                                      "(--graphics-mod puts it back; its settings file stays)")
 
     # game settings
     if ed["dx_version_setting"]:
         out.append(XmlSet(xml, "DX_Version", DX_VERSION[api], why="the graphics API ReShade is installed for"))
     if ed.get("optiscaler"):   # Enhanced: upscalers and frame generation built in
         out.append(XmlSet(xml, "FrameGenType", "0", why="no frame generation: a generated frame is not a render"))
+        if ed.get("ray_tracing_setting"):
+            out.append(XmlSet(xml, "Raytracing_Enabled", "true", why="the game's ray tracing (the capture default)"))
+        # the game's own motion blur (its slider, 0-1; 1 on this machine): a camera move between two
+        # shots must not smear the next one
+        out.append(XmlSet(xml, "MotionBlurStrength", "0.000000", why="no motion blur"))
         if opt.get("optiscaler"):
             # ResScalingType: 0 off, 1 SSAA, 2 FSR 1, 3 FSR 3, 4 DLSS/DLAA (PCGamingWiki, 2026-11-21)
             out.append(XmlSet(xml, "ResScalingType", "4", why="the game's DLSS on: OptiScaler takes over that call"))
@@ -151,6 +177,42 @@ def steps(ctx, ed=LEGACY):
             raise ValueError("the capture window must be 16:9, not %dx%d" % (w, h))
         out += [XmlSet(xml, "Windowed", "1", why="windowed"), XmlSet(xml, "ScreenWidth", str(w)),
                 XmlSet(xml, "ScreenHeight", str(h))]
+    return out
+
+
+VISUAL = os.path.join(HERE, "visual")
+VISUAL_MODS = ("reshade_shaders", "quint", "astrayfx")     # the effects the presets use (mods.lock.json)
+# --preset: five presets, switched live by keys no keyboard has (tools/preset_ab.py presses them).
+# With --preset the capture preset is the grade with Clarity (Nathan's pick before NVE, 2026-11-21);
+# ReShade remembers whichever was switched to last. Enhanced's default is NVE without these.
+CAPTURE_PRESET = "ReShadePreset.grade_clarity.ini"
+PRESETS = (("ReShadePreset.capture.ini", None, 125, "no effects (F14)"),
+           ("ReShadePreset.ini", CAPTURE_PRESET, 126, "the capture preset: the colour grade with Clarity (F15)"),
+           ("ReShadePreset.grade_ss.ini", "ReShadePreset.grade_ss.ini", 127, "the grade with screen-space MXAO, SSR "
+                                                                              "and Clarity (F16)"),
+           ("ReShadePreset.depth.ini", "ReShadePreset.depth.ini", 128, "the depth buffer, to check it (F17)"),
+           ("ReShadePreset.grade.ini", "ReShadePreset.grade.ini", 129, "the colour grade alone (F18)"))
+
+
+def visual_steps(ctx, g, exe, api, config_dir):
+    """GTA V's visual presets (adapters/gtav/visual/), for comparing a colour grade and screen-space
+    effects at one frozen instant; measured on Enhanced (README)."""
+    effects = [(ctx.file(m, f["name"]), f["install"]) for m in VISUAL_MODS for f in ctx.files.mods[m]["files"]]
+    out = reshade.steps(ctx, exe, api, preset=os.path.join(VISUAL, CAPTURE_PRESET),
+                        preset_label="GTA V's capture preset: colour grade + Clarity (adapters/gtav/visual)",
+                        effects=effects, asi_loader=True, config_dir=config_dir)
+    base = config_dir or g
+    for name, src, _, what in PRESETS:
+        if src is None:
+            out.append(WriteText(os.path.join(base, name), reshade.EMPTY_PRESET, tag="reshade", closed=True,
+                                 what="preset: " + what))
+        elif name != "ReShadePreset.ini":          # that one is the capture preset, copied above
+            out.append(CopyFile(lambda p=os.path.join(VISUAL, src): p, os.path.join(base, name), tag="reshade",
+                                what="preset: " + what))
+    ini = reshade.config_path(g, config_dir)
+    out += [IniSet(ini, "GENERAL", "PresetShortcutKeys", ",".join("%d,0,0,0" % k for _, _, k, _ in PRESETS),
+                   tag="reshade", why="F14-F18 switch the presets"),
+            IniSet(ini, "GENERAL", "PresetShortcutPaths", ",".join(".\\" + n for n, _, _, _ in PRESETS), tag="reshade")]
     return out
 
 

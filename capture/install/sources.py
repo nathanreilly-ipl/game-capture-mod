@@ -123,6 +123,8 @@ class Files:
         self._by_hash, self._by_name, self._scanned = {}, {}, False
         self._sizes, self._hashes, self._names = set(), set(), {n.lower() for n in extra_names}
         for mod in mods.values():
+            if mod.get("pack"):     # gigabytes in a folder tree: found by components/pack.py instead
+                continue
             for f in mod.get("files", []):
                 if f.get("sha256"):
                     self._sizes.add(f["size"])
@@ -201,8 +203,13 @@ class Files:
         return [self.ref(mod_id, f["name"]) for f in self.mods[mod_id].get("files", [])]
 
     def status(self):
-        """[(mod id, mod, [(FileRef)])] for every pinned mod."""
-        return [(mod_id, mod, self.refs(mod_id)) for mod_id, mod in self.mods.items()]
+        """[(mod id, mod, [(FileRef)])] for every pinned mod but packs (see packs())."""
+        return [(mod_id, mod, self.refs(mod_id)) for mod_id, mod in self.mods.items() if not mod.get("pack")]
+
+    def packs(self):
+        """[(mod id, mod)] of the pinned packs: large mods installed from their archive
+        (components/pack.py), never searched file by file, fetched or bundled."""
+        return [(mod_id, mod) for mod_id, mod in self.mods.items() if mod.get("pack")]
 
 
 def _download(url, dst, sha256=None, size=None, log=print):
@@ -249,6 +256,8 @@ def fetch(files, log=print):
                 dst = os.path.join(MODS_DIR, mod_id, r.spec["name"])
                 _download(r.spec["url"], dst, r.spec.get("sha256"), r.spec.get("size"), log)
         log("%-18s saved into %s" % (mod_id, os.path.join(MODS_DIR, mod_id)))
+    for mod_id, mod in files.packs():
+        log("%-18s supply it yourself: %s (%s)" % (mod_id, mod.get("page"), mod.get("archive", {}).get("name")))
     files.rescan()
 
 

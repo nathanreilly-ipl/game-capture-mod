@@ -95,6 +95,678 @@
                     "sha256": "7d468e1c16d18c48aabed6f59a32a424f6667e90691faf1fde12ceedbd0c0ad3"
                 }
             ]
+        },
+        "reshade_shaders": {
+            "title": "ReShade standard effects (crosire/reshade-shaders, slim branch)",
+            "version": "fd0022170615",
+            "what": "The two headers every effect includes, and DisplayDepth (shows the depth buffer the screen-space effects read). For GTA V's visual presets (--preset).",
+            "required": false,
+            "source": "download",
+            "page": "https://github.com/crosire/reshade-shaders/tree/fd0022170615ce0d8162d219bff07232fa6dd84f",
+            "note": "Pinned at commit fd0022170615ce0d8162d219bff07232fa6dd84f (the same as RDR2's). Each file is downloaded on its own.",
+            "licence": "per file (see each file's header)",
+            "redistributable": false,
+            "files": [
+                {
+                    "name": "ReShade.fxh",
+                    "size": 4250,
+                    "sha256": "6dabfbbaf968c3871905d2ea17f96572ff7b1cec01310b5d0e5252b66b30174f",
+                    "install": "reshade-shaders/Shaders/ReShade.fxh",
+                    "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShade.fxh"
+                },
+                {
+                    "name": "ReShadeUI.fxh",
+                    "size": 9930,
+                    "sha256": "78adf672df47460297eb9fe6dd238d2aafa24510b52b84feb1a745dff70eb901",
+                    "install": "reshade-shaders/Shaders/ReShadeUI.fxh",
+                    "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/ReShadeUI.fxh"
+                },
+                {
+                    "name": "DisplayDepth.fx",
+                    "size": 10368,
+                    "sha256": "b67944bb8a5c6c8127813d332f1fb271222f7aa2c365927b4cbac42bebf749c9",
+                    "install": "reshade-shaders/Shaders/DisplayDepth.fx",
+                    "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth.fx"
+                },
+                {
+                    "name": "DisplayDepth_L10N.fxh",
+                    "size": 17519,
+                    "sha256": "f7d896885ecdb3f4953e069a09c16381ceb0c3a87d12025c3496d6986e67507d",
+                    "install": "reshade-shaders/Shaders/DisplayDepth_L10N.fxh",
+                    "url": "https://raw.githubusercontent.com/crosire/reshade-shaders/fd0022170615ce0d8162d219bff07232fa6dd84f/Shaders/DisplayDepth_L10N.fxh"
+                }
+            ]
+        },
+        "quint": {
+            "title": "qUINT by Marty McFly (Lightroom, MXAO, SSR)",
+            "version": "98fed77b2666",
+            "what": "Lightroom (the colour grade: levels, curves, contrast, saturation, white balance; one fixed formula per pixel), MXAO (screen-space ambient occlusion) and SSR (screen-space reflections), for GTA V's visual presets (--preset).",
+            "required": false,
+            "source": "download",
+            "page": "https://github.com/martymcmodding/qUINT/tree/98fed77b26669202027f575a6d8f590426c21ebd",
+            "note": "Pinned at commit 98fed77b26669202027f575a6d8f590426c21ebd. Each file is downloaded on its own.",
+            "licence": "no licence stated: all rights reserved by the author",
+            "redistributable": false,
+            "files": [
+                {
+                    "name": "qUINT_common.fxh",
+                    "size": 7053,
+                    "sha256": "30cf03a1869e33e9b92f09f79ac9217c001472d014ab91ef3e87e0d41e3f55ec",
+                    "install": "reshade-shaders/Shaders/qUINT_common.fxh",
+                    "url": "https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_common.fxh"
+                },
+                {
+                    "name": "qUINT_lightroom.fx",
+                    "size": 31564,
+                    "sha256": "99a0d6ffadca4ab8af74415580a1810dc9d28031ddac942936137ea2c114c53c",
+                    "install": "reshade-shaders/Shaders/qUINT_lightroom.fx",
+                    "url": "https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_lightroom.fx"
+                },
+                {
+                    "name": "qUINT_mxao.fx",
+                    "size": 26449,
+                    "sha256": "fdd84443706a92753ac255d9912ceb5f8e03a4bba88ddfb06a85b5654a9590e1",
+                    "install": "reshade-shaders/Shaders/qUINT_mxao.fx",
+                    "url": "https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_mxao.fx"
+                },
+                {
+                    "name": "qUINT_ssr.fx",
+                    "size": 15010,
+                    "sha256": "41accc9496acd27d5a2ab9c040f7ef8e98ea546fdf097d9aebcefc5b15a3c877",
+                    "install": "reshade-shaders/Shaders/qUINT_ssr.fx",
+                    "url": "https://raw.githubusercontent.com/martymcmodding/qUINT/98fed77b26669202027f575a6d8f590426c21ebd/Shaders/qUINT_ssr.fx"
+                }
+            ]
+        },
+        "astrayfx": {
+            "title": "AstrayFX Clarity by BlueSkyDefender",
+            "version": "59bae8b33e34",
+            "what": "Clarity: local contrast (a screen-space effect), for GTA V's visual presets (--preset).",
+            "required": false,
+            "source": "download",
+            "page": "https://github.com/BlueSkyDefender/AstrayFX/tree/59bae8b33e34f37a8e521e666864085ccbf08535",
+            "note": "Pinned at commit 59bae8b33e34f37a8e521e666864085ccbf08535.",
+            "licence": "no licence stated: all rights reserved by the author",
+            "redistributable": false,
+            "files": [
+                {
+                    "name": "Clarity.fx",
+                    "size": 20714,
+                    "sha256": "4a7903d5ee47c744dfc0124d25ba89d050c65f92f681cc90d5e2248de7a11623",
+                    "install": "reshade-shaders/Shaders/Clarity.fx",
+                    "url": "https://raw.githubusercontent.com/BlueSkyDefender/AstrayFX/59bae8b33e34f37a8e521e666864085ccbf08535/Shaders/Clarity.fx"
+                }
+            ]
+        },
+        "nve": {
+            "title": "NaturalVision Enhanced, July 2026 build (\"Next-Gen Graphics Update #2 Updated\")",
+            "version": "2026-07 #2 Updated (NVE add-on 1.0.12.0)",
+            "what": "A graphics overhaul for GTA V Enhanced by Razed: its own lighting, weather, clouds, tonemapping and colours, roads, vegetation, interiors and vehicles (the onigiri loader and its DLC packs), and shader replacements loaded through ReShade's add-on API (NVE.asi). The capture default for Enhanced (--no-graphics-mod leaves it out). Only its own files: its ASI loader (xinput1_4.dll), ReShade.asi, ReShade.ini and photo-mode effects are left out, since ours are installed.",
+            "required": false,
+            "source": "supplied",
+            "page": "https://razedmods.com/gtavenhanced",
+            "note": "Free from the page above (its download links, under older versions). The newer \"#3 V2\" build hangs Enhanced 1.0.1158.13 while loading; this build runs. Its settings live in %APPDATA%\\NVE\\settings-gen9.json. 6.5 GB, so it is installed straight from the archive (capture/install/components/pack.py) and never bundled.",
+            "licence": "Razed; free to use, no redistribution stated",
+            "redistributable": false,
+            "pack": true,
+            "archive": {
+                "name": "NaturalVision Enhanced - Next-Gen Graphics Update #2 Updated.zip",
+                "size": 6524541017,
+                "sha256": "3efbcfe5173501044e983079677c792c532b94e8bdaf7ab93a651f26992beeea",
+                "root": "Main Package/"
+            },
+            "files": [
+                {
+                    "name": "NVE.asi",
+                    "size": 1472104,
+                    "sha256": "90e4d67eb6cb9b1be96877d7ef151281518681da36e0191b690506369e5c7d72"
+                },
+                {
+                    "name": "NVE.bin",
+                    "size": 2784068,
+                    "sha256": "dfb59bb73686b24c6083a94531dd40a9c47890e7bf0b660a02870b3d92800d0f"
+                },
+                {
+                    "name": "NVE.ini",
+                    "size": 7263,
+                    "sha256": "cb090268dd5b52fa7baf638aa1c82133d2290aa7a00c891737a26243b7c5188e"
+                },
+                {
+                    "name": "onigiri.asi",
+                    "size": 738816,
+                    "sha256": "d97ffcbcea2499b93d12fc032d8771825f6fd051b491bab52814418c87fb4b72"
+                },
+                {
+                    "name": "onigiri.ini",
+                    "size": 61,
+                    "sha256": "d8ce254aa6c874fd333b159db6d596395d05156a525aeb0b29b372de7267edbe"
+                },
+                {
+                    "name": "onigiri/after_level.xml",
+                    "size": 152,
+                    "sha256": "4deccf1612abce17e4e1e1cba2ebe8696266f06a2208f22fc18faccca9fe785e"
+                },
+                {
+                    "name": "onigiri/before_level.xml",
+                    "size": 152,
+                    "sha256": "4deccf1612abce17e4e1e1cba2ebe8696266f06a2208f22fc18faccca9fe785e"
+                },
+                {
+                    "name": "onigiri/common/data/cloudkeyframes.xml",
+                    "size": 181177,
+                    "sha256": "e23a25f5e6a3f8ca6e0fc2d97ae0aae785c29389851604af82ba2b9c233b892e"
+                },
+                {
+                    "name": "onigiri/common/data/clouds.xml",
+                    "size": 42308,
+                    "sha256": "7102ec89146c69a57fe209e75338aff4e28362d750fbb431ed111adfe354648d"
+                },
+                {
+                    "name": "onigiri/common/data/dlclist.xml",
+                    "size": 4479,
+                    "sha256": "0a4101c099c4fd9ea503a8833515d80f5d28bfb40ced1f96ca73dd413965ad12"
+                },
+                {
+                    "name": "onigiri/common/data/gameconfig.xml",
+                    "size": 124829,
+                    "sha256": "fe7075f4540704e8946510affd47f12add16702cfc91f4b4238e50bd7df07d72"
+                },
+                {
+                    "name": "onigiri/common/data/gtxd.meta",
+                    "size": 1822,
+                    "sha256": "a7ab0b49199accfd6eb3a149ce9cc08bae858d672e51ffd486ddbcea69f7ab43"
+                },
+                {
+                    "name": "onigiri/common/data/lensflare_f.xml",
+                    "size": 76126,
+                    "sha256": "e013a10992d365b0e7ffa43264891ecc015e0b8326f43998c0466399f2120cc1"
+                },
+                {
+                    "name": "onigiri/common/data/lensflare_m.xml",
+                    "size": 76126,
+                    "sha256": "e013a10992d365b0e7ffa43264891ecc015e0b8326f43998c0466399f2120cc1"
+                },
+                {
+                    "name": "onigiri/common/data/lensflare_t.xml",
+                    "size": 76126,
+                    "sha256": "e013a10992d365b0e7ffa43264891ecc015e0b8326f43998c0466399f2120cc1"
+                },
+                {
+                    "name": "onigiri/common/data/visualsettings.dat",
+                    "size": 112347,
+                    "sha256": "d3134465d2b30a59acd3cdcb8ff0f766d475e7321cef5a1e8f33cf0b28145757"
+                },
+                {
+                    "name": "onigiri/common/data/watertune.xml",
+                    "size": 934,
+                    "sha256": "36b4aa9c13eb46fc248e299514c660ed1855d003c18227507823c30d9c7d7463"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE/dlc.rpf",
+                    "size": 175233024,
+                    "sha256": "7d8ad3b996ab08d5c53b9555547406390b62be4520fef67f7fccac8059ed976b"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_2/dlc.rpf",
+                    "size": 189768192,
+                    "sha256": "7ecfd327a37386bea329b9c43a2da4454dab2c444175dab0dcebd038a77cd31a"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_3/dlc.rpf",
+                    "size": 535879168,
+                    "sha256": "a6399c4f56b325e8a4c331ed8080a146a6e545ce5352a7a3409486d5947c5d03"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_interiors/dlc.rpf",
+                    "size": 840675840,
+                    "sha256": "d8a7ec23d3357f7292a7d772a6655660d7dbb016459714c0b9d375c46de5f21d"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_lights/dlc.rpf",
+                    "size": 37316096,
+                    "sha256": "4dde495349a3eda1d492cd9910a85ddfac62c6f45cf5006f7acb8c15bed8538f"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_patches/dlc.rpf",
+                    "size": 74765312,
+                    "sha256": "38f80f36dea54dd35f3dd578e155fcd2a12315a5ade64a0d3bb223b8cdc0b7b7"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_props_addon/dlc.rpf",
+                    "size": 44490752,
+                    "sha256": "905ee57a8f7482cf93b701169f310ec616eeb5fb815fbee61edd5670b94a7bdc"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_props_replace/dlc.rpf",
+                    "size": 405273600,
+                    "sha256": "b4b3c9fcc83350440184060de244cc628fc7af189e65ecf7daa3df7cad529fcf"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_roads/dlc.rpf",
+                    "size": 2762677248,
+                    "sha256": "f01fa81caa2134054d91edcd64640777f22d19cc55d332276c7f2c2f12117a98"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_update/dlc.rpf",
+                    "size": 111279104,
+                    "sha256": "e91304f86cf93be8243afaf0586afd08d8a12d9a6451ef3abf8f202e1278874f"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_vegetation/dlc.rpf",
+                    "size": 314980864,
+                    "sha256": "492ce4e68eaab6f927be1c3f0a38c9eaaa88fd913c6f1da6f9da22b63c049af6"
+                },
+                {
+                    "name": "onigiri/dlcpacks/NVE_vehicles/dlc.rpf",
+                    "size": 928013312,
+                    "sha256": "b8168348fccfd13f2b5bd233424a75e8581736010ea8e724a88a137e167bfa42"
+                },
+                {
+                    "name": "onigiri/platform/data/carcols.ymt",
+                    "size": 492728,
+                    "sha256": "f0a70736748d26f5c9c8b4998aca1413e143bb3a292f51b645b55b81e04f5bcb"
+                },
+                {
+                    "name": "onigiri/platform/data/carmodcols.ymt",
+                    "size": 14193,
+                    "sha256": "0f3190a24c6843aef39f64f15f0429ef1c456ba410e8090631077d096b98379f"
+                },
+                {
+                    "name": "onigiri/platform/textures/frontend.ytd",
+                    "size": 12203,
+                    "sha256": "b3875bfbcf075ebaefd8a32459f98f5f8dc83eab9d1b690377ad54b4ebbb4c8b"
+                },
+                {
+                    "name": "onigiri/platform/textures/fxweather.ytd",
+                    "size": 985415,
+                    "sha256": "f16767f46b91538deab44aedba541d4e9117adf5d8e6829e9bedbd054ff4d1a9"
+                },
+                {
+                    "name": "onigiri/platform/textures/graphics.ytd",
+                    "size": 7552848,
+                    "sha256": "ee793ef2218e73ca293e05b0bfe32cd2b616e0438f86745df2c0272a03d957eb"
+                },
+                {
+                    "name": "onigiri/platform/textures/mapdetail.ytd",
+                    "size": 99949,
+                    "sha256": "ce1c6aebdbb7c2bef31c593844428487ced84d14bf5747b2784702b797b764c4"
+                },
+                {
+                    "name": "onigiri/platform/textures/peddamagedecals.ytd",
+                    "size": 7904925,
+                    "sha256": "77ec04b1e0abed9561d0688378eac5a21f53e13b32a081111415383a9a4a9e9b"
+                },
+                {
+                    "name": "onigiri/platform/textures/skydome.ytd",
+                    "size": 1259044,
+                    "sha256": "f094de13454f3f5ad35e9867c1781eed7681eae424e8874ef1734a4e86c2c6ae"
+                },
+                {
+                    "name": "onigiri/common/data/ai/weapons.meta",
+                    "size": 1111832,
+                    "sha256": "a79cc804ade262fa139cbdc4d1bee31dec7c2f6c1fbc389c070e49801b540087"
+                },
+                {
+                    "name": "onigiri/common/data/effects/bloodfx.dat",
+                    "size": 46452,
+                    "sha256": "1a922b128c5228855b85a0a966f994448fa9f302731bb8111a501cb974b21651"
+                },
+                {
+                    "name": "onigiri/common/data/effects/decals.dat",
+                    "size": 135299,
+                    "sha256": "7d0938aebd0f1a34f640020ec6e47071c2f562e08db4ece60cac6b148c95fa94"
+                },
+                {
+                    "name": "onigiri/common/data/effects/entityfx.dat",
+                    "size": 61971,
+                    "sha256": "e2f347c88892c9e64f4be0c5388cb8b2a2670079949a3ed4826bfb68fab670d1"
+                },
+                {
+                    "name": "onigiri/common/data/effects/explosionfx.dat",
+                    "size": 7285,
+                    "sha256": "e44a337f5a5a1a5d41de72bd2b570bb02b56947ddfe86908df6476e979064eb1"
+                },
+                {
+                    "name": "onigiri/common/data/effects/firefx.dat",
+                    "size": 4865,
+                    "sha256": "d5f7e10bf05706a4ea009bbf69fe2a57c054c55da52cdca79df93b8b067d36c3"
+                },
+                {
+                    "name": "onigiri/common/data/effects/liquidfx.dat",
+                    "size": 1085,
+                    "sha256": "44484c282927d1fd8d117a78f726242d5450ac6eef20ec9fa74c348226ad2957"
+                },
+                {
+                    "name": "onigiri/common/data/effects/vfxlightningsettings.xml",
+                    "size": 8147,
+                    "sha256": "31de51a6a9e3d0b3d55806722475003592d75f85298de0b3edf6c04eb6f41766"
+                },
+                {
+                    "name": "onigiri/common/data/effects/wheelfx.dat",
+                    "size": 89068,
+                    "sha256": "9ef9fe7ce6a6e0953b0e1bea10c6d82ba0a95446a536f4e9fe650330d610100a"
+                },
+                {
+                    "name": "onigiri/common/data/materials/procedural.meta",
+                    "size": 481923,
+                    "sha256": "02cce35953304f0ced34b996624fc96accee9aba6dc04c74e9584df935377eef"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/timecycle_mods_1.xml",
+                    "size": 1411343,
+                    "sha256": "e0da47a8657ad56c0a9959165bf81a4976913f918c345e07481571990125f603"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/timecycle_mods_2.xml",
+                    "size": 42573,
+                    "sha256": "8019803b72965fadc2819f1f6e4bf0ee2f5016d4f201470b3e8159e8440eb719"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/timecycle_mods_3.xml",
+                    "size": 269219,
+                    "sha256": "7d88092d43b9f4a329f27a327126961b937b8e5886e1beb1d065437a1157439d"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/timecycle_mods_4.xml",
+                    "size": 597030,
+                    "sha256": "79addd46f68565db4b07f485b5263301fd08bb11a19644512c832f5b32758fe7"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/timecycle_mods_5.xml",
+                    "size": 5279,
+                    "sha256": "1bcfb122bc10c20f457d6f6a6cc9be0b476a041c2bc486d2d2741aa163211a91"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/underwater_deep.xml",
+                    "size": 136852,
+                    "sha256": "b884e4a2610233183812cded85545da188bbd24f2f6c83390221b54417bb337b"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_blizzard.xml",
+                    "size": 134988,
+                    "sha256": "c74f1141859c4afe0a4a1d1c54a5b28ef824e5af4322196a967c80c8c0a25aa6"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_clear.xml",
+                    "size": 134921,
+                    "sha256": "5f06e22927cda43b5f6edb270ebabd79b6702a494b5094355e7d140961787544"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_clearing.xml",
+                    "size": 133344,
+                    "sha256": "3b661052eb9bd38ec3bbc33b6e00ab7c742f5c97e9b74368601a5e67ab1b9ffd"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_clouds.xml",
+                    "size": 134889,
+                    "sha256": "3b37525a5285b00b903dc21b1545d078597791d38a33a2ecf0416cc1269aa5dc"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_extrasunny.xml",
+                    "size": 134904,
+                    "sha256": "7fa838adc870c746bc93f7442c3d05ef30c94e7ee7c7e25122b9154f422d8134"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_foggy.xml",
+                    "size": 134796,
+                    "sha256": "a835a3177a79daf2233474d344f38c0a10eb209e8b670f0895d7f86e8ac79d0b"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_halloween.xml",
+                    "size": 126951,
+                    "sha256": "786a721fc96a1c55660fd23ffe8fe4b9ba4237bf71b44e039d489e9b79b275d0"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_neutral.xml",
+                    "size": 134978,
+                    "sha256": "34d50b95b1f0e39895fb3f361fa313fa642a6bf8cb0b2ed6128002d72a627f0c"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_overcast.xml",
+                    "size": 132637,
+                    "sha256": "7ba6cc8e44213ae7b99573375b02e01ddbfb3b60f6e4109614d1746a398f45ff"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_rain.xml",
+                    "size": 131148,
+                    "sha256": "2b0e21e8048d3af3ac2b5df2500a65d32b32086d0a83a00173d459eb870bb65a"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_rainhalloween.xml",
+                    "size": 127820,
+                    "sha256": "65cbbfce74a79ffa7b0c73ccda5c76730d268de88a0e4265970b999497cd95ef"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_smog.xml",
+                    "size": 134884,
+                    "sha256": "189e69e202f788e54e33ccc2f529bf58c646af3e6b70464a3b3a8f2d0b40835f"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_snow.xml",
+                    "size": 134968,
+                    "sha256": "d893cea39d9dea0b27cba03b5ebc6afec4510f51c73e977a981f99c9619b5c9b"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_snowhalloween.xml",
+                    "size": 127805,
+                    "sha256": "108c67dad42f4ccf5e93ba7c4b465f842513e4b2ee22d31d51e8fd3224ffa3e4"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_snowlight.xml",
+                    "size": 134932,
+                    "sha256": "8c52024efc0524b74ca5d53f3e4ba15057be8b98911759bfacb4ceb36975c92d"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_thunder.xml",
+                    "size": 132183,
+                    "sha256": "b8ac6a19c5d804114d077612995199edbc089d68f9cfaaeea56a8c1ea62da517"
+                },
+                {
+                    "name": "onigiri/common/data/timecycle/w_xmas.xml",
+                    "size": 134957,
+                    "sha256": "7f353bf7c10e3ef63924d4ba9f7378b9a6e33fd38754fbd3f92dd47b9a7c56d3"
+                },
+                {
+                    "name": "onigiri/platform/data/effects/lensartefacts.ymt",
+                    "size": 948,
+                    "sha256": "2510a3dcba331e36e385cbbe10fbeb15d72520f2dd8dfa6a02ec7080cab531d4"
+                },
+                {
+                    "name": "onigiri/platform/data/effects/vfxfogvolumeinfo.ymt",
+                    "size": 13968,
+                    "sha256": "bb1f875c825eb0e553ac9d55ff9d9278b97abe04fa179148f30a7f814bcecbd9"
+                },
+                {
+                    "name": "onigiri/platform/data/effects/vfxregioninfo.ymt",
+                    "size": 2352,
+                    "sha256": "74b4e63de91ef399a8ce737eb0eb3944224695d7de53bf5312c2722acc07fadb"
+                },
+                {
+                    "name": "onigiri/platform/data/effects/vfxvehicleinfo.ymt",
+                    "size": 78172,
+                    "sha256": "110c5b945e94c9d4257762576b1afdaf86f0e2d3325b07ac99559e2fb119a8eb"
+                },
+                {
+                    "name": "onigiri/platform/data/metadata/explosion.ymt",
+                    "size": 6261,
+                    "sha256": "0ef20e3bb2932fc4fe7803c1557bb780ef1f134fe3f077301b32f6480fc8f98f"
+                },
+                {
+                    "name": "onigiri/platform/levels/gta5/zonebind.ymt",
+                    "size": 125169,
+                    "sha256": "a5b8863ca715fb35a0abd5bbdb225d676af52d73cb5d9158479dc13584470db8"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/gta5.meta",
+                    "size": 42883,
+                    "sha256": "4d99e10ff3c1bfb769c310cda0847080b65ed38656ae45815b42eb1f3fb479d4"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/time.xml",
+                    "size": 1313,
+                    "sha256": "866912c6afa927d6afa32fa17afba7d9c5031896d0215e61bd3008610de5c45b"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/water.xml",
+                    "size": 329478,
+                    "sha256": "2ff972b152a0ee4105634428a900862a2a57225183b699af9ce19bd077251f4e"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather.xml",
+                    "size": 57807,
+                    "sha256": "c36e3e8f3152b900b84c082195acdb3f3b479e80d77a37551109f6babf460a07"
+                },
+                {
+                    "name": "onigiri/platform/levels/gta5/cloudhats/v_clouds.rpf",
+                    "size": 39436288,
+                    "sha256": "f3811f78b21da78458d7f6fadad94865ca9a49fb3f81eedd8488246e14794d39"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/blizzard_emitter_mist.xml",
+                    "size": 539,
+                    "sha256": "087d3917aa226fbe7ea8be946a3e3af4561b6358054f08bb45e9aba45e0ff1d8"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/blizzard_render_drop.xml",
+                    "size": 1251,
+                    "sha256": "84adc9362f0ff931d7c3de9577a3fd8787ceb7d3312afa1be7812e56e063e581"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/blizzard_render_mist.xml",
+                    "size": 1250,
+                    "sha256": "b3c331f52574f42334b9440ad83ee09c64c5762ee2a8aca62f8daf1a5435c198"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/clearing_render_drop.xml",
+                    "size": 1252,
+                    "sha256": "adfbdb061fb6f71c522bef8b1253594a4ca491e5863bcd92026741bf9470d55e"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/clearing_render_ground.xml",
+                    "size": 1306,
+                    "sha256": "a00f05c92e226b7749da15f0cee54e640890007efccef37034a554f68ce7eb3f"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/desert_emitter_ground.xml",
+                    "size": 540,
+                    "sha256": "8c1edb5de2ed991ba3e7eb095afbf4d6626f56c73aee15c56b953526d908358d"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/desert_emitter_ground_heavy.xml",
+                    "size": 541,
+                    "sha256": "f0e1eaf3fe25e19fbb8ebdfe361bb8f7bd15993ff9e214567655a98c4452440a"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/desert_render_ground.xml",
+                    "size": 1301,
+                    "sha256": "088e9300594a716786e56ee0d2ed58402adf1a11079ec1eea031acc86da95199"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/desert_render_ground_heavy.xml",
+                    "size": 1249,
+                    "sha256": "b76716fdfb8d92de4e58e57b081732f1bdf1ac1a9851b0328b02dda18e9b15d5"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/firefly_emitter_drop.xml",
+                    "size": 540,
+                    "sha256": "a6c84358248bc99f11ff7ee4cc4ad322ae8e0da9d27e544a0f881fb27b7ce835"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/firefly_render_drop.xml",
+                    "size": 1306,
+                    "sha256": "9d4a18d9554027ea4a1d31cdd45d18177d7e70e04046a042b856fb9c4acd3250"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/pollen_emitter_drop.xml",
+                    "size": 538,
+                    "sha256": "d78f86d478b62d6dd2a73a4a9aec4587ab215caf2975b343aacd7a58400b1e4a"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/pollen_render_drop.xml",
+                    "size": 1246,
+                    "sha256": "b5ce9046af9987b5e8e6207bb936e57788b1aaed700914f38f16c9246440e507"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_emitter_drop.xml",
+                    "size": 1436,
+                    "sha256": "f048565e561fd5b51e01c9dde2cd8fb92053bccf4a360f516990e5b9cc428f88"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_emitter_ground.xml",
+                    "size": 1438,
+                    "sha256": "cf9f45b69080504537323e2e7480dada492b58d29a2ec7ce851d4afd81c7d0f1"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_emitter_mist.xml",
+                    "size": 543,
+                    "sha256": "ef7f67c2aea5d9173a4d916e98fde57c5fa6a13cf480e04d611c4d4cfc08139a"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_render_drop.xml",
+                    "size": 1788,
+                    "sha256": "a208706b0bffc72627a4bf549b203e912149754f990e0db6278e69c8b4177d22"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_render_ground.xml",
+                    "size": 1309,
+                    "sha256": "f36ad2a64d3ac9e081bf5ecfb12ffa5f32775b8fd6a22d6ef684929fff38ab02"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/rainstorm_render_mist.xml",
+                    "size": 1305,
+                    "sha256": "e072654a294bb3c9783c326d9646affa2654c47422f81ff1ad2495a37051d0dc"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowheavy_emitter_ground.xml",
+                    "size": 542,
+                    "sha256": "b698d1c7724d02fd3733202ec11ceac4c17243777e7405e08bf3681f050abc1b"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowheavy_emitter_mist.xml",
+                    "size": 541,
+                    "sha256": "e06908a48708cbb6bb81c0d0943f7562c4c8e2838ff5b2b36569b7a40ffdb214"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowheavy_render_ground.xml",
+                    "size": 1303,
+                    "sha256": "1cbecb89803951f34a7d982dae321d28da240d68f86f2fa79dfe995abdb0f87e"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowheavy_render_mist.xml",
+                    "size": 1253,
+                    "sha256": "5b5fbc813140cfd4650269afc002f7e43ffd2761e6563557b768653e0470aee8"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowlight_emitter_drop.xml",
+                    "size": 539,
+                    "sha256": "e12a7a37602166d0e89b4a1cb150104849731fd1c3d7d0d5079298e5f675df90"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/snowlight_render_drop.xml",
+                    "size": 1250,
+                    "sha256": "ee95e7f318b7e6490050c2dfcd1807acfc66c2e4338340a017c43983ab1f1a8c"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/thunder_emitter_drop.xml",
+                    "size": 1438,
+                    "sha256": "9f5fc881931c46d3643d3c05d24eb379dc093cd3b355d60033903667ec752fc7"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/thunder_emitter_ground.xml",
+                    "size": 1517,
+                    "sha256": "554be5e613ec6368c19648a7dfb7cb18ff9c5d383ec4eaa82f41d1ad4bad4cde"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/thunder_render_drop.xml",
+                    "size": 2407,
+                    "sha256": "a525fdc1709962f8447a6967c62da8a4b0b96fea9628c49c30994a25e1c16d57"
+                },
+                {
+                    "name": "onigiri/common/data/levels/gta5/weather/thunder_render_ground.xml",
+                    "size": 2630,
+                    "sha256": "f407a2733c5f9631dc056f4a38a60974d7ba48e7ec02bb50889b8bf819745485"
+                }
+            ]
         }
     }
 }

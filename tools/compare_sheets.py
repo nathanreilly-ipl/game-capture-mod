@@ -184,11 +184,51 @@ def build_rt_dlss(folder):
                    cell_w=400))
 
 
+PRESET_TITLES = {"plain": "no effects", "grade": "colour grade", "grade_ss": "grade + screen-space",
+                 "grade_clarity": "grade + Clarity"}
+PRESET_SHORT = {"plain": "none", "grade": "grade", "grade_ss": "+ screen-space", "grade_clarity": "+ Clarity"}
+SETUPS = {"gtave": "GTA V Enhanced, Direct3D 12, 2560x1440, the game's ray tracing"}
+
+
+def build_presets(folder):
+    """ReShade presets side by side (tools/preset_ab.py --presets): a set of pages per DLSS 5 state,
+    each preset, then a FLIP map from each preset to the next."""
+    rep = _report(folder)
+    labs = rep["presets"]
+    name = lambda lab: PRESET_TITLES.get(lab, lab)  # noqa: E731
+    _clear(folder)
+    out = []
+    for d in rep.get("dlss_states") or [None]:
+        suf = "_dlss" if d else ""
+        rows = []
+        for v in _views(folder, labs[-1] + suf):
+            f = [os.path.join(folder, "%s_%s%s.png" % (v, lab, suf)) for lab in labs]
+            cells, notes = list(f), []
+            for i in range(1, len(labs)):
+                fmap, mean = flip_map(folder, f[i - 1], f[i], "%s__%s__%s%s" % (v, labs[i - 1], labs[i], suf))
+                cells.append(fmap)
+                notes.append("FLIP %s %.3f" % ({"grade_ss": "+SS"}.get(labs[i], PRESET_SHORT.get(labs[i], labs[i])), mean))
+            rows.append({"label": v, "cells": cells, "notes": notes})
+        cols = [name(lab) for lab in labs] + ["FLIP: %s" % PRESET_SHORT.get(labs[i], labs[i]) for i in range(1, len(labs))]
+        flips = set(range(len(labs), len(cols)))
+        tag = "" if d is None else ("_dlss_on" if d else "_dlss_off")
+        title = "ReShade presets%s · %s" % ("" if d is None else (", DLSS 5 on" if d else ", DLSS 5 off"), _scene(rep))
+        sub = "%s, one frozen instant per row, settle %s frames%s" % (
+            SETUPS.get(rep.get("game"), GAME_LABELS.get(rep.get("game"), "")), rep.get("settle", "?"),
+            ("; " + rep["note"]) if rep.get("note") else "")
+        out += (render(rows, cols, title, sub, os.path.join(folder, "compare" + tag), flip_cols=flips, cell_w=440) +
+                render(rows, cols, title, sub, os.path.join(folder, "compare_crops" + tag), crop=True, flip_cols=flips,
+                       cell_w=440))
+    return out
+
+
 def build_preset_ab(folder, note=""):
     """Reality Redemption 2: mod off | ray tracing off | on | FLIP off->on | FLIP mod off->on."""
     rep = _report(folder)
     if rep.get("kind") == "rt_dlss":
         return build_rt_dlss(folder)
+    if rep.get("kind") == "presets":
+        return build_presets(folder)
     rows = []
     for v in _views(folder, "rt_on"):
         f = {m: os.path.join(folder, "%s_%s.png" % (v, m)) for m in ("mod_off", "rt_off", "rt_on")}

@@ -194,8 +194,8 @@ def _install_options(a):
     def flag(on, off):  # None: the game's default
         return False if off else True if on else None
     return {"optiscaler": flag(a.optiscaler, a.no_optiscaler), "native_trainer": False if a.no_native_trainer else None,
-            "preset": False if a.no_preset else None, "ray_tracing": flag(a.ray_tracing, a.no_ray_tracing),
-            "api": a.api, "resolution": a.resolution}
+            "preset": flag(getattr(a, "preset", False), a.no_preset), "ray_tracing": flag(a.ray_tracing, a.no_ray_tracing),
+            "graphics_mod": flag(a.graphics_mod, a.no_graphics_mod), "api": a.api, "resolution": a.resolution}
 
 
 def _mods_roots(a):
@@ -260,6 +260,12 @@ def cmd_mods(a):
                 print("  %-8s %-22s %s" % ("found" if r.found else "MISSING", r.spec["name"], r.where or "get it from " + str(m.get("page"))))
             if not refs:
                 print("  (files not pinned yet)")
+        from .install.components import pack
+        for mod_id, m in ctx.files.packs():
+            src = pack.find_source(m, ctx.files.roots)
+            print("%s  [optional, supply yourself; %d files from its archive]" % (m["title"], len(m.get("files", []))))
+            print("  %-8s %-22s %s" % ("found" if src else "MISSING", m["archive"]["name"][:22],
+                                       src or "get it from " + str(m.get("page"))))
         print("what each file is and where to get it: docs/MOD_FILES.md")
 
 
@@ -360,6 +366,12 @@ def main(argv=None):
     s.add_argument("--ray-tracing", action="store_true",
                    help="RDR2: Reality Redemption 2 (hardware ray tracing; Direct3D 12 only); the default for RDR2")
     s.add_argument("--no-ray-tracing", action="store_true", help="leave the ray tracing out")
+    s.add_argument("--graphics-mod", action="store_true",
+                   help="the game's graphics overhaul, where one is pinned: NaturalVision Enhanced for GTA V Enhanced "
+                        "(its default)")
+    s.add_argument("--no-graphics-mod", action="store_true", help="leave the graphics overhaul out (its files are removed)")
+    s.add_argument("--preset", action="store_true",
+                   help="the game's visual set (ReShade presets); the default for RDR2, off for GTA V")
     s.add_argument("--no-preset", action="store_true",
                    help="captures without ReShade effects (an empty preset) instead of the game's visual set")
     s.add_argument("--api", choices=("vulkan", "d3d12", "d3d11", "dxgi", "opengl"),
@@ -368,7 +380,8 @@ def main(argv=None):
     s.add_argument("--resolution", metavar="WxH",
                    help="the game's windowed size, 16:9 (default for RDR2: 2560x1440, the capture size)")
     s.add_argument("--only", action="append",
-                   choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "machine"),
+                   choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "graphicsmod",
+                            "machine"),
                    help="only these parts (repeatable), e.g. --only scripts after editing a script")
     s.add_argument("--dry-run", action="store_true", help="show every step and what it would change; change nothing")
     s.add_argument("--no-verify", action="store_true", help=argparse.SUPPRESS)

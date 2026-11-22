@@ -58,6 +58,17 @@ user32 = window.user32
 user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
 
 
+OTHER_GAMES = ("GTA5.exe", "GTA5_Enhanced.exe", "RDR2.exe", "Cyberpunk2077.exe")   # games this machine captures
+
+
+def _process_running(exe):
+    try:
+        mem.find_pid(exe)
+        return True
+    except RuntimeError:
+        return False
+
+
 def running_app():
     import winreg
     try:
@@ -178,6 +189,11 @@ def start(exchange, client=(2560, 1440), timeout=480, log=print, snapshots=None,
     if other not in ("0", ed.steam_app):
         # Steam runs one game at a time; it answers a second start with "Unable to launch game"
         raise RuntimeError("Steam is running another game (app %s); close it before starting %s" % (other, ed.name))
+    # another game started from its exe (the Cyberpunk session does, 2026-11-21) is not in Steam's
+    # RunningAppID, and two games fighting over focus and keys break both captures
+    for exe in OTHER_GAMES:
+        if exe != ed.exe and _process_running(exe):
+            raise RuntimeError("%s is running; close it (or wait for its session to yield) before starting %s" % (exe, ed.name))
     try:
         os.remove(os.path.join(exchange, "heartbeat.txt"))
     except OSError:

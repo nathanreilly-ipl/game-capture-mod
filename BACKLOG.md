@@ -35,16 +35,16 @@ step exactly 1/30 s, QC passed). GTA V Enhanced (`gtave`) works the same way sin
 verify passes (same exception), and a 32-camera moving sample at Vinewood passed QC; no full take
 yet. Left:
 
-- **Enhanced: the game's protection crashes it now and then.** Three times in about 15 frozen
-  sessions; all three of Rockstar's crash dumps (`%LOCALAPPDATA%\Rockstar Games\GTAV
-  Enhanced\CrashLogs`) fault at `GTA5_Enhanced.exe+0x13f8980`, `mov qword ptr [0], 0x621`: a crash
-  on purpose, in code encrypted on disk, not RedLua (Legacy's faults are in lua51.dll). What it
-  detects is not known. It comes during or 1-3 min after frozen work, but none of the parts of a
-  take repeated alone set it off (time scale 0 at steps of 1/3000, 1e-5 and 1e-7 s, camera jumps,
-  time steps, the crowd at population 0, the memory write alone). Ideas: the write handle on the
-  process (open it only for each write), the minimum-step address itself (an integrity check
-  that only runs at times), focus changes (the last dump logged a focus loss 14 s before). Count
-  the crashes over a long run of short sessions with one change at a time. The worker restarts the
+- **Enhanced: the game's protection crashes it now and then.** Four times in about 18 sessions;
+  all four of Rockstar's crash dumps (`%LOCALAPPDATA%\Rockstar Games\GTAV Enhanced\CrashLogs`)
+  fault at `GTA5_Enhanced.exe+0x13f8980`, `mov qword ptr [0], 0x621`: a crash on purpose, in code
+  encrypted on disk, not RedLua (Legacy's faults are in lua51.dll). What it detects is not known.
+  Not the minimum-step write: the fourth came before any freeze or write, 3.4 min after a start,
+  during a teleport, the crowd and an obstacle scan (Script Hook V's entity pools). None of the
+  parts of a take repeated alone set it off. Suspects left: the ASI loader (Ultimate ASI Loader
+  as xinput1_4.dll; the community's Enhanced loader is the dsound.dll that OpenRPF ships),
+  natives the session calls (teleport, populate, crowd, ghost), the entity-pool scan. Count the
+  crashes over a long run of short sessions with one change at a time. The worker restarts the
   game (stale heartbeat), about 4 min each time.
 - **Enhanced: DLSS 5 works** (`--optiscaler`, 2026-11-21; README), and ray tracing switches live
   through the settings menu, so `tools/preset_ab.py --game gtave --with-dlss5` compares all four
@@ -57,6 +57,29 @@ yet. Left:
   take with DLSS 5 yet.
 - **Enhanced: launcher.** Steam keeps a window titled like its launch dialog up for about two
   minutes after Play, so the launcher answers it up to four times (30 s apart); harmless so far.
+- **DLSS 5 skin controls** (`tools/dlss5_skin_sweep.py`, README): swept once at Vinewood; Nathan
+  picked skin structure 2, now set by Enhanced's install. Left: RDR2 still uses the model's
+  default (-1); the tool drives OptiScaler's menu by fixed positions (2560x1440, OptiScaler
+  10.0.0-dev), so a menu change breaks it; the repo copy has not yet run end to end (the sweep ran
+  from the same code as a scratch script). No capture yet with skin 2 and the colour grade together.
+- **Enhanced capture default: NaturalVision Enhanced** + ray tracing + DLSS 5 (skin 2), no
+  ReShade effects (Nathan, 2026-11-21; README). Installed from its pinned archive
+  (`components/pack.py`), with its lens effects, lateral chromatic aberration and screen-space AO
+  (VBAO) off and the game's motion blur at 0; checked once at Vinewood (README; NVE filled in its
+  own defaults around a settings file holding only our keys). Left: a full take with it; NVE's own
+  motion blur setting (`mb_config`, no label in the July build) not checked; whether NVE's
+  convolution bloom streaks and halo around bright lights (a lens look too, left on) differ
+  visibly between adjacent cameras (auto-exposure was checked: it does not re-adapt between poses
+  under the freeze, `tools/exposure_check.py`, README); some red fringing on frame-edge window frames remains with the
+  effects off (DLSS 5, the game, or NVE's bloom chromatic setting: not separated); a newer
+  NVE build that runs on the current game version would bring its September features (third
+  ray-traced bounce, heat haze, newer skin subsurface scattering). CoreFX and QuantV not tried
+  (Nathan: NVE only).
+- **GTA V visual presets** (`--preset`, README; no longer the Enhanced default): grade + Clarity
+  as their capture preset, the others on F14-F18. Left: the grade's values are a first guess. In
+  the grade + Clarity run the first preset's shots caught nearby people slightly moved (Chrome had
+  the foreground when it started; the adapter now focuses the window before each key press);
+  whether a focus change lets the frozen world step is not checked.
 - **Enhanced: the settings-menu switch** is checked against screens grabbed at 2560x1440 in
   English; another window size or language needs its positions measured again. DLSS mode and
   frame scaling could go through the same menu if a comparison needs them.

@@ -424,8 +424,9 @@ Both run the same adapter, session script and freeze; what differs is under "GTA
 ### GTA V Enhanced (`gtave`)
 
 ```powershell
-.\capture.ps1 install gtave --mods "C:\...\Grand Theft Auto V Enhanced"   # Script Hook V is already there
-.\capture.ps1 install gtave --optiscaler --dlss-nr "C:\...\nvngx_dlssnr.dll"   # DLSS 5 (optional)
+.\capture.ps1 install gtave --mods "C:\...\Grand Theft Auto V Enhanced" --dlss-nr "C:\...\nvngx_dlssnr.dll"
+#   NaturalVision Enhanced, ray tracing and DLSS 5 (skin structure 2) by default, no ReShade effects
+#   (NVE's archive in out/mods or a --mods folder)
 .\capture.ps1 verify gtave --launch
 .\capture.ps1 scout --game gtave --name vinewood-walk --at "300,177,103.13" --facing 180
 .\capture.ps1 worker --game gtave
@@ -465,6 +466,17 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   settle after a cut and the same pose twice are about as with it off (40 frames: 1.58 against
   1.45; twice: 0.87 against 0.66). OptiScaler's ini cannot be saved from its menu while the game
   runs (the folder lock); the install sets it beforehand.
+- **DLSS 5's skin controls** (`tools/dlss5_skin_sweep.py`): Skin structure (-1, the default, follows
+  local structure; 0 and above set skin on its own) and Auto skin mask (the model finds skin
+  itself). OptiScaler's live settings file does not take them (only Passes, Style, PreSr), so the
+  tool sets them through OptiScaler's menu, live, and runs `upscaler_ab.py` with them as variants.
+  Vinewood, 14:00, one frozen instant: only skin changes (difference maps light faces and heads,
+  nothing else). Skin structure 0 makes skin smoother and slightly lighter, nearer the game's own;
+  2 adds pore and edge detail. In the portrait's face region the mean difference to the default is
+  3.2 at 0, 2.1 at 0.5, 1.0 at 1 (the same as the default), 1.8 at 2, against about 0.9 between
+  two shots of one pose. Auto skin mask off changes nothing at the default, where skin already
+  follows the rest of the frame. Nathan picked skin structure 2 (2026-11-21): Enhanced's install
+  sets it in OptiScaler.ini with `--optiscaler` (`optiscaler_settings` in install_enhanced.py).
 - **Ray tracing switched live** (`settings_menu.py`, adapter capability `ray_tracing_switch`): the
   game applies "Enable Ray Tracing" from its pause menu without a restart, also while frozen, so
   `tools/preset_ab.py --game gtave --with-dlss5` compares neither / ray tracing / DLSS 5 / both at
@@ -474,19 +486,76 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   confirmed before the next. Scripts do not run while the pause menu is open. About 25 s per
   switch. Vinewood at 14:00, extra sunny, 13 views: mean FLIP 0.172 for ray tracing, 0.174 for
   DLSS 5 over it, 0.259 for both (RDR2's Saint Denis: 0.055, 0.054, 0.069).
+- **The capture default** (Nathan, 2026-11-21): NaturalVision Enhanced (`--graphics-mod`), the
+  game's ray tracing and DLSS 5 (`--optiscaler`, skin structure 2), with no ReShade effects on top
+  and the game's motion blur off. `capture install gtave` installs all of it; `--no-graphics-mod`,
+  `--no-optiscaler` and `--preset` change it. Before NVE the default was the grade + Clarity
+  preset; with NVE that would grade twice (NVE has its own tonemapping and day and night
+  grading), so it went. Measured before that, with ray tracing and DLSS 5 on (Vinewood, 14:00, 13
+  views, one frozen instant): mean FLIP 0.142 for the grade, 0.058 for Clarity on top of it, 0.096
+  for MXAO and SSR on top of that. MXAO and SSR were never in the default: they double the
+  ray-traced occlusion and reflections and depend on each camera's view.
+- **Visual presets** (`--preset`, off by default; `adapters/gtav/visual/`,
+  shaders pinned in the lockfile): F14 no effects, F15 the capture preset (the colour grade, qUINT
+  Lightroom: contrast, softer highlights, saturation down, vibrance up, slightly cooler, plus
+  AstrayFX Clarity for local contrast), F16 the grade plus screen-space MXAO, SSR and Clarity,
+  F17 the depth buffer, F18 the grade alone. `--no-preset` goes back to no effects and leaves the
+  presets on their keys. `tools/preset_ab.py --game gtave --presets
+  plain:F14,grade:F15,grade_ss:F16 --with-dlss5 --restore F15` compares them at one frozen instant.
+  Measured (Vinewood, 14:00, extra sunny, ray tracing on, 13 views): mean FLIP 0.14 for the grade,
+  0.13 for the screen-space effects on top of it, with DLSS 5 off or on alike, and 0.18 for DLSS 5
+  over all of it. The depth buffer reads right (reversed, not upside down, at the DLSS render
+  size). Screen-space caveats: SSR puts glossy reflections on dry pavement and assumes one field
+  of view (60 degrees here) for every camera; MXAO darkens edges by what each camera sees. prod80's
+  colour effects were left out: they need noise textures and dither differently every frame.
+- **NaturalVision Enhanced** (the default since 2026-11-21): free from razedmods.com (GoFile/
+  PixelDrain links). The July 2026 build ("#2 Updated", 6.5 GB) is pinned: the latest (#3 V2, Nov
+  2026) hangs build 1158.13 on "Initializing". It ships its own ASI loader (`xinput1_4.dll`),
+  ReShade 6.7.3 with its own ReShade.ini, NVE.asi (a ReShade add-on that replaces 95 of the game's
+  shaders, loaded from NVE.bin), the `onigiri` loader with its DLC packs, and photo-mode effects.
+  The install copies only NVE's own 110 files straight from the archive
+  (`capture/install/components/pack.py`: streamed and hashed, the archive left as downloaded); ours
+  stay, and none overwrites a game file. NVE's ReShade effects are optional extras (colour presets,
+  photo frames, experimental volumetric clouds), not part of its look. Off vs on at Vinewood (two
+  starts, people and traffic cleared, same views): mean FLIP about 0.49, a different look
+  throughout (darker, more contrast, cooler, a deeper blue sky). `tools/preset_ab.py
+  --clear-people M` is what makes two starts comparable.
+- **NVE's per-camera effects off.** NVE keeps its settings in `%APPDATA%\NVE\settings-gen9.json`
+  (outside the locked game folder; read at start, written back on exit); its menu is a tab in
+  ReShade's overlay (Home). The install turns off its lens effects (reflections and fringing
+  around bright lights), lateral chromatic aberration (fringing towards the frame edges) and its
+  screen-space ambient occlusion (VBAO; off in this build's defaults, on in a file a newer build
+  left behind, and the ray tracing already does the occlusion): each depends on where a camera
+  points, so neighbouring views would disagree. A settings file holding only these keys works on a
+  fresh machine: NVE fills in its own defaults around them (checked 2026-11-21). Against the first
+  NVE run (Vinewood, 14:00, 10 views, two starts; `out/checks/nve_default/`): mean FLIP 0.09,
+  mostly foliage and shadow edges, which differ between any two starts; at the frame border the
+  red and cyan fringes on window frames and wires are much reduced (the colour mismatch on strong
+  edges dropped in 9 of 10 views), though some red fringing remains. Its motion blur
+  setting (`mb_config`) has no label in this build, so the game's own motion blur goes to 0
+  (`MotionBlurStrength`); under the freeze nothing moves anyway, and each shot waits for the
+  picture to settle after the camera cut. Its day and night grading follows the clock, not the
+  view. The game's auto-exposure does not re-adapt between poses while frozen (unlike Cyberpunk
+  2077's, which re-adapts at every pose): `tools/exposure_check.py` at Vinewood, 14:00, shot one
+  view after holding the darkest view (the sky, mean luma 82) and the brightest (the ground, 128)
+  for 300 frames each. 40 frames after the cut, the view came out at 104.30 and 104.38 against
+  103.41 settled. An adapting exposure would move the two in opposite directions; they moved
+  together by about 1, which is the settle after a cut (DLSS and temporal history), and were back
+  at 103.4 after 600 frames. So GTA V needs no exposure lock.
 - **Speed.** About 158 frames/s at 2560x1440 with ray tracing at the Alamo Sea, 94 in Vinewood with
   DLSS 5; 0.30 s per shot, 0.53 s with a moving crowd.
 - **Freeze**: the same minimum step, found the same way (a different address). Find it before
   freezing: at time scale 0 the value 1/3000 is copied into 321 other places.
-- **A deliberate crash.** Three times in about 15 frozen sessions (2026-11-21) the picture froze,
-  scripts stopped, and about a minute later the game exited. Rockstar's crash handler wrote a
-  dump each time (`%LOCALAPPDATA%\Rockstar Games\GTAV Enhanced\CrashLogs`). All three dumps fault
-  at the same instruction, `GTA5_Enhanced.exe+0x13f8980`: `mov qword ptr [0], 0x621`, a crash on
-  purpose with code 0x621, in code that is encrypted on disk. That makes it the game's protection,
-  not a script fault. What sets it off is not known. It came during or 1-3 min after frozen work
-  (the minimum-step writes), but each part of a take repeated alone did not set it off, and a
-  9.4-minute frozen take ran clean. The worker treats it like a closed game: a stale heartbeat
-  ends the game and starts it again.
+- **A deliberate crash.** Four times in about 18 sessions (2026-11-21) the picture froze, scripts
+  stopped, and about a minute later the game exited. Rockstar's crash handler wrote a dump each
+  time (`%LOCALAPPDATA%\Rockstar Games\GTAV Enhanced\CrashLogs`). All four dumps fault at the same
+  instruction, `GTA5_Enhanced.exe+0x13f8980`: `mov qword ptr [0], 0x621`, a crash on purpose with
+  code 0x621, in code that is encrypted on disk. That makes it the game's protection, not a script
+  fault. What sets it off is not known, and it is not the minimum-step write: the fourth came
+  3.4 minutes after a start, before any freeze or memory write, during a teleport, the crowd and an
+  obstacle scan. Each part of a take repeated alone did not set it off, and a 9.4-minute frozen
+  take ran clean. The worker treats it like a closed game: a stale heartbeat ends the game and
+  starts it again.
 
 ### How a take is captured in GTA V (measured 2026-11-21)
 

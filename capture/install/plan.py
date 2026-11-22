@@ -419,15 +419,40 @@ class IniListAdd(Step):
         ini.save()
 
 
+_MISSING = object()
+
+
+def json_get(d, key):
+    """d[key], where key is a top-level key or a list of keys into nested objects; None if absent."""
+    for k in (key if isinstance(key, (list, tuple)) else [key]):
+        if not isinstance(d, dict) or k not in d:
+            return None
+        d = d[k]
+    return d
+
+
+def json_put(d, key, value):
+    """Sets d[key] (key as in json_get), creating nested objects; value _MISSING removes it."""
+    keys = list(key) if isinstance(key, (list, tuple)) else [key]
+    for k in keys[:-1]:
+        d = d.setdefault(k, {})
+    if value is _MISSING:
+        d.pop(keys[-1], None)
+    else:
+        d[keys[-1]] = value
+
+
 class JsonSet(Step):
-    """Sets one top-level key of a JSON file (created from `default` when missing)."""
+    """Sets one key of a JSON file: a top-level key, or a list of keys into nested objects
+    (["graphics", "enable_lens_effects"]). A missing file is created from `default`."""
 
     def __init__(self, path, key, value, default=None, tag="settings", closed=True, why=""):
         self.path, self.key, self.value, self.default = path, key, value, default or {}
         self.tag, self.needs_game_closed, self.why = tag, closed, why
 
     def describe(self):
-        return "%s %s=%s%s" % (os.path.basename(self.path), self.key, json.dumps(self.value),
+        key = ".".join(self.key) if isinstance(self.key, (list, tuple)) else self.key
+        return "%s %s=%s%s" % (os.path.basename(self.path), key, json.dumps(self.value),
                                "  (%s)" % self.why if self.why else "")
 
     def _load(self):
@@ -435,17 +460,18 @@ class JsonSet(Step):
 
     def status(self, ctx):
         d = self._load()
-        return ("ok", "set") if d is not None and d.get(self.key) == self.value else ("todo", "change")
+        return ("ok", "set") if d is not None and json_get(d, self.key) == self.value else ("todo", "change")
 
     def apply(self, ctx):
         d = self._load()
         if d is None:
-            d = dict(self.default)
+            d = json.loads(json.dumps(self.default))
             ctx.record.makedirs(os.path.dirname(self.path))
             ctx.record.file(self.path, None)
         else:
-            ctx.record.setting("json", self.path, self.key, d.get(self.key), self.value)
-        d[self.key] = self.value
+            key = list(self.key) if isinstance(self.key, (list, tuple)) else self.key
+            ctx.record.setting("json", self.path, key, json_get(d, self.key), self.value)
+        json_put(d, self.key, self.value)
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(d, f, indent=4)
             f.write("\n")
@@ -569,11 +595,8 @@ def uninstall(record, log=print):
                     left.append(e)
         elif kind == "json" and os.path.exists(path):
             d = read_json(path)
-            if d.get(e["key"]) == e["new"]:
-                if e["old"] is None:
-                    d.pop(e["key"], None)
-                else:
-                    d[e["key"]] = e["old"]
+            if json_get(d, e["key"]) == e["new"]:
+                json_put(d, e["key"], _MISSING if e["old"] is None else e["old"])
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(d, f, indent=4)
                 log("  reset   %s %s" % (os.path.basename(path), e["key"]))

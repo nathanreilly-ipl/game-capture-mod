@@ -142,6 +142,8 @@ def steps(ctx):
     api = opt.get("api") or game_api()
     exchange = opt.get("exchange_dir") or EXCHANGE      # tests point these two elsewhere
     xml = opt.get("settings_xml") or settings_xml()
+    if opt.get("graphics_mod"):
+        raise ValueError("--graphics-mod: none is pinned for RDR2 (its look is the visual set and Reality Redemption 2)")
     out = []
 
     # Script Hook, RedLua, Native Trainer
