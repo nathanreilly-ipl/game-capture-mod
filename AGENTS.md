@@ -440,7 +440,7 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 | camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under |
 | exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot |
 | settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged |
-| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried |
+| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried |
 | scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) |
 | full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only |
 
