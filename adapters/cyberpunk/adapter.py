@@ -31,6 +31,12 @@ the narrower cameras: in a rig of 54.7 and 75.9 degree cameras the 54.7 degree o
 from 66% of the frame. Rendering at 3840x2160 (adapter setting render_size, and
 `capture install cyberpunk --resolution 3840x2160`) keeps them one to one.
 
+Exposure: auto-exposure adapts to every view, so along a sweep the brightness of the whole frame
+went up and down (Nathan, first near sweep). The engine option Rendering/ForcedExposureAvgLum
+fixes it: two poses that auto-exposure both brought to about 48 of 255 read 39.9 and 24.7 at
+one forced value. A take is locked to the value that reproduces its first shot's brightness,
+found by bisection (_lock_exposure), and auto-exposure comes back when the subject is shown.
+
 Settle: path tracing gathers light over many frames. After a cut, captures 40 frames apart
 differed by 3.7 levels of 255 (frames 5 to 40), 1.9 (40 to 80), 1.5 (80 to 120), 1.2 (120 to 160)
 and then stayed at 1.0 to 1.3 up to 640 frames: what is left is noise that does not settle, and
@@ -65,6 +71,10 @@ Settings (job settings "adapter"):
     output_size     the size of a captured frame ([2560, 1440])
     render_vfov     the vertical field of view everything is rendered at, degrees. A take sets it
                     to its widest camera (prepare_take) and a preview to its own; 76 otherwise
+    lock_exposure   hold the exposure of a take at what auto-exposure gave its first shot (True)
+    accumulate      frames averaged into each shot (4), accumulate_gap frames apart (4): the path
+                    tracer's noise differs from frame to frame, so a shot of one frame flickers
+                    against its neighbours in a sweep, most in reflections
     devices_off_m   devices within this many metres are switched off while the subject is hidden
                     (60; 0 leaves them on): their screens, holograms and blinking lights run on
                     real time and would differ from shot to shot
@@ -92,7 +102,8 @@ A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 DEFAULTS = {"settle": 120, "first_settle": 240, "clock_settle": 240, "park_depth": 12.0, "populate_s": 15,
             "step_dilation": 0.1, "check_settings": True, "pose_tolerance_m": 0.005,
             "render_size": [2560, 1440], "output_size": [2560, 1440], "render_vfov": 76.0,
-            "weather": "24h_weather_sunny", "devices_off_m": 60.0}
+            "weather": "24h_weather_sunny", "devices_off_m": 60.0,
+            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4}
 
 
 def _rz(deg):
@@ -118,6 +129,7 @@ class CyberpunkAdapter(Adapter):
         self._stood = None         # where the player stood before it was parked
         self._last_scale = None    # the crop scale of the last frame finished
         self.devices = None        # what the last "devices off" answered
+        self.exposure = None       # the exposure lock of the take, if any
 
     # --- lifecycle -------------------------------------------------------------------------
     def _heartbeat(self):
@@ -233,6 +245,9 @@ class CyberpunkAdapter(Adapter):
                "park_depth_m": float(self.settings.get("park_depth") or 0)}
         if self.devices:
             out["devices_switched_off"] = int(self.devices.get("devices_off", 0))
+        if self.exposure:
+            out["exposure_lock"] = dict(self.exposure)
+        out["frames_per_shot"] = int(self.settings.get("accumulate") or 1)
         if self.applied:
             out["game_settings"] = {"%s %s" % k: v for k, v in self.applied["values"].items()}
         return out
@@ -324,6 +339,7 @@ class CyberpunkAdapter(Adapter):
             self._park()
             self.frozen = True
         else:
+            self._unlock_exposure()
             self.sess.cmd("unpark")
             self.sess.cmd("unfreeze")
             if float(self.settings.get("devices_off_m") or 0) > 0:
@@ -371,6 +387,46 @@ class CyberpunkAdapter(Adapter):
         self.frozen = True
         if st.get("frozen") != "1" or float(st.get("dilation", 1)) > 1e-5:
             raise AdapterError("the world is not held: time dilation %s" % st.get("dilation"))
+        if self.settings.get("lock_exposure"):
+            self._lock_exposure()
+
+    def _brightness(self, settle):
+        """Mean brightness (0..255) of the rendered frame at the current pose."""
+        from PIL import Image
+        r = self.sess.cmd("shoot", int(settle), "exposure", timeout=120)
+        p = self._file(r["file"])
+        with Image.open(p) as img:
+            v = float(np.asarray(img.convert("L").resize((320, 180)), dtype=np.float32).mean())
+        os.remove(p)
+        return v
+
+    def _lock_exposure(self):
+        """Fixes the exposure at what auto-exposure has settled on for the current view: the
+        forced average luminance that gives the same frame brightness, by bisection (a larger
+        value gives a darker frame)."""
+        target = self._brightness(1)
+        self.sess.cmd("option", "set Rendering ForcedInstantAutoExposure true")
+        lo, hi = -3.0, 2.0   # log10 of the forced average luminance
+        got = None
+        for _ in range(10):
+            mid = (lo + hi) / 2
+            self.sess.cmd("option", "set Rendering ForcedExposureAvgLum %.6f" % (10 ** mid))
+            got = self._brightness(12)
+            if abs(got - target) < 0.004 * max(target, 1.0):
+                break
+            if got > target:
+                lo = mid
+            else:
+                hi = mid
+        self.exposure = {"forced_avg_lum": round(10 ** mid, 6), "brightness_auto": round(target, 2),
+                         "brightness_locked": round(got, 2)}
+        self.sess.cmd("wait", int(self.settings["settle"]), timeout=120)
+
+    def _unlock_exposure(self):
+        if self.exposure:
+            self.sess.cmd("option", "set Rendering ForcedExposureAvgLum -1.0")
+            self.sess.cmd("option", "set Rendering ForcedInstantAutoExposure false")
+            self.exposure = None
 
     def set_camera(self, shot):
         self._pose(shot["pos"], shot["right"], shot["fwd"], shot["up"], shot["vfov_deg"])
@@ -380,6 +436,12 @@ class CyberpunkAdapter(Adapter):
 
     def capture(self, path, settle):
         r = self.sess.cmd("shoot", int(settle or self.settings["settle"]), "shot", timeout=120)
+        more = []
+        for i in range(max(1, int(self.settings.get("accumulate") or 1)) - 1):
+            x = self.sess.cmd("shoot", int(self.settings.get("accumulate_gap") or 4), "shot%d" % (i + 2), timeout=120)
+            more.append(self._file(x["file"]))
+        if more:
+            self._average(self._file(r["file"]), more)
         scale, rendered = self._finish(self._file(r["file"]), path, self._pose_asked[4])
         self.last_size = [int(v) for v in self.settings["output_size"]]
         info = {"width": self.last_size[0], "height": self.last_size[1], "rendered_size": rendered,
@@ -388,6 +450,15 @@ class CyberpunkAdapter(Adapter):
             if k in r:
                 info[k] = r[k]
         return info
+
+    def _average(self, first, more):
+        """Replaces the frame `first` with the average of it and the frames in `more` (removed)."""
+        from PIL import Image
+        acc = np.asarray(Image.open(first).convert("RGB"), dtype=np.float32)
+        for p in more:
+            acc += np.asarray(Image.open(p).convert("RGB"), dtype=np.float32)
+            os.remove(p)
+        Image.fromarray(np.clip(acc / (len(more) + 1) + 0.5, 0, 255).astype(np.uint8)).save(first, format="BMP")
 
     def advance(self, seconds):
         """Exactly `seconds` of world time: the world runs at a reduced time dilation, in stages

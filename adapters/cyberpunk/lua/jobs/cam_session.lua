@@ -507,6 +507,38 @@ return function(ctx)
 		return out
 	end
 
+	-- option get <category> <key> | option set <category> <key> <value>: an engine option (the ones
+	-- Cyber Engine Tweaks lists with GameOptions.Dump), e.g. Rendering ForcedExposureAvgLum. Every
+	-- option set here goes back to what it was when the session ends.
+	local option_was = {}
+	ctx.defer(function()
+		for id, o in pairs(option_was) do
+			pcall(o.put, o.value)
+		end
+	end)
+	function handlers.option(args)
+		local what, category, key, value = (args or ''):match('^(%S+)%s+(%S+)%s+(%S+)%s*(%S*)')
+		if not key then
+			error('option needs get|set, a category and a key')
+		end
+		if what == 'set' then
+			local put
+			if value == 'true' or value == 'false' then
+				put = function(v) GameOptions.SetBool(category, key, v == 'true') end
+			elseif value:match('^%-?%d+$') then
+				put = function(v) GameOptions.SetInt(category, key, tonumber(v)) end
+			else
+				put = function(v) GameOptions.SetFloat(category, key, tonumber(v)) end
+			end
+			local id = category .. '/' .. key
+			if not option_was[id] then
+				option_was[id] = { value = tostring(GameOptions.Get(category, key)), put = put }
+			end
+			put(value)
+		end
+		return { 'option=' .. tostring(GameOptions.Get(category, key)) }
+	end
+
 	-- weather NAME [blend seconds] | weather free | weather state: set and hold a weather type
 	-- (24h_weather_sunny, _light_clouds, _cloudy, _heavy_clouds, _fog, _rain, _toxic_rain,
 	-- _pollution, _sandstorm), let the game choose again, or just report it. These calls are

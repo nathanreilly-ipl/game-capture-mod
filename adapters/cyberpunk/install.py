@@ -30,7 +30,7 @@ import re
 
 from capture import config
 from capture.install.components import addon, reshade
-from capture.install.plan import Call, CopyFile, JsonSet, MakeDir, WriteText
+from capture.install.plan import Call, CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText
 
 from . import paths, settings as game_settings
 
@@ -46,6 +46,12 @@ OPTIONS = {"preset": False, "api": "d3d12", "resolution": "2560x1440"}   # the r
 CET = "cyber_engine_tweaks"
 FRAMEWORKS = ("red4ext", "redscript", "codeware")
 VISUAL_SET = ("ultra_plus", "nova_lut", "remove_mods_menu")   # the option "preset"; from Nexus Mods, supplied
+# Ultra Plus for captures (its UltraPlusConfig.ini): the path tracing mode and top quality its
+# makers give for an RTX 5090, fixed instead of scaled to a frame rate, and nothing drawn on screen.
+ULTRA_PLUS = [("internal.mode", "PT21"), ("internal.quality", "Insane"), ("internal.sharc", "Insane"),
+              ("internal.streaming", "High"), ("internal.simpleMode", "false"), ("internal.showFps", "false"),
+              ("internal.showVram", "false"), ("internal.showVramWarnings", "false"),
+              ("internal.showIncompatibleModWarnings", "false"), ("internal.showPQSaturationWarning", "false")]
 MOD_SRC = os.path.join(HERE, "lua", paths.MOD_NAME)
 OVERLAY_KEY = 0xC0 << 48      # the ~ key (VK_OEM_3), as Cyber Engine Tweaks stores a single key
 
@@ -102,6 +108,16 @@ def steps(ctx):
         for name in VISUAL_SET:
             for f in ctx.files.mods[name]["files"]:
                 out.append(CopyFile(ctx.file(name, f["name"]), os.path.join(g, *f["name"].split("/"))))
+        ultra_ini = os.path.join(g, paths.CET_DIR, "mods", "UltraPlus", "UltraPlusConfig.ini")
+        for key, value in ULTRA_PLUS:
+            out.append(IniSet(ultra_ini, "UltraPlus", key, value, tag="settings",
+                              why="Ultra Plus for captures: fixed top quality, nothing on screen"))
+    else:
+        # the visual set is optional: installing without it takes its files out again (backed up)
+        for name in VISUAL_SET:
+            for f in ctx.files.mods[name]["files"]:
+                out.append(RemoveFile(os.path.join(g, *f["name"].split("/")), f["sha256"], tag="mods",
+                                      why="the visual set is off (install with the preset option to have it)"))
     out.append(JsonSet(os.path.join(g, paths.CET_DIR, "bindings.json"), "cet", {"overlay_key": OVERLAY_KEY}, tag="mods",
                        why="the overlay on the ~ key: no first-start prompt to bind one"))
 

@@ -648,8 +648,14 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
   crowd options are untried.
 - The first scouted location had 0 characters or vehicles within reach of the rig, so clearing a
   camera of a person has not been exercised in the game.
-- Downloaded, not installed: Ultra Plus 10.1.0 for 2.5, Nova LUT 4, Remove Mods Menu (`out\mods\nexus`).
-  DLSS 5 through OptiScaler is untried (the shared component and `nvngx_dlssnr.dll` exist).
+- The visual set (install option `preset`, off by default): Ultra Plus 10.1.0 for 2.5 at its top
+  quality (mode PT21, quality and SHaRC "Insane", nothing drawn on screen), Nova LUT 4 and Remove
+  Mods Menu, supplied by hand from Nexus Mods. With it the game starts unattended and
+  `capture verify` passes as without (57 frames/s at the market); the picture is flatter, less
+  saturated and darker (Nova LUT's AgX grading; `out\preview\visual_set_off_on_pose0.jpg`).
+  Whether that is the look wanted is Nathan's call; noise and settle time with it are not measured.
+  There is no `--preset` flag on this branch: `capture.install.install("cyberpunk", options={"preset": True})`.
+- DLSS 5 through OptiScaler is untried (the shared component and `nvngx_dlssnr.dll` exist).
 - No place titles, no scouting overlay, no visual set; `tests/test_install.py` has no Cyberpunk part.
 ## Known gaps
 
