@@ -561,7 +561,7 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
 
 ```powershell
 .\capture.ps1 mods fetch cyberpunk            # Cyber Engine Tweaks, RED4ext, redscript, Codeware (GitHub, pinned)
-.\capture.ps1 install cyberpunk --only mods --only scripts --only reshade --only addon --only settings   # game closed
+.\capture.ps1 install cyberpunk --only mods --only scripts --only reshade --only addon --only clock --only settings   # game closed
 .\capture.ps1 verify cyberpunk --launch
 .\capture.ps1 scout --game cyberpunk --name cherry-blossom-market "--at=-701.158,952.269,12.0" "--facing=-140"
 .\capture.ps1 submit --game cyberpunk --location cyberpunk-cherry-blossom-market-001 --provider ring --set count=8
@@ -590,7 +590,9 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
   vignette, a 2560x1440 window. The adapter reads them back when a session opens and refuses to
   capture on other settings. Setting them in the running game crashed it.
 - **Unattended start** (`adapters/cyberpunk/launch.py`): the game's exe is started directly, the
-  loader comes up in the main menu and loads the last save from a script. Starting through Steam
+  loader comes up in the main menu and loads the last save from a script, and Space ends the
+  loading film, which otherwise waits on "press to continue" with the save loaded: 39 s to the
+  world instead of 98 s (2026-11-22). Starting through Steam
   instead raised a Windows administrator prompt on every start (Steam's first-time setup), which
   nobody answers and which blanks every screen grab for two minutes. Started directly, Steam does
   not list the game as running: other sessions must look for `Cyberpunk2077.exe`.
@@ -619,6 +621,34 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
 - **Settle.** 120 frames per shot: after a cut the path-traced picture keeps changing for about
   that long (captures 40 frames apart differ by 3.7, 1.9, 1.5, 1.2 levels of 255, then 1.0 to 1.3
   for good; `probes/converge_probe.py`). 1.5 s per shot at 85 frames/s in the Badlands, more in the city.
+- **Exposure.** Auto-exposure adapts to every view, so along the first near sweep the whole frame's
+  brightness went up and down. A take is now locked to the exposure of its first shot through the
+  engine option `Rendering/ForcedExposureAvgLum` (found by bisection; adapter setting
+  `lock_exposure`). Along the same 345-pose sweep the jitter of the mean brightness fell from 2.12
+  to 0.45 levels of 255; views of darker parts of the scene are now darker, as they should be.
+- **Frames per shot.** A shot is the average of 4 frames 4 frames apart (`accumulate`,
+  `accumulate_gap`): the path tracer's noise differs from frame to frame and showed as flicker
+  between neighbouring sweep poses, most in reflections. 2.4 s per shot instead of 1.9.
+- **Real-time clock.** Video ads, holograms and blinking lights run on the clock the game's own code
+  reads, not on the simulation's, so the freeze does not hold them. Our clock plug-in
+  (`addons/clock`, `capture_clock.asi` in `bin\x64\plugins`, `install --only clock`) hooks the
+  clock calls of the game's exe and of Bink, its video player (their import tables: the graphics
+  driver, DLSS, ReShade and the script host keep the real clock), and the session slows that clock
+  to 1/5,000 while a take is captured (adapter settings `hold_clock`, `clock_scale`;
+  `probes/clock_probe.py`). Stopped outright the game shuts itself down at once, and at 1/100,000
+  as well; at 1/10,000 the hanging screens and the blinking light under them stood still, and
+  pixels varying by more than 12 of 255 across ten captures of one pose fell from 0.13% to 0.008%,
+  frame rate unchanged. Holding Bink alone changed nothing. Near sweeps (345 poses at one instant,
+  2026-11-22) against the same sweeps without it (`tools/sweep_flicker.py`: each pose against the
+  average of its neighbours): Cherry Blossom Market, the billboard ad that played across the
+  sweep now shows one frame throughout; brightness jitter 0.59 to 0.045 levels of 255, roughness
+  4.80 to 4.38, pixels off by more than 12 10.1% to 9.2%. Kabuki Market's sweep scored the same
+  with and without it (roughness 9.54 and 9.58, jitter 0.063 and 0.062).
+- **Scouting by name.** `python -m adapters.cyberpunk.probes.scout_fast_travel --list` prints the
+  fast-travel points the save knows; `... <record>=<name>` records a location a few metres from one.
+- **Menus.** A game menu (pause, inventory) holds the world and shows its own camera; one was
+  found open after a start and after the window lost focus. A session closes it with Esc before
+  it starts, and a shot taken under one is retaken after Esc.
 - **Scene and moving things.** Ray probes against built things and open land (collision groups
   `Static` and `Terrain`); characters and vehicles as oriented boxes of stock sizes; quest
   characters are never removed.
@@ -642,8 +672,8 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
   enabled again afterwards (44 devices at the market). That takes out the fast-travel terminal's
   hologram and blinking bars and the device screens, which go dark; strongly varying pixels fell
   from 2.9% to 2.2%. What is left are screens and holograms that are part of the map, not devices
-  (the market's two hanging screens, its hologram tree). Untried for those: Codeware's video
-  component fields, freezing the clock the shaders read.
+  (the market's two hanging screens, its hologram tree). Those are what the real-time clock hold
+  (above) is for; the hologram tree still varies with it, as it does with nothing held.
 - People still appear in a held world (2 of 113 over 480 frames); `Traffic/StopSpawn` and the
   crowd options are untried.
 - The first scouted location had 0 characters or vehicles within reach of the rig, so clearing a

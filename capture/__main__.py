@@ -368,7 +368,7 @@ def main(argv=None):
     s.add_argument("--resolution", metavar="WxH",
                    help="the game's windowed size, 16:9 (default for RDR2: 2560x1440, the capture size)")
     s.add_argument("--only", action="append",
-                   choices=("mods", "reshade", "addon", "scripts", "settings", "optiscaler", "raytracing", "machine"),
+                   choices=("mods", "reshade", "addon", "clock", "scripts", "settings", "optiscaler", "raytracing", "machine"),
                    help="only these parts (repeatable), e.g. --only scripts after editing a script")
     s.add_argument("--dry-run", action="store_true", help="show every step and what it would change; change nothing")
     s.add_argument("--no-verify", action="store_true", help=argparse.SUPPRESS)

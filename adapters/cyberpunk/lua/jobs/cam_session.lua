@@ -77,6 +77,8 @@ return function(ctx)
 	local parked = nil             -- where the player stood before it was parked: { pos, yaw }
 	local anchor = nil             -- world transform of the camera component's parent: { p, r, f, u }
 	local hud_hidden = false
+	local CLOCK_IN, CLOCK_OUT = ctx.dir .. '/clock.txt', ctx.dir .. '/clock_status.txt'   -- our clock plug-in (rtclock)
+	local clock_held = false
 
 	local player = Game.GetPlayer()
 	local cam = player:GetFPPCameraComponent()
@@ -107,7 +109,8 @@ return function(ctx)
 	local function state_lines()
 		local lines = { 'frozen=' .. (frozen and '1' or '0'), 'tick=' .. tostring(ctx.ticks()),
 			string.format('real_dt=%.9g', real_dt), 'parked=' .. (parked and '1' or '0'),
-			'hud_hidden=' .. (hud_hidden and '1' or '0'), 'restricted=' .. tostring(restricted) }
+			'hud_hidden=' .. (hud_hidden and '1' or '0'), 'restricted=' .. tostring(restricted),
+			'rtclock_held=' .. (clock_held and '1' or '0') }
 		local function add(key, fn)
 			local ok, v = pcall(fn)
 			if ok and v ~= nil then
@@ -131,6 +134,10 @@ return function(ctx)
 			return string.format('%02d:%02d', t:Hours(), t:Minutes())
 		end)
 		add('paused', function() return Game.GetSystemRequestsHandler():IsGamePaused() and 1 or 0 end)
+		add('menu', function()   -- the inventory, map, journal...: they hold the world and have their own camera
+			local defs = GetAllBlackboardDefs().UI_System
+			return Game.GetBlackboardSystem():Get(defs):GetBool(defs.IsInMenu) and 1 or 0
+		end)
 		add('saving_locked', function() return Game.IsSavingLocked() and 1 or 0 end)
 		return lines
 	end
@@ -238,6 +245,67 @@ return function(ctx)
 		time_paused = (numbers(args)[1] or 1) ~= 0
 		ts:SetPausedState(time_paused, REASON)
 		return { 'time_paused=' .. tostring(ts:IsPausedState()) }
+	end
+
+	-- rtclock hold [scale] [mask] | run | state: the clock the game's own code reads (the real
+	-- time), which video ads, holograms and blinking lights run on and a time dilation does not
+	-- hold. Our clock plug-in (addons/clock, capture_clock.asi) holds it: scale is how fast it
+	-- then runs (0: not at all), mask (hex) which clocks of which modules (for probing; all by
+	-- default). The plug-in answers in clock_status.txt; its lines come back as clock_<key>.
+	local function clock_lines(st)
+		local lines = {}
+		for k, v in pairs(st) do
+			lines[#lines + 1] = 'clock_' .. k .. '=' .. v
+		end
+		return lines
+	end
+	local function clock_send(verb)
+		local st = read_kv(CLOCK_OUT)
+		if not st or not st.seq then
+			error('the clock plug-in does not answer (no clock_status.txt): is capture_clock.asi installed?')
+		end
+		local seq = (tonumber(st.seq) or 0) + 1
+		local f = io.open(CLOCK_IN, 'w')
+		if not f then
+			error('cannot write clock.txt')
+		end
+		f:write(seq .. ' ' .. verb .. '\n')
+		f:close()
+		return seq
+	end
+	ctx.defer(function()
+		if clock_held then
+			pcall(clock_send, 'run')
+		end
+	end)
+	function handlers.rtclock(args, reply, fail)
+		local verb, rest = (args or ''):match('^(%S+)%s*(.*)$')
+		if verb == 'state' then
+			local st = read_kv(CLOCK_OUT)
+			if not st then
+				error('the clock plug-in does not answer (no clock_status.txt)')
+			end
+			return clock_lines(st)
+		end
+		if verb ~= 'hold' and verb ~= 'run' then
+			error('rtclock hold [scale] [mask] | run | state')
+		end
+		local seq = clock_send(verb == 'hold' and ('hold ' .. (rest ~= '' and rest or '0')) or 'run')
+		clock_held = verb == 'hold'
+		local frames = 0
+		local function check()
+			local st = read_kv(CLOCK_OUT)
+			if st and tonumber(st.seq) == seq then
+				return reply(clock_lines(st))
+			end
+			frames = frames + 1
+			if frames > 300 then
+				return fail('the clock plug-in did not take "' .. verb .. '" within 300 frames')
+			end
+			ctx.after(1, check)
+		end
+		ctx.after(1, check)
+		return ASYNC
 	end
 
 	-- hud 0|1: the whole HUD (minimap, quest tracker, calls, hints) off or on, through the UI's

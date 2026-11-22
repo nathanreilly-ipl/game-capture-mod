@@ -4,6 +4,7 @@ out/
 reports/
 # RDR2 add-on build and fetched headers
 build/
+addons/build_clock/
 deps/
 *.addon64
 *.bmp

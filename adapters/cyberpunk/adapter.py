@@ -44,6 +44,21 @@ screens and holograms that keep playing in real time (probes/converge_probe.py, 
 Market at noon, 3840x2160, 13 frames/s). Hence 120 frames per shot, where RDR2 and GTA V take 40.
 Auto-exposure is not the cause: with the engine's eye adaptation off the drift was the same.
 
+Real-time clock: video ads, holograms and blinking lights run on the clock the game's own code
+reads (the real time), not on the simulation's, so a held world does not hold them: one pose
+captured ten times showed them changing (Cherry Blossom Market, 2026-11-22). Our clock plug-in
+(addons/clock, capture_clock.asi, installed by `capture install cyberpunk`) slows that clock in
+the game's exe and in Bink, its video player, while a take is captured (hold_clock). Stopped
+outright the game quits at once (clean shutdown, twice); at 1/10,000 it runs on, and pixels
+varying by more than 12 of 255 across ten captures went from 0.13% to 0.008% (frame rate
+unchanged; probes/clock_probe.py). The default 1/5,000 leaves a margin: the game seems to need
+the clock to move about a microsecond per frame (at 1/100,000 it quit), and a 17-minute take
+then plays about 0.2 s of an ad. Bink held alone changed nothing: the screens follow the exe's
+clock. A near sweep at the market with it: the billboard shows one frame across all 345 poses
+(it played before) and the brightness jitter along the sweep fell from 0.59 to 0.045 levels of
+255 (tools/sweep_flicker.py). The clock runs again for time steps (advance) and when the subject is shown, and after
+a hold the game's clocks run behind real time by as long as they were held.
+
 HUD: the UI's "Empty" game context removes all of it (minimap, quest tracker, calls, hints).
 
 Saving is locked by the loader mod whenever a save is loaded, so nothing the adapter does (moving
@@ -78,6 +93,8 @@ Settings (job settings "adapter"):
     devices_off_m   devices within this many metres are switched off while the subject is hidden
                     (60; 0 leaves them on): their screens, holograms and blinking lights run on
                     real time and would differ from shot to shot
+    hold_clock      hold the real-time clock while a take is captured (True; see Real-time clock)
+    clock_scale     how fast the held clock runs (0.0002; 0 makes the game quit)
     weather         the weather set and held at a location (24h_weather_sunny; "free" or "" leaves
                     the game's own, which may be a sandstorm)
 """
@@ -103,7 +120,7 @@ DEFAULTS = {"settle": 120, "first_settle": 240, "clock_settle": 240, "park_depth
             "step_dilation": 0.1, "check_settings": True, "pose_tolerance_m": 0.005,
             "render_size": [2560, 1440], "output_size": [2560, 1440], "render_vfov": 76.0,
             "weather": "24h_weather_sunny", "devices_off_m": 60.0,
-            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4}
+            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4, "hold_clock": True, "clock_scale": 0.0002}
 
 
 def _rz(deg):
@@ -130,6 +147,9 @@ class CyberpunkAdapter(Adapter):
         self._last_scale = None    # the crop scale of the last frame finished
         self.devices = None        # what the last "devices off" answered
         self.exposure = None       # the exposure lock of the take, if any
+        self._pose_fix = np.zeros(3)   # a steady offset of the rendered camera, made up for (recover)
+        self.clock_held = False    # the real-time clock held by our clock plug-in
+        self.clock = None          # what the clock plug-in last answered
 
     # --- lifecycle -------------------------------------------------------------------------
     def _heartbeat(self):
@@ -185,7 +205,30 @@ class CyberpunkAdapter(Adapter):
                                            "%s is %s, not %s" % (n, has, want) for _, n, want, has in self.applied["different"]))
         if self.hwnd and not window.set_client_size(self.hwnd, *render):
             raise AdapterError("the game window is %s, not %s" % (window.client_size(self.hwnd), render))
+        self._close_menus()
         self._set_render_fov()
+
+    @staticmethod
+    def _menu_open(st):
+        if st.get("menu") == "1" or st.get("paused") == "1":
+            return True
+        # the inventory held the world (time dilation 1e-6) without saying it is a menu (2026-11-22)
+        return st.get("frozen") != "1" and float(st.get("dilation", 1)) < 0.5
+
+    def _close_menus(self):
+        """A game menu (pause, inventory, map...) holds the world and shows its own camera; it was
+        found open after a start and after the window lost focus. Esc closes one level of it."""
+        st = self.sess.cmd("state")
+        for _ in range(4):
+            if not self._menu_open(st):
+                return
+            if self.hwnd:
+                window.focus(self.hwnd)
+                window.press(self.hwnd, "Esc")
+            time.sleep(1.5)
+            st = self.sess.cmd("wait", 10)
+        raise AdapterError("a game menu stays open (paused=%s menu=%s dilation=%s)"
+                           % (st.get("paused"), st.get("menu"), st.get("dilation")))
 
     def prepare_take(self, shots):
         """Called by the take loop before the subject is hidden: the camera goes to the widest
@@ -248,6 +291,11 @@ class CyberpunkAdapter(Adapter):
         if self.exposure:
             out["exposure_lock"] = dict(self.exposure)
         out["frames_per_shot"] = int(self.settings.get("accumulate") or 1)
+        if self.clock_held and self.clock:
+            out["realtime_clock"] = {"held_by": "capture_clock.asi", "scale": float(self.clock.get("scale", 0)),
+                                     "modules": [self.clock[k] for k in sorted(self.clock) if k.startswith("module")]}
+        if np.any(self._pose_fix):
+            out["camera_offset_made_up_m"] = [round(float(v), 4) for v in self._pose_fix]
         if self.applied:
             out["game_settings"] = {"%s %s" % k: v for k, v in self.applied["values"].items()}
         return out
@@ -325,6 +373,7 @@ class CyberpunkAdapter(Adapter):
         """Takes the player (and the HUD) out of the pictures: the world is held and the player
         parked under the ground, which only a held world allows (a running one lets it fall).
         Showing it again puts it back and lets the world run."""
+        self._pose_fix = np.zeros(3)
         if hidden:
             st = self.sess.cmd("state")
             if st.get("parked") != "1":
@@ -339,6 +388,7 @@ class CyberpunkAdapter(Adapter):
             self._park()
             self.frozen = True
         else:
+            self._hold_clock(False)
             self._unlock_exposure()
             self.sess.cmd("unpark")
             self.sess.cmd("unfreeze")
@@ -354,7 +404,7 @@ class CyberpunkAdapter(Adapter):
         self.sess.cmd("anchor")
 
     def _pose(self, pos, right, fwd, up, vfov):
-        vals = [float(v) for v in list(pos) + list(right) + list(fwd) + list(up)] + [float(vfov)]
+        vals = [float(v) for v in list(np.asarray(pos, float) - self._pose_fix) + list(right) + list(fwd) + list(up)] + [float(vfov)]
         vals[-1] = float(self.settings["render_vfov"])   # the camera stays wide; _finish cuts the shot out
         self.sess.cmd("pose", " ".join("%.7f" % v for v in vals))
         self._pose_asked = (np.asarray(pos, float), np.asarray(right, float), np.asarray(fwd, float), np.asarray(up, float),
@@ -389,6 +439,19 @@ class CyberpunkAdapter(Adapter):
             raise AdapterError("the world is not held: time dilation %s" % st.get("dilation"))
         if self.settings.get("lock_exposure"):
             self._lock_exposure()
+        self._hold_clock(True)
+
+    def _hold_clock(self, hold):
+        """The real-time clock, held by our clock plug-in (rtclock in the session) while a take is
+        captured, so video ads, holograms and blinking lights stand still with the world. Held
+        after the exposure lock: auto-exposure adapts over real time."""
+        if hold == self.clock_held or not self.settings.get("hold_clock"):
+            return
+        r = self.sess.cmd("rtclock", "hold %.9g" % float(self.settings.get("clock_scale") or 0.0) if hold else "run")
+        self.clock_held = hold
+        self.clock = {k[len("clock_"):]: v for k, v in r.items() if k.startswith("clock_")}
+        if hold:
+            self.sess.cmd("wait", 10)
 
     def _brightness(self, settle):
         """Mean brightness (0..255) of the rendered frame at the current pose."""
@@ -464,9 +527,13 @@ class CyberpunkAdapter(Adapter):
         """Exactly `seconds` of world time: the world runs at a reduced time dilation, in stages
         ten times slower each as the target comes near, and is held again. The parked player fell
         a little meanwhile, so it is parked again and the camera's anchor measured again."""
+        held = self.clock_held
+        self._hold_clock(False)   # the world's time steps over real frames: they need the clock running
         r = self.sess.cmd("advance", "%.9f %.6f" % (seconds, float(self.settings["step_dilation"])), timeout=300)
         if self.subject_hidden:
             self._park()
+        if held:
+            self._hold_clock(True)
         return {"advanced_s": float(r["advanced_s"]), "ticks": int(r["frames"]), "sim_time": float(r["sim_time"])}
 
     def instant(self):
@@ -507,12 +574,14 @@ class CyberpunkAdapter(Adapter):
         problems = []
         if self.hwnd and not window.is_foreground(self.hwnd):
             problems.append("game window lost focus")
-        if st.get("paused") == "1":
+        if st.get("paused") == "1" or st.get("menu") == "1":
             problems.append("game paused (a menu is open)")
         if self.frozen and (st.get("frozen") != "1" or float(st.get("dilation", 1)) > 1e-5):
             problems.append("world not frozen")
         if self.subject_hidden and (st.get("parked") != "1" or st.get("hud_hidden") != "1"):
             problems.append("player or HUD visible")
+        if self.clock_held and st.get("rtclock_held") != "1":
+            problems.append("real-time clock not held")
         err = self._pose_error(st)
         if err and (err[0] > float(self.settings["pose_tolerance_m"]) or err[1] > 0.05):
             problems.append("camera %.1f mm and %.3f degrees off its pose" % (err[0] * 1000, err[1]))
@@ -526,10 +595,21 @@ class CyberpunkAdapter(Adapter):
     def recover(self):
         """Refocus the window, close a pause, park and anchor again, set the pose again; the held
         world is not let go."""
+        # a camera that rendered off its pose by a steady offset (Northside docks, 2026-11-22: 8.7 mm
+        # on every try, the player parked under water) is asked that much the other way next time
+        last = self.sess.state or {}
+        if self._pose_asked and "rendered_pos" in last:
+            err = np.array(redlua.vec(last["rendered_pos"])) - self._pose_asked[0]
+            if np.linalg.norm(err) > float(self.settings["pose_tolerance_m"]):
+                self._pose_fix = self._pose_fix + err
         deadline = time.time() + 30
         while time.time() < deadline:
             if self.hwnd and not window.is_foreground(self.hwnd):
                 window.focus(self.hwnd)
+            st = self.sess.state or {}
+            if st.get("paused") == "1" or st.get("menu") == "1":
+                window.press(self.hwnd, "Esc")   # a menu opened (the window lost focus, a key)
+                time.sleep(1.5)
             if self.subject_hidden:
                 self.sess.cmd("hud", 0)
                 self._park()
@@ -584,5 +664,6 @@ class CyberpunkAdapter(Adapter):
     def end_frozen(self):
         """The take is over; the world stays held until the subject is shown again."""
         if not self.subject_hidden and self.frozen:
+            self._hold_clock(False)
             self.sess.cmd("unfreeze")
             self.frozen = False

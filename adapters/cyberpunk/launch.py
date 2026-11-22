@@ -1,12 +1,15 @@
 """Starts Cyberpunk 2077 with nobody at the keyboard, until a save is loaded, the world runs and
-our loader mod's heartbeat says ingame=1 (about 95 s, 2026-11-21).
+our loader mod's heartbeat says ingame=1 (39 s with the loading film skipped, 2026-11-22; 98 s
+without).
 
     close the game and CD Projekt's launcher
     -> bin\\x64\\Cyberpunk2077.exe --launcher-skip -skipStartScreen, Steam running
        (-skipStartScreen: no "press a key" screen before the main menu)
+    -> the intro films and the loading film: Space, pressed every 2 s until the player is in the
+       world (the loading film otherwise waits on "press to continue")
     -> main menu: Cyber Engine Tweaks starts our mod, the heartbeat appears with world=0
     -> the continue job (lua/jobs/continue_game.lua) loads the last save from inside the game,
-       asked again every 15 s until a world is there (a request during the intro is ignored)
+       asked again every 6 s until a world is there (a request during the intro is ignored)
     -> heartbeat with ingame=1: the ground under the player has loaded and the clock runs
 
 The exe is started directly, not through Steam: every start through Steam (steam.exe -applaunch)
@@ -92,7 +95,7 @@ def start(exchange, client=(2560, 1440), timeout=600, log=print, snapshots=None,
     return drive(exchange, client, timeout, log, snapshots)
 
 
-def drive(exchange, client=(2560, 1440), timeout=600, log=print, snapshots=None):
+def drive(exchange, client=(2560, 1440), timeout=600, log=print, snapshots=None, skip_intro=True):
     """Takes a starting game to a loaded save; also for attaching to a game already on its way."""
     window.keep_awake()
     t0 = time.time()
@@ -113,12 +116,19 @@ def drive(exchange, client=(2560, 1440), timeout=600, log=print, snapshots=None)
                 shots += 1
                 img.convert("RGB").resize((960, 540)).save(os.path.join(snapshots, "%02d_%03ds.jpg" % (shots, time.time() - t0)))
         hb = heartbeat(exchange)
+        if h and skip_intro and (not hb or hb.get("ingame") != "1"):
+            # Space skips the intro films (Nathan, 2026-11-22) and ends the loading film, which
+            # otherwise waits on "press to continue" with the save loaded (40 s to 98 s on
+            # 2026-11-22). Pressed until the player is in the world (where it only jumps), and
+            # only into the game's window (window.press sends nothing while it is not in front).
+            window.focus(h)
+            window.press(h, "Space")
         if not hb:
             continue
         if hb.get("ingame") == "1":
             log("a save is loaded and the loader is up after %.0f s" % (time.time() - t0))
             break
-        if hb.get("world") != "1" and time.time() - asked > 15 and not hb.get("job"):
+        if hb.get("world") != "1" and time.time() - asked > 6 and not hb.get("job"):
             # in the main menu (world=0): load the last save from inside the game. A request made
             # while the intro still plays is ignored, so it is repeated until a world is there.
             redlua.run_job(exchange, CONTINUE_JOB, timeout_s=50, wait=False, staged=True)

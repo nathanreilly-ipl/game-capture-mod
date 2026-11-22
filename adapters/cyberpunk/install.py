@@ -14,6 +14,9 @@ them (Direct3D 12, ReShade as an .asi plug-in) and adds what only Cyberpunk need
   and waits for a key to be bound.
 - Our mod (lua/capture_mod/init.lua) in its mods folder, with the exchange folder inside it:
   a Cyber Engine Tweaks mod reads and writes only inside its own folder (paths.py).
+- Our clock plug-in (capture/install/components/clock.py) in bin\\x64\\plugins, holding the clock
+  of the game's exe and of Bink, its video player: video ads, holograms and blinking lights run
+  on that clock, not on the simulation's, so a time dilation does not hold them.
 
 - Game settings for captures (settings.py: path tracing with Ray Reconstruction and DLAA, no
   frame generation, no lens effects, the render window), written into the game's own settings
@@ -29,7 +32,7 @@ import os
 import re
 
 from capture import config
-from capture.install.components import addon, reshade
+from capture.install.components import addon, clock, reshade
 from capture.install.plan import Call, CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText
 
 from . import paths, settings as game_settings
@@ -135,6 +138,9 @@ def steps(ctx):
     plugins = os.path.join(b, "plugins")
     out += reshade.steps(ctx, exe, api, asi_loader=True, asi_dir=plugins)
     out += addon.steps(ctx, plugins, exchange)   # ReShade's config and add-ons: beside its own file
+    # the clock the game and its video player (Bink) read, held while a held world is captured
+    out += clock.steps(plugins, os.path.join(exchange, "clock.txt"), os.path.join(exchange, "clock_status.txt"),
+                       (paths.EXE_NAME, "bink2w64.dll"))
 
     # game settings, in the game's own settings file
     size = tuple(int(v) for v in (opt.get("resolution") or "2560x1440").lower().split("x"))
