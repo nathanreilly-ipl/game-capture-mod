@@ -71,6 +71,214 @@ The lockfiles pin the versions this repository was tested with:
 |---|---|---|
 | `nvngx_dlssnr.dll` | any | any version, matched by name |
 
+## Cyberpunk 2077 (Steam)
+
+### Cyber Engine Tweaks 1.38.1
+
+**Required.** Exposes the game's script API to Lua mods and ships the ASI loader (version.dll) that also loads ReShade. Our loader mod and the session job run in it. This build supports Cyberpunk 2077 patch 2.5 (file version 3.0.88.46235) only; a game update needs a new build.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/maximegmd/CyberEngineTweaks/releases/tag/v1.38.1 |
+| File as downloaded | `cet_1_38_1.zip`, 34,868,963 bytes, SHA-256 `2e52be4ed431fad787e64ecbf75db346b4224577d2b89894912bc3f159020e73` |
+| Direct link | https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.38.1/cet_1_38_1.zip |
+| Licence | MIT (may be redistributed) |
+| Note | Every file of the release archive, installed where the archive has it (bin/x64/...). Archive size and sha256 match GitHub's figures for the release asset (downloaded 2026-11-21). |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `cyber_engine_tweaks` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `bin/x64/LICENSE` | 1,085 | `98c3b6d063066ad2dddc1a716d6ce5df8ed63497b0084b248d8d05516c57dbc7` |
+| `bin/x64/global.ini` | 167 | `c02b09b2cf2cfab32527ee1a88ee311500c1c2f4c95d20fe0898c9e0407a4d86` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/materialdesignicons.ttf` | 1,243,500 | `bd725a7a38939e5b59904e1b7a7265919ecec256166ece69d515c21005165907` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSans-Regular.ttf` | 556,216 | `4c8d67001d3c2977e5d6bf0a4f8add80cd564bd1df60b7569fd23751e7dda02a` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansJP-Regular.otf` | 4,548,208 | `34b41de3f65166440ea2ce40121eb1c9b9c2bb92d188bd32a8e6091cd92316db` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansKR-Regular.otf` | 4,744,692 | `29445948e432137e0de104dec389e956d72633aa0e4cb04ca572bb8e378e3d35` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansMono-Regular.ttf` | 383,844 | `97b31969bfe7ebf894c12afdf6a5dcb6e87e64114697782802fe933e693eacd8` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansSC-Regular.otf` | 8,482,020 | `a2b93e6c2db05d6bbbf6f27d413ec73269735b7b679019c8a5aa9670ff0ffbf2` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansTC-Regular.otf` | 5,766,468 | `8d9cd5f210c0204d2a1ddaeaf82db1071e242126f4e18b9c350d8b1680bae400` |
+| `bin/x64/plugins/cyber_engine_tweaks/fonts/NotoSansThai-Regular.ttf` | 47,404 | `f73be376b0e1704da118312e202be49e8ac04a6b2e19b588cdfc2707c7f3e25d` |
+| `bin/x64/plugins/cyber_engine_tweaks/scripts/IconGlyphs/icons.lua` | 682,986 | `f52aa193fe7fc562c82facb18261834bdb30e61cfca0feb2effba758f8a2cf80` |
+| `bin/x64/plugins/cyber_engine_tweaks/scripts/json/json.lua` | 10,026 | `23031288e528880354d3d4651a9dc299b4c85e28889d9f5ae1dcca76b3cdc8b1` |
+| `bin/x64/plugins/cyber_engine_tweaks/scripts/json/LICENSE` | 1,068 | `f2c7e5ea921f2d0514e229e88ac39e51b3db50698b270b3a9290b610b7015fdc` |
+| `bin/x64/plugins/cyber_engine_tweaks/scripts/json/README.md` | 1,557 | `e71e8c5fa757699655d0d48843ec98b8a777c78819c1eec623f61027ac4bc5d0` |
+| `bin/x64/plugins/cyber_engine_tweaks/ThirdParty_LICENSES` | 29,643 | `83b9af1ffcc13f5822ae9ba561969bffcb8967a05edff6f41bf497e6c232fff0` |
+| `bin/x64/plugins/cyber_engine_tweaks/tweakdb/tweakdbstr.kark` | 7,322,386 | `ea74ca46375c414514d5b8577702c51c1ba55db06d24aaf73901541d212f5ebb` |
+| `bin/x64/plugins/cyber_engine_tweaks/tweakdb/usedhashes.kark` | 2,756,503 | `e1f2bf54f5d24660a4a8ecff5694b39d2ca9db4a4a8ca3c3a8900dc71477a9e2` |
+| `bin/x64/plugins/cyber_engine_tweaks.asi` | 7,665,152 | `f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a` |
+| `bin/x64/version.dll` | 905,216 | `67565dd7f899c0e4ee3903b1cc8078ff20ca80b8100497c6ac813392e431d443` |
+
+### RED4ext 1.31.1
+
+**Required.** Loads native plug-ins into the game (winmm.dll loader) and has the game's script compiler include the scripts plug-ins bring. Codeware and Ultra Plus need it. From 1.31.0 on it supports patch 2.5 only.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/wopss/RED4ext/releases/tag/v1.31.1 |
+| File as downloaded | `red4ext-1.31.1.zip`, 579,763 bytes, SHA-256 `ce10bda503fd48c8674ef3e517d635636a262c089055f189caabeb300eef7932` |
+| Direct link | https://github.com/wopss/RED4ext/releases/download/v1.31.1/red4ext-1.31.1.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `red4ext` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `bin/x64/winmm.dll` | 213,504 | `531efcb3d50dbbd03abd385963cf6cea97a24cdbed4a45cbb1997733b8feaf47` |
+| `red4ext/LICENSE.txt` | 1,101 | `a0b08b28ae3931a5a41a1788aac6c7a391513bfc3599272021ea5b2c1af2f6f6` |
+| `red4ext/RED4ext.dll` | 1,243,648 | `988f26cc714e795c5f4dbe93c381c8bf748551f4fd022d529a0d56e863d65d38` |
+| `red4ext/THIRD_PARTY_LICENSES.txt` | 10,203 | `b49e3d32f961c21e0b15f4c9b11da9455d7c9905a457b1dfa88504f6592220ff` |
+
+### redscript 0.5.32
+
+**Required.** The script compiler for the game's script language (engine/tools/scc.exe and its library): compiles the scripts mods bring, Codeware's among them, when the game starts. 0.5.32 added patch 2.5 script bundles; the 1.0 rewrite (2026-11) is not what the mod collections for 2.5 use yet.
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/jac3km4/redscript/releases/tag/v0.5.32 |
+| File as downloaded | `redscript-v0.5.32-windows.zip`, 930,413 bytes, SHA-256 `882c57a80b07e453bc8a34cd8430f460aceed789581de8743638e19dcfb7936f` |
+| Direct link | https://github.com/jac3km4/redscript/releases/download/v0.5.32/redscript-v0.5.32-windows.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `redscript` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `engine/config/base/scripts.ini` | 39 | `ea8281682d4130f872e1703b25aa989a823f136fa1d886077af24aedb08b0d4c` |
+| `engine/tools/scc.exe` | 430,080 | `f7bf0a5a0986aec61d360ae79a3e957b8e21c0781309193a2a056c7bde0e90bc` |
+| `engine/tools/scc_lib.dll` | 1,930,752 | `114851d192ec815119bbfa2272da572bf026fea8e5c0a910a4c8ad84b877dc09` |
+| `r6/config/cybercmd/scc.toml` | 228 | `05802a334d72e87194d49765b7b852c2a983f8849851abcf3fd1366f64d4a934` |
+
+### Codeware 1.21.4
+
+**Required.** Opens more of the engine to scripts. The adapter needs it for the weather (the game's own script interface lost SetWeather in 2.5).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/psiberx/cp2077-codeware/releases/tag/v1.21.4 |
+| File as downloaded | `Codeware-1.21.4.zip`, 2,877,016 bytes, SHA-256 `cb929d1edb72e23d7e7cc6420014b6557c363992ed6092c8453be9b185d0376b` |
+| Direct link | https://github.com/psiberx/cp2077-codeware/releases/download/v1.21.4/Codeware-1.21.4.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `codeware` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `red4ext/plugins/Codeware/Codeware.dll` | 1,974,784 | `7aae3b634bd8a55c9f408b5f6ed7b33396918864eed94184995ec3c259d96f71` |
+| `red4ext/plugins/Codeware/LICENSE` | 1,090 | `dcd5cfc3e620a938b674b5b74a18bba24ac1d8c1353271dac8599b0620238629` |
+| `red4ext/plugins/Codeware/THIRD_PARTY_LICENSES` | 11,950 | `56e48489d42ce6ebbc4eba4228ebfb422d82d57c79d8fec84763c3889026020e` |
+| `red4ext/plugins/Codeware/Data/KnownHashes.txt` | 29,168,433 | `56bde1c461b95032d301fcff26192d346a7ef32638396e530e6dd80e9a7baba4` |
+| `red4ext/plugins/Codeware/Scripts/Codeware.Global.reds` | 1,599,525 | `2fa8ff59954873fa6e529ef0cd4e4412fc1501ea7b89cede5f7790ac2707de2e` |
+| `red4ext/plugins/Codeware/Scripts/Codeware.Localization.reds` | 19,187 | `e5169de3db8ba53fc07f3eb1d86f2aa1654d0edb9e634f7b5d4b9de2e5843b2c` |
+| `red4ext/plugins/Codeware/Scripts/Codeware.reds` | 37 | `c735686d1de44b1ba98ccc34a0101750ccb5848717ce87fc1cfc3b0f1d14ec6c` |
+| `red4ext/plugins/Codeware/Scripts/Codeware.UI.reds` | 139,948 | `1dd746107cca7a0940fc18877ad089f24f99da7e94317f62e942a1eb3cdcbba9` |
+| `red4ext/plugins/Codeware/Scripts/Codeware.UI.TextInput.reds` | 28,364 | `4f6504e0d412e6c394dc1365efc3d6fa21ed26358d075cdb4b73f83e1ea865bd` |
+
+### Ultra Plus X 10.1.0 for 2.5
+
+**Optional.** Path tracing tuned beyond the game's own settings (more samples, better caches and denoiser set-up) by the Ultra Plus team; the base of the community's patch 2.5 photorealism collection (Project Ultrapunk). A Cyber Engine Tweaks mod plus a RED4ext plug-in (Underware). Part of the game's visual set (install option preset).
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: https://www.nexusmods.com/cyberpunk2077/mods/10490?tab=files |
+| File as downloaded | `Cyberpunk Ultra Plus X v10.1.0_rtm for 2.5 10490 v10.1.0.11 2026-11-03T13-26Z MTheTjwgG.zip`, 8,172,284 bytes, SHA-256 `c506e41b710292c157479693a8f0b82c4bb72e9cf7a65bbaab7bc86dfb59c000` |
+| Licence | Ultra Plus licence (in the archive); no re-uploading (may NOT be redistributed) |
+| Note | Nexus Mods needs a login: download the file named here by hand (Manual download, Slow download) and put the zip in out/mods. |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `ultra_plus` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `archive/pc/mod/UltraPlusH10DoorLights.archive` | 8,192 | `d0fd32d4f5f8b58193df7a856e5d49b4c61f004dc22b959c99452e2c246d33a3` |
+| `archive/pc/mod/UltraPlusH10DoorLights.xl` | 70 | `f2d6ebcfb9bd50e7600a0e63320242577b68bc4a53cbd45dca524adb73319699` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/common.ini` | 1,342 | `75b7c8ad41a8a03663cc31d096876d5136c87e77337770b47da862201502a542` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/crowds.ini` | 354 | `825101057a11a187502bbf76dd26c10c0f0c6f3e456666e038f845b0fb63d599` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/debug.ini` | 44,747 | `7cb1bb1bf55417c4e90971f5b493e6f5ef1f20d771be6ed5bd3e9802f24aed27` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/denoisers.ini` | 15,443 | `e65b726375725637e1a0bb5aa5decc961a4ea272a0c32d3ea2d7fb541e63232d` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/features.ini` | 2,862 | `8a4dccac59cea495be9c231da13a54a721a208355180a879213def14783ce291` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/hair.ini` | 11,817 | `0c90a252fdc975b7e8f038f2dc1b07ddd3118dfcda3f76bf08f6792ee570bc47` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/lighting.ini` | 9,012 | `ad4d797f38a69436cb9cccf71ed045af4ba11ad7c89b4de2a2c64f5d53162759` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/modes.ini` | 13,506 | `5df13f090b1dc5ed298b2cd9691a7a52018ab4e17b42d4b4f0291b245c219835` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/qualities.ini` | 18,738 | `d5e3811f74ba78790c7a43ad5fb93bab37f4ad57464bcac55c012e63bb7552e5` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/sharc.ini` | 2,959 | `6eb0ecad9e7f93d8049c83449d7fe0a1bfadc95b74685dc3a3880e608dc2ea04` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/skin.ini` | 2,693 | `5a40addfbc2a9fefc18201c5093f684f00f3cac8c5b7c1025ca55894afc57d03` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/streaming.ini` | 8,442 | `1c68827d3ba3e5989fe195a80a30c30d849ed6adda1e1a27e17c74171f893d54` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/config/themes.ini` | 1,540 | `4a2b8707678a4e4fd51d9703fcf828bf61c55790412b556c1f29ee6ab662d5f5` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/init.lua` | 13,567 | `86fad7f98e13fc938ae476a9163561c873609217b258d004e203941c3e3aefde` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Config.lua` | 1,735 | `2c062b9abdb9044d6e2bdc6d449d6255a233fa775b756373746e6ee9c8b7042b` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Cyberpunk.lua` | 7,542 | `6310b68555244b7e6d262ba980e8c480561c66ec52566c7c9e50bb92c62058b5` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Debug.lua` | 2,841 | `bd9d4973465bed13d8dafda5449629232fe62c6e2b025536d2c9c4945e07ee7d` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Dialog.lua` | 5,322 | `855c9684cdcecd624bc67d68ecedc86ff937eedcf396e3d18e5f3fdc97e876f5` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Engine.lua` | 26,706 | `b0294d58d84a2e165af032a5fd2432824f87f6915387424e20c841f5a277727b` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Functions.lua` | 22,170 | `fec36989a033ba7728fe14277356d7127d50e242594a90bcb986bc2f0c8013c4` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/GameMenu.lua` | 22,501 | `f0dd4cf6ad872db17bec8a444a3f967a96997d1d47687b03a57050d5b894b341` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Logger.lua` | 1,625 | `f95e502f994a50df23e75e3ab9088859b1d65d87176c05538d5346a1f252a376` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/psiberx/Cron.lua` | 3,798 | `1f04836eb99354e6dcac6c19ee46c5a46e950945ca308be2e39615a6b447afea` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/psiberx/GameSession.lua` | 32,183 | `3a189e9cc41db632377adeed3af4cae2404c435d9eacd31b40b3eeb80e8b0b5d` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/psiberx/GameUI.lua` | 44,157 | `a72647faf49b2cbc000a05fd2922060ceb07b26cd23e737161d16592185c737f` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Themes.lua` | 2,311 | `cb661837ceb1dd3f6ec1bb59f2e389e4e5575474c1a5bb73f27145adf48fcad9` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/UI.lua` | 9,830 | `6711649cb2c2c788a18c5458d9451117b02cab8307de6bd7057ccb80af328e8f` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/lib/Variables.lua` | 5,496 | `92a2f29bdce3cdec3ac4f474e148c76af0fd78bd9cf148c7685906ce16a7c1f1` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/LICENSE` | 1,879 | `0472898e9d76f7205b0bb2830944d51e66c1f655b1d2d42189ff2269d8456d0a` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/br-RT.ini` | 13,537 | `d6e36c9d16e6941b38fedabf808168f17ac9cae7ef23411139cd33703754bac9` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/de-DE.ini` | 15,681 | `e1895d3a4725cefe6ffab1229fa675fed913421a8dbef45979b06e8580e0dce1` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/en-US.ini` | 13,663 | `12a971c7d65bd58f40addae2471094b7e97ac1892fc1dea794e2586cd97040bc` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/es-ES.ini` | 15,333 | `914f5f3ad9857daee5108817929ac9edcb1cb59e52b4f75cdf64b0ce481b90ce` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/fr-FR.ini` | 16,126 | `75460b0643f80a58ffa20b949053843aa218d7c6451f14f9168af04ca1a6df31` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/it-IT.ini` | 15,339 | `fe4fa771a36d5a68dc9200bc66a806e98e993e02013d29ddd8ba0923126f1d55` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/ja-JP.ini` | 17,271 | `ade5d53248701f160588b515c4d1c123a7bccea423dcabd72e3810b5cb0669f4` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/pi-RT.ini` | 14,040 | `504d7f774c977d1b74c4253c17703eb83367b0f80fbf40e16be3cca527c4d405` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/pt-BR.ini` | 15,114 | `de9ffe5fbbbe4072cd665b97fb50e68a018356cb3f15acb9e3eeaa9b2ea4a953` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/README.md` | 4,953 | `9591d54f9ad01b6337027b4061566fe70c83631f8bf14bd94f88213b9d942d1f` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/ru-RU.ini` | 23,038 | `e82203e2b80c5018767eae004b2cffc4ac7aa479fd7ee9f09846e62819da48ca` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/zh-CN.ini` | 12,824 | `3d40cc30e6f3ea8dd19e5c681bcd28b71776ea3f0fce94f6f2880da7f56bfb69` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/localization/zh-TW.ini` | 13,107 | `d89e79fcfc39a47427d5608a673ce7a01482ec5d467c7a3b184b7cffc608c6b8` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setautoquality.lua` | 2,380 | `3d84c5ed889f7d5e292e3543bbf2204124deefc742a06bc7ed61f639be9cfa8c` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setcrowds.lua` | 587 | `abff981011c7b1a94949dd5d5d2f298579c7baca74fdb1eac18804b18ad32d30` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setmode.lua` | 1,527 | `fb70e9b03c31dea00345b3e97801b041559500fb00fd8c8260cc7f13d838080f` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setquality.lua` | 3,826 | `850b781132e3d4d39b5c4f7f3f73502fb43999c52fa9fc0c99dc55d5e813f669` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setsharc.lua` | 2,090 | `1b3bd9ee68ef9d6dcd986bb8e5a1f9b3be3e17b850fd8855048066eb35bd9645` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/modules/setstreaming.lua` | 1,762 | `8f697052663815b44d1936c25a463531e7283fcb2f4a6bd3f99e5ac8b7abf328` |
+| `bin/x64/plugins/cyber_engine_tweaks/mods/UltraPlus/render.lua` | 88,676 | `1fb99587681fcc68c9c62b80905c182c6f323f28c7093aa1efe90ad4295eb734` |
+| `engine/config/platform/pc/memory.ini` | 250 | `8c902be4e5345ab8900a54c5c78595458f398b972ea6a8b98f9239717f66fb64` |
+| `red4ext/plugins/Underware/light_collision.vanilla.cache` | 1,102,380 | `49798ff407b1465936ebe62e168c936a7bdeb93c1fe1f44769fd726f64ad57dd` |
+| `red4ext/plugins/Underware/light_removals.ini` | 5,035 | `15f8cec3a34be9ea915fb98058324e76548e01572488f0f7fe7707d939f62fbd` |
+| `red4ext/plugins/Underware/mesh_bounds.vanilla.cache` | 3,388,591 | `738ceeda2d2e793a84ab56a0bef4353d1752eda960d5fa35d8f5d36b916f3e55` |
+| `red4ext/plugins/Underware/proxy_handoff.vanilla.cache` | 4,486,791 | `cccc7eb3439b29bb2af5a1fd270f8517e5ac175edfd587519a132df78d541658` |
+| `red4ext/plugins/Underware/sector_bounds.vanilla.cache` | 1,816,563 | `06fc584a2028ff5a05d2ca9ca9a7bd6f5990aac064b819317822a61e1f05a5e4` |
+| `red4ext/plugins/Underware/sector_exclusions.ini` | 76,732 | `19ab8584d21de4462057fd28e63db304802a83ab737c8f1a5f31af251cb6ca74` |
+| `red4ext/plugins/Underware/Underware.dll` | 794,112 | `06a89f408ca17322cfcb1f20f98de3ea6eddb93db308e3a4b7333cdd3567692f` |
+| `red4ext/plugins/Underware/Underware.ini` | 15,718 | `51a8cf3a2c246851e737f75b994e7400b2b139d4b0b7f380a36ebcc57a636efa` |
+
+### Nova LUT 4.0 (AgX)
+
+**Optional.** Replaces the game's colour grading table with an AgX-based one: less of the game's green tint, softer highlights. One archive file. Part of the game's visual set (install option preset).
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: https://www.nexusmods.com/cyberpunk2077/mods/11622?tab=files |
+| File as downloaded | `Nova LUT 4-11622-4-0-0-1778395014.zip`, 6,044,736 bytes, SHA-256 `ac545ef4259254a7dfcbf3948b5b02aab16a14c26f556b7a043a4b37dd978911` |
+| Licence | author's Nexus permissions; no re-uploading (may NOT be redistributed) |
+| Note | Nexus Mods needs a login: download the file named here by hand (Manual download, Slow download) and put the zip in out/mods. |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `nova_lut` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `archive/pc/mod/###-NovaLUT4.archive` | 6,053,888 | `d38467b1aa1805b99ad8388801754e3e9d3ad38e3809d64d75cbe7165c69762f` |
+
+### Remove Mods Menu 1.3.0
+
+**Optional.** Takes the mod.io menu and the Mod Verification popup, which patch 2.5 added, out of the game's menus (redscript). Part of the game's visual set (install option preset).
+
+| | |
+|---|---|
+| How to get it | **Supply yourself**: https://www.nexusmods.com/cyberpunk2077/mods/35686?tab=files |
+| File as downloaded | `Remove Mods Menu 35686 1.3.0 2026-10-29T16-20Z AgoGgiDqP.zip`, 3,397 bytes, SHA-256 `fe7f34c0af15203fb81ecb4ab777c7b824f3ede1a8cb7ac158613864b0af66a9` |
+| Licence | author's Nexus permissions (may NOT be redistributed) |
+| Note | Nexus Mods needs a login: download the file named here by hand (Manual download, Slow download) and put the zip in out/mods. |
+| Lockfile | `adapters/cyberpunk/mods.lock.json`, id `remove_mods_menu` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `r6/scripts/RemoveModsMenu/RemoveAccountPanel.reds` | 1,096 | `65bffad81b2c71514aadf22cf10092d8078a6fc7443d884984ec6e29797550c0` |
+| `r6/scripts/RemoveModsMenu/RemoveModsMenu.reds` | 1,135 | `59243dbd582f81602c3457aeb03f749d94e2208423811ac7bdd113c0c723f55d` |
+| `r6/scripts/RemoveModsMenu/RemoveModVerification.reds` | 7,061 | `d65794f0dbcfb867632d94dad20b517332ea99d3e7d7e1051d717b2f20f1cb9c` |
+
 ## Grand Theft Auto V Legacy (story mode, Steam)
 
 ### Script Hook V 3889.0 / 1158.13 (with its ASI loader and Native Trainer)

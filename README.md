@@ -3,8 +3,8 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). Games: Red Dead Redemption 2 and GTA V (Legacy and Enhanced), all
-in story mode.
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2, GTA V (Legacy and Enhanced) and
+Cyberpunk 2077, all in story mode.
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -21,6 +21,8 @@ adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockf
 adapters/gtav/      everything GTA V, both editions: the adapter, the install plans (install.py,
                     install_enhanced.py) and lockfile, the unattended launcher, the freeze
                     (timestep.py), the session job, probes
+adapters/cyberpunk/ everything Cyberpunk 2077: the adapter, the loader mod for Cyber Engine Tweaks, the
+                    session job, install plan and lockfile, game settings, launcher, probes
 docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
 tools/              comparison tools (DLSS 5, ray tracing, sheets with FLIP maps), frame reports,
                     documentation media
@@ -546,6 +548,109 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   suspected, is no longer called (not needed: RedLua's scripts run while the game is paused).
 - **Hashes above 2^24** go through a float in RedLua (as in RDR2): pass them as `hash_arg`.
 
+## Cyberpunk 2077 adapter
+
+Cyberpunk 2077 patch 2.5 (`cyberpunk`: Steam app 1091500, Direct3D 12, exe file version 3.0.88.46235).
+Verified 2026-11-21 on one machine: `capture verify cyberpunk --launch` passes every check but the
+machine-wide administrator step (unattended start in 97 s, 85 frames/s path traced at 2560x1440, a
+frozen 8-camera take with every step within 0.002 ms of 1/30 s, packaging), and a scouted location
+went through submit and worker (scene from 66,000 rays, a ring rig fitted to it, 24 shots).
+Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
+
+### Setup
+
+```powershell
+.\capture.ps1 mods fetch cyberpunk            # Cyber Engine Tweaks, RED4ext, redscript, Codeware (GitHub, pinned)
+.\capture.ps1 install cyberpunk --only mods --only scripts --only reshade --only addon --only settings   # game closed
+.\capture.ps1 verify cyberpunk --launch
+.\capture.ps1 scout --game cyberpunk --name cherry-blossom-market "--at=-701.158,952.269,12.0" "--facing=-140"
+.\capture.ps1 submit --game cyberpunk --location cyberpunk-cherry-blossom-market-001 --provider ring --set count=8
+.\capture.ps1 worker --game cyberpunk
+```
+
+- **Mods** (all MIT, downloaded and pinned file by file in `adapters/cyberpunk/mods.lock.json`):
+  Cyber Engine Tweaks 1.38.1 (the game's script API in Lua, and the ASI loader that loads ReShade),
+  RED4ext 1.31.1, redscript 0.5.32 and Codeware 1.21.4 (the weather: patch 2.5 took `SetWeather` out
+  of the game's own script interface). Each supports exactly this game version; a game update needs
+  new builds. `python -m adapters.cyberpunk.pin <mod> <archive>` pins a new archive's files.
+- **Our loader is a Cyber Engine Tweaks mod** (`adapters/cyberpunk/lua/capture_mod/init.lua`) with the
+  same file protocol as the RedLua loader, so the same client drives it. Two things differ: a mod
+  reads and writes only inside its own folder, so the exchange folder is
+  `bin\x64\plugins\cyber_engine_tweaks\mods\capture_mod\exchange` in the game folder and job files
+  are copied into it; and there are no coroutines, so a session command that takes several frames
+  answers later.
+- **ReShade** goes into `bin\x64\plugins` as `ReShade.asi` with its config and our add-on beside it
+  (the loader only reads that folder, and ReShade keeps its config beside its own file).
+- **Saving is locked** by the loader whenever a save is loaded (the game's save-lock manager), so
+  nothing a session does reaches the player's save slots; `allow_saves.txt` in the exchange folder
+  turns that off.
+- **Game settings** are written into the game's `UserSettings.json` by the installer, game closed:
+  path tracing, DLSS Ray Reconstruction, DLAA on the second-generation transformer model, no frame
+  generation, no film grain, chromatic aberration, depth of field, lens flares, motion blur or
+  vignette, a 2560x1440 window. The adapter reads them back when a session opens and refuses to
+  capture on other settings. Setting them in the running game crashed it.
+- **Unattended start** (`adapters/cyberpunk/launch.py`): the game's exe is started directly, the
+  loader comes up in the main menu and loads the last save from a script. Starting through Steam
+  instead raised a Windows administrator prompt on every start (Steam's first-time setup), which
+  nobody answers and which blanks every screen grab for two minutes. Started directly, Steam does
+  not list the game as running: other sessions must look for `Cyberpunk2077.exe`.
+
+### How a take is captured in Cyberpunk 2077 (measured 2026-11-21)
+
+- **Freeze.** The game's time dilation set near zero. Over 480 held frames 113 people moved
+  0.000 m and the simulation clock advanced 0 s, while frames render, a moved camera is followed
+  and a teleport takes effect (`probes/freeze_probe.py`).
+- **Camera.** The player's first-person camera component, placed relative to the player's head;
+  the session measures the head's transform and places the camera at world poses. Rendered poses
+  are within 0.03 mm of the pose asked for, and every shot is checked against it. The engine
+  projects world points within 0.04 px (mean 0.008) of the rig's pinhole model at 3840x2160, for
+  yaw, pitch and roll (`probes/geometry_probe.py`); the field of view is vertical. World frame as
+  RDR2 and GTA V: Z up, heading counter-clockwise from north.
+- **Field of view.** It eases in world time, so it cannot change in a held world (no script call
+  does it, and a memory write did not take: `adapters/cyberpunk/fov.py`). A take therefore renders
+  at its widest camera's field of view and narrower cameras are cut from the middle of the frame
+  and enlarged; a rig of one field of view is captured one to one. `--resolution 3840x2160` at
+  install and the adapter setting `render_size` keep mixed rigs sharp, at 2.25 times the pixels.
+- **Time steps.** The world runs at a time dilation chosen every frame so that the next frame covers
+  a fifth of what is left: steps of 33.3321 and 33.3322 ms for 33.3333 asked, in 36 frames each.
+- **Player and HUD.** The player's body cannot be hidden from scripts, so in the held world it is
+  moved 12 m under the ground and the camera offset makes up for it; a time step lets it fall a
+  little, so it is parked again after each. The UI's "Empty" game context removes the whole HUD.
+- **Settle.** 120 frames per shot: after a cut the path-traced picture keeps changing for about
+  that long (captures 40 frames apart differ by 3.7, 1.9, 1.5, 1.2 levels of 255, then 1.0 to 1.3
+  for good; `probes/converge_probe.py`). 1.5 s per shot at 85 frames/s in the Badlands, more in the city.
+- **Scene and moving things.** Ray probes against built things and open land (collision groups
+  `Static` and `Terrain`); characters and vehicles as oriented boxes of stock sizes; quest
+  characters are never removed.
+
+### Open
+
+- **Things that keep animating in a held world** (seen by Nathan in the first take, and in the
+  probes): blinking lights such as the fast-travel terminal's, ceiling lights, advertising screens
+  and holograms run on real time, so they differ between the shots of one instant. Not solved.
+  Tried at the Cherry Blossom Market, the same pose captured six times 30 frames apart, mean
+  difference between neighbours in levels of 255 on frames reduced to 1280x720
+  (`probes/noise_probe.py`): the hold alone 1.07, with 2.9% of pixels varying strongly (the two
+  hanging screens, the hologram tree, the terminal's beam); with the time system's paused state on
+  top 1.07 and 2.9% (no effect); with the game's system pause on top 1.34 after its first second,
+  in which the whole picture brightens by 18% (worse). The game's own photo mode holds the world
+  the same way (time dilation 1e-6) and the terminal's hologram still flickers in it
+  (`probes/photomode_probe.py`), so the game seems to have no switch for this.
+  Partly solved by switching devices off: while the subject is hidden, every device within 60 m
+  that is on (screens, terminals, vending machines, traffic lights; adapter setting
+  `devices_off_m`, 0 to leave them on) is disabled through its state's `ForceDisableDevice` and
+  enabled again afterwards (44 devices at the market). That takes out the fast-travel terminal's
+  hologram and blinking bars and the device screens, which go dark; strongly varying pixels fell
+  from 2.9% to 2.2%. What is left are screens and holograms that are part of the map, not devices
+  (the market's two hanging screens, its hologram tree). Untried for those: Codeware's video
+  component fields, freezing the clock the shaders read.
+- People still appear in a held world (2 of 113 over 480 frames); `Traffic/StopSpawn` and the
+  crowd options are untried.
+- The first scouted location had 0 characters or vehicles within reach of the rig, so clearing a
+  camera of a person has not been exercised in the game.
+- Downloaded, not installed: Ultra Plus 10.1.0 for 2.5, Nova LUT 4, Remove Mods Menu (`out\mods\nexus`).
+  DLSS 5 through OptiScaler is untried (the shared component and `nvngx_dlssnr.dll` exist).
+- No place titles, no scouting overlay, no visual set; `tests/test_install.py` has no Cyberpunk part.
 ## Known gaps
 
 - The add-on reads the frame after ReShade's effects, so a game's visual set (RDR2's preset, ray
