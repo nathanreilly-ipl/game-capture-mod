@@ -23,6 +23,11 @@ them (Direct3D 12, ReShade as an .asi plug-in) and adds what only Cyberpunk need
   file while the game is closed. The game writes that file on its first start, so on a fresh
   machine: start the game once, close it, run install again.
 
+- DLSS 5 (option "optiscaler", `--optiscaler`, off by default until it is measured in the game):
+  the shared OptiScaler component (the DLSS 5 fork) as OptiScaler.asi in bin\\x64\\plugins, with
+  your nvngx_dlssnr.dll (`--dlss-nr`). It runs on the output of the game's own DLSS (DLAA with Ray
+  Reconstruction); F13 switches it live (tools/upscaler_ab.py).
+
 - The visual set (option "preset", off by default until it is measured in the game): Ultra Plus
   (path tracing tuned further), Nova LUT (colour grading) and Remove Mods Menu, from Nexus Mods,
   which needs a login, so they are supplied by hand (docs/MOD_FILES.md). They are mods, not a
@@ -32,7 +37,7 @@ import os
 import re
 
 from capture import config
-from capture.install.components import addon, clock, reshade
+from capture.install.components import addon, clock, optiscaler, reshade
 from capture.install.plan import Call, CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText
 
 from . import paths, settings as game_settings
@@ -45,7 +50,8 @@ EXE_PATH = paths.EXE          # where it is in the game folder
 STEAM_APP = paths.STEAM_APP
 FOLDER = paths.FOLDER
 LOCK = os.path.join(HERE, "mods.lock.json")
-OPTIONS = {"preset": False, "api": "d3d12", "resolution": "2560x1440"}   # the render size (adapter.py)
+OPTIONS = {"preset": False, "api": "d3d12", "resolution": "2560x1440",   # the render size (adapter.py)
+           "optiscaler": False}   # DLSS 5, until measured in this game
 CET = "cyber_engine_tweaks"
 FRAMEWORKS = ("red4ext", "redscript", "codeware")
 VISUAL_SET = ("ultra_plus", "nova_lut", "remove_mods_menu")   # the option "preset"; from Nexus Mods, supplied
@@ -95,9 +101,8 @@ def steps(ctx):
     api = opt.get("api") or "d3d12"
     if api != "d3d12":
         raise ValueError("Cyberpunk 2077 runs on Direct3D 12 only, not %s" % api)
-    for o in ("optiscaler", "ray_tracing"):
-        if opt.get(o):
-            raise ValueError("--%s is not set up for Cyberpunk 2077" % o.replace("_", "-"))
+    if opt.get("ray_tracing"):
+        raise ValueError("--ray-tracing is not set up for Cyberpunk 2077 (the game path traces by itself)")
     exchange = opt.get("exchange_dir") or paths.exchange(g)   # tests point it elsewhere
     mod = os.path.dirname(exchange)
     out = []
@@ -141,6 +146,14 @@ def steps(ctx):
     # the clock the game and its video player (Bink) read, held while a held world is captured
     out += clock.steps(plugins, os.path.join(exchange, "clock.txt"), os.path.join(exchange, "clock_status.txt"),
                        (paths.EXE_NAME, "bink2w64.dll"))
+    # DLSS 5 (--optiscaler; off until it is measured here): OptiScaler.asi through the same loader,
+    # its settings, the forwarder and NVIDIA's model beside it (the model may sit beside OptiScaler
+    # or the exe). The game's own DLSS stays on (DLAA with Ray Reconstruction, settings.py); with Ray
+    # Reconstruction the fork runs DLSS 5 on the upscaler's output (its 1.3.0 notes).
+    if opt.get("optiscaler"):
+        out += optiscaler.steps(ctx, plugins, api, loader="asi")
+    else:
+        out += optiscaler.not_loaded(ctx, plugins, loader="asi")
 
     # game settings, in the game's own settings file
     size = tuple(int(v) for v in (opt.get("resolution") or "2560x1440").lower().split("x"))
