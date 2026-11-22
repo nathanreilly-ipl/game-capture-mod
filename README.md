@@ -558,7 +558,8 @@ Verified 2026-11-21 on one machine: `capture verify cyberpunk --launch` passes e
 machine-wide administrator step (unattended start in 97 s, 85 frames/s path traced at 2560x1440, a
 frozen 8-camera take with every step within 0.002 ms of 1/30 s, packaging), and a scouted location
 went through submit and worker (scene from 66,000 rays, a ring rig fitted to it, 24 shots).
-Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
+Not done yet: a full ST-DM take; the visual mods and DLSS 5 exist but are off by default (see
+"Open" below).
 
 ### Setup
 
@@ -647,6 +648,23 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
   sweep now shows one frame throughout; brightness jitter 0.59 to 0.045 levels of 255, roughness
   4.80 to 4.38, pixels off by more than 12 10.1% to 9.2%. Kabuki Market's sweep scored the same
   with and without it (roughness 9.54 and 9.58, jitter 0.063 and 0.062).
+- **DLSS 5** (`install cyberpunk --optiscaler`, off by default; `--dlss-nr <nvngx_dlssnr.dll>`):
+  OptiScaler's DLSS 5 fork as `OptiScaler.asi` in `bin\x64\plugins`, running on the output of the
+  game's own DLSS (DLAA with Ray Reconstruction, which stays on: the picture stays denoised).
+  `tools/upscaler_ab.py --game cyberpunk` at the Cherry Blossom Market, noon, 8 views at one frozen
+  instant (2026-11-22): it adds contrast, colour depth and local detail, mean FLIP 0.17-0.23
+  between off and on (GTA V's range; RDR2 about 0.055). Its automatic white point (what the frame is
+  divided by before the model sees it) is metered from every frame, since Cyberpunk hands the
+  upscaler no exposure, so it moved from view to view (1.10x to 2.00x across the 8 views, the
+  game's exposure locked), as an auto-exposure would. The adapter therefore holds it per take
+  (`lock_white_point`; `adapters/common/optiscaler_live.py`, through OptiScaler's live settings
+  file): the value the meter settles on for the first shot, fixed for every shot after; checked in
+  OptiScaler's log (no change from the first capture to the last). With it held the mean change
+  from DLSS 5 was 5.3 to 12.5 levels of 255 per view (8.3 to 13.1 before). A near sweep with it on
+  (345 poses, white point held at 1.64x for the whole 20 min) flickered about as much as without
+  it: roughness 4.49 against 4.38, brightness jitter 0.080 against 0.045 (`tools/sweep_flicker.py`).
+  GTA V Enhanced and RDR2 meter it the same way (their logs: 0.34-0.48x and 13.1-21.5x within
+  frozen runs).
 - **Scouting by name.** `python -m adapters.cyberpunk.probes.scout_fast_travel --list` prints the
   fast-travel points the save knows; `... <record>=<name>` records a location a few metres from one.
 - **Menus.** A game menu (pause, inventory) holds the world and shows its own camera; one was
@@ -688,7 +706,9 @@ Not done yet: a full ST-DM take, the visual mods, DLSS 5 (see "Open" below).
   saturated and darker (Nova LUT's AgX grading; `out\preview\visual_set_off_on_pose0.jpg`).
   Whether that is the look wanted is Nathan's call; noise and settle time with it are not measured.
   There is no `--preset` flag on this branch: `capture.install.install("cyberpunk", options={"preset": True})`.
-- DLSS 5 through OptiScaler is untried (the shared component and `nvngx_dlssnr.dll` exist).
+- DLSS 5 (above) is installed with `--optiscaler` but off by default: whether captures use it is
+  Nathan's call. Its settle after a cut starts higher than without it (5.4 against 4.0 levels at 3
+  frames) and meets it by 80 frames; a take waits 120.
 - No place titles, no scouting overlay, no visual set; `tests/test_install.py` has no Cyberpunk part.
 ## Known gaps
 

@@ -93,6 +93,12 @@ Settings (job settings "adapter"):
     devices_off_m   devices within this many metres are switched off while the subject is hidden
                     (60; 0 leaves them on): their screens, holograms and blinking lights run on
                     real time and would differ from shot to shot
+    lock_white_point    with DLSS 5 installed (`capture install cyberpunk --optiscaler`), hold its white
+                    point for the take at what its meter settled on for the first shot (True). Left
+                    on Automatic it meters every view, as an auto-exposure would: 1.10x to 2.00x
+                    across 8 views of one frozen instant at the Cherry Blossom Market, the game's
+                    exposure locked; held, it stayed at one value for every shot
+                    (adapters/common/optiscaler_live.py)
     hold_clock      hold the real-time clock while a take is captured (True; see Real-time clock)
     clock_scale     how fast the held clock runs (0.0002; 0 makes the game quit)
     weather         the weather set and held at a location (24h_weather_sunny; "free" or "" leaves
@@ -108,6 +114,7 @@ import numpy as np
 from capture.adapter import Adapter, AdapterError
 
 from ..common import mem, redlua, window
+from ..common.optiscaler_live import OptiScalerLive
 from . import launch, paths, settings as game_settings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -120,7 +127,7 @@ DEFAULTS = {"settle": 120, "first_settle": 240, "clock_settle": 240, "park_depth
             "step_dilation": 0.1, "check_settings": True, "pose_tolerance_m": 0.005,
             "render_size": [2560, 1440], "output_size": [2560, 1440], "render_vfov": 76.0,
             "weather": "24h_weather_sunny", "devices_off_m": 60.0,
-            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4, "hold_clock": True, "clock_scale": 0.0002}
+            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4, "hold_clock": True, "clock_scale": 0.0002, "lock_white_point": True}
 
 
 def _rz(deg):
@@ -150,6 +157,8 @@ class CyberpunkAdapter(Adapter):
         self._pose_fix = np.zeros(3)   # a steady offset of the rendered camera, made up for (recover)
         self.clock_held = False    # the real-time clock held by our clock plug-in
         self.clock = None          # what the clock plug-in last answered
+        self.dlss5 = OptiScalerLive(os.path.join(paths.bin_dir(), "plugins"))   # DLSS 5, if installed
+        self.white_point = None    # DLSS 5's white point held for the take, if any
 
     # --- lifecycle -------------------------------------------------------------------------
     def _heartbeat(self):
@@ -294,6 +303,8 @@ class CyberpunkAdapter(Adapter):
         if self.clock_held and self.clock:
             out["realtime_clock"] = {"held_by": "capture_clock.asi", "scale": float(self.clock.get("scale", 0)),
                                      "modules": [self.clock[k] for k in sorted(self.clock) if k.startswith("module")]}
+        if self.white_point is not None:
+            out["dlss5"] = {"white_point_held": self.white_point, "by": "OptiScaler DLSS 5 fork, WhitePointSource=0"}
         if np.any(self._pose_fix):
             out["camera_offset_made_up_m"] = [round(float(v), 4) for v in self._pose_fix]
         if self.applied:
@@ -390,6 +401,9 @@ class CyberpunkAdapter(Adapter):
         else:
             self._hold_clock(False)
             self._unlock_exposure()
+            if self.white_point is not None:
+                self.dlss5.unlock_white_point()
+                self.white_point = None
             self.sess.cmd("unpark")
             self.sess.cmd("unfreeze")
             if float(self.settings.get("devices_off_m") or 0) > 0:
@@ -439,6 +453,10 @@ class CyberpunkAdapter(Adapter):
             raise AdapterError("the world is not held: time dilation %s" % st.get("dilation"))
         if self.settings.get("lock_exposure"):
             self._lock_exposure()
+        if self.settings.get("lock_white_point") and os.path.exists(os.path.join(self.dlss5.folder, "OptiScaler.asi")):
+            # DLSS 5's automatic white point follows each view like an auto-exposure: hold what it
+            # settled on for this first shot (adapters/common/optiscaler_live.py)
+            self.white_point = self.dlss5.lock_white_point()
         self._hold_clock(True)
 
     def _hold_clock(self, hold):
