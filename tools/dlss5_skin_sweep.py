@@ -48,7 +48,9 @@ class OptiMenu:
         self.window, self.adapter, self.log = window, adapter, log
         self.h = adapter.hwnd
         self.W, self.H = window.client_size(self.h)
-        self.optilog = os.path.join(game_dir, "OptiScaler.log")
+        # beside OptiScaler: the game folder, or the adapter's dlss5.folder (Cyberpunk: bin\x64\plugins)
+        folder = adapter.dlss5.folder if getattr(adapter, "dlss5", None) else game_dir
+        self.optilog = os.path.join(folder, "OptiScaler.log")
         self.state = dict(self.DEFAULT)
 
     def _scr(self, x, y):
@@ -159,6 +161,8 @@ def main():
     ap.add_argument("--values", default="0,0.5,1,2", help="Skin structure values to try (comma-separated)")
     ap.add_argument("--label", default="skin_sweep")
     ap.add_argument("--faces", default="", help='face crops for skin_faces.jpg as JSON {"view": [x0, y0, x1, y1]} (fractions)')
+    ap.add_argument("--close-ups", action="store_true",
+                    help="only close views of people, rendered at their own field of view (upscaler_ab.py --close-ups)")
     a = ap.parse_args()
     game_dir = config.game(a.game).get("game_dir")
     out = os.path.join(paths.OUT, "checks", "upscaler_ab", "%s_%s" % (a.game, a.label))
@@ -179,7 +183,7 @@ def main():
     variants.append(("nomask", {"AutoMask": "false"}))
     try:
         rep = u.run(adapter, out, location=a.location, npcs=a.npcs, settle_test=False, clock=a.clock, weather=a.weather,
-                    variants=variants, game_dir=game_dir)
+                    variants=variants, game_dir=game_dir, close_ups=a.close_ups)
     finally:
         adapter.close()
     rep["game"] = a.game

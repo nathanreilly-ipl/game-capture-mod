@@ -26,7 +26,7 @@ them (Direct3D 12, ReShade as an .asi plug-in) and adds what only Cyberpunk need
 - DLSS 5 (option "optiscaler", `--optiscaler`, off by default until it is measured in the game):
   the shared OptiScaler component (the DLSS 5 fork) as OptiScaler.asi in bin\\x64\\plugins, with
   your nvngx_dlssnr.dll (`--dlss-nr`). It runs on the output of the game's own DLSS (DLAA with Ray
-  Reconstruction); F13 switches it live (tools/upscaler_ab.py).
+  Reconstruction), with skin structure 2; F13 switches it live (tools/upscaler_ab.py).
 
 - The visual set (option "preset", off by default until it is measured in the game): Ultra Plus
   (path tracing tuned further), Nova LUT (colour grading) and Remove Mods Menu, from Nexus Mods,
@@ -61,6 +61,9 @@ ULTRA_PLUS = [("internal.mode", "PT21"), ("internal.quality", "Insane"), ("inter
               ("internal.streaming", "High"), ("internal.simpleMode", "false"), ("internal.showFps", "false"),
               ("internal.showVram", "false"), ("internal.showVramWarnings", "false"),
               ("internal.showIncompatibleModWarnings", "false"), ("internal.showPQSaturationWarning", "false")]
+# DLSS 5 for captures (--optiscaler), on top of the shared component's settings: skin structure 2,
+# the most pore and beard detail (Nathan, 2026-11-22, after tools/dlss5_skin_sweep.py; as GTA V and RDR2)
+OPTISCALER_SETTINGS = [("DlssNr", "SkinStructure", "2", "skin structure 2: more skin detail (chosen 2026-11-22)")]
 MOD_SRC = os.path.join(HERE, "lua", paths.MOD_NAME)
 OVERLAY_KEY = 0xC0 << 48      # the ~ key (VK_OEM_3), as Cyber Engine Tweaks stores a single key
 
@@ -151,7 +154,7 @@ def steps(ctx):
     # or the exe). The game's own DLSS stays on (DLAA with Ray Reconstruction, settings.py); with Ray
     # Reconstruction the fork runs DLSS 5 on the upscaler's output (its 1.3.0 notes).
     if opt.get("optiscaler"):
-        out += optiscaler.steps(ctx, plugins, api, loader="asi")
+        out += optiscaler.steps(ctx, plugins, api, loader="asi", settings=OPTISCALER_SETTINGS)
     else:
         out += optiscaler.not_loaded(ctx, plugins, loader="asi")
 
