@@ -795,7 +795,12 @@ Not done yet: a full ST-DM take; the visual mods and DLSS 5 exist but are off by
   (345 poses, white point held at 1.64x for the whole 20 min) flickered about as much as without
   it: roughness 4.49 against 4.38, brightness jitter 0.080 against 0.045 (`tools/sweep_flicker.py`).
   GTA V Enhanced and RDR2 meter it the same way (their logs: 0.34-0.48x and 13.1-21.5x within
-  frozen runs).
+  frozen runs). Skin controls (`tools/dlss5_skin_sweep.py --game cyberpunk --close-ups`: four
+  people filmed from the front at their own 32-degree field of view, one frozen instant; OptiScaler's
+  menu positions are the same as in GTA V at 2560x1440): DLSS 5 adds beard, pore and eye detail over
+  the game's softer faces; skin structure 0 smooths skin, 2 gives the most pore and beard detail,
+  1 looks like the default (-1), and the automatic skin mask off changes almost nothing, as in
+  GTA V. `--optiscaler` sets skin structure 2 (Nathan, 2026-11-22), as for GTA V and RDR2.
 - **Scouting by name.** `python -m adapters.cyberpunk.probes.scout_fast_travel --list` prints the
   fast-travel points the save knows; `... <record>=<name>` records a location a few metres from one.
 - **Menus.** A game menu (pause, inventory) holds the world and shows its own camera; one was

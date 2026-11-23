@@ -29,6 +29,8 @@ from capture import obstacles as obstacles_geom  # noqa: E402
 from capture.util import stamp, write_json  # noqa: E402
 
 TOGGLE_KEY = "F13"
+NPC_VFOV = 32.0   # close views of people
+VIEW_VFOVS = (35.0, 50.0, 60.0, 60.0, NPC_VFOV, 45.0)   # every view's field of view (views, npc_views)
 SETTLES = (3, 6, 12, 24, 40, 80)
 REFERENCE_SETTLE = 160
 
@@ -131,12 +133,21 @@ class Switch:
 
 
 class LiveSettings:
-    """OptiScaler's dlssnr-set.txt (next to the game's exe): [DlssNr] settings applied live, read
-    about once a second and deleted. Only on Direct3D 12, and not TransferStrength."""
+    """OptiScaler's dlssnr-set.txt (beside OptiScaler: the game's exe folder, or the adapter's
+    dlss5.folder where it lives elsewhere, as in Cyberpunk's bin\\x64\\plugins): [DlssNr] settings
+    applied live, read about once a second and deleted. Only on Direct3D 12, and not
+    TransferStrength."""
     BASE = {"Passes": "1", "Style": "0", "PreSr": "0"}
 
-    def __init__(self, game_dir, log):
-        self.path, self.log = os.path.join(game_dir, "dlssnr-set.txt"), log
+    def __init__(self, folder, log):
+        self.folder = folder
+        self.path, self.log = os.path.join(folder, "dlssnr-set.txt"), log
+
+    def ini_values(self, keys, defaults):
+        """The [DlssNr] values OptiScaler.ini gives these keys (what a variant is undone to)."""
+        from adapters.common.optiscaler_live import OptiScalerLive
+        ini = OptiScalerLive(self.folder)
+        return {k: ini.ini_value("DlssNr", k, defaults.get(k, "auto")) for k in keys}
 
     def apply(self, values):
         with open(self.path, "w") as f:
@@ -237,7 +248,7 @@ def npc_views(adapter, st, count, log, boxes=()):
         c = np.asarray(o["center"], float)
         head = c + np.array([0.0, 0.0, o["half"][2] * 0.82])
         sides = []
-        if o.get("approx") == "obb":
+        if o.get("approx") in ("obb", "stock size"):   # a box on the entity's own axes (Cyberpunk: stock size)
             sides.append(np.asarray(o["axes"][1], float))          # in front of them
         d = np.array([p[0] - c[0], p[1] - c[1], 0.0])
         if np.linalg.norm(d) > 0.5:
@@ -249,7 +260,7 @@ def npc_views(adapter, st, count, log, boxes=()):
                 cam = head + g * 2.3 + np.array([0.0, 0.0, 0.05])
                 inside = obstacles_geom.hits([b for b in boxes if b is not o], [cam], 0.15)
                 if not inside and clear_line(adapter, boxes, cam, head + g * 0.35, skip=o) and                         clear_line(adapter, boxes, cam, c, skip=o):
-                    out["npc%d" % (len(out) + 1)] = look_at(cam, head - np.array([0.0, 0.0, 0.25]), 32.0)
+                    out["npc%d" % (len(out) + 1)] = look_at(cam, head - np.array([0.0, 0.0, 0.25]), NPC_VFOV)
                     break
             else:
                 continue
@@ -295,7 +306,7 @@ def sheet(out, names, path, crop=False):
 
 
 def run(adapter, out, location=None, npcs=3, settle_test=True, clock=None, weather=None, log=print,
-        variants=(), game_dir=None):
+        variants=(), game_dir=None, close_ups=False):
     """One comparison in the running game: the views with DLSS 5 on and off at one frozen
     instant, the sheets, and (settle_test) the settle and repeat measurements. Returns the report."""
     os.makedirs(out, exist_ok=True)
@@ -315,18 +326,29 @@ def run(adapter, out, location=None, npcs=3, settle_test=True, clock=None, weath
         clear_traffic(adapter, st["position"], 30.0, log)
         st = adapter.subject_state()
         report["place"] = st.get("title")
+        if hasattr(adapter, "prepare_take"):
+            # an adapter that renders a whole take at one field of view (Cyberpunk) renders at the
+            # widest view's and cuts the narrower ones out of it; close-ups alone keep faces native
+            fovs = [NPC_VFOV] if close_ups else list(VIEW_VFOVS)
+            adapter.prepare_take({"steps": [{"shots": [{"vfov_deg": v} for v in fovs]}]})
         adapter.begin_frozen(views(adapter, st)["portrait"])
         st = adapter.subject_state()  # the player may have moved before the freeze
         boxes = people(adapter, st["position"])  # in the frozen world: nobody moves from here
         vs = views(adapter, st, boxes)
         vs.update(npc_views(adapter, st, npcs, log, boxes))
+        cut_views = dict(vs)   # every view stays available to cut away to before a shot
+        if close_ups:
+            vs = {k: v for k, v in vs.items() if k.startswith("npc")}
+            settle_test = False
+            if not vs:
+                raise RuntimeError("no person with a clear close view near %s" % (st["position"],))
         report["view_poses"] = vs
 
         def shot(name, view, mode, settle, cut_from=None):
             if mode in ("on", "off"):
                 switch.set(mode)
             if cut_from:
-                adapter.set_camera(vs[cut_from])
+                adapter.set_camera(cut_views[cut_from])
                 adapter.wait_frames(40)
             adapter.set_camera(vs[view])
             path = os.path.join(out, "%s_%s.bmp" % (name, mode))
@@ -350,7 +372,11 @@ def run(adapter, out, location=None, npcs=3, settle_test=True, clock=None, weath
         report["sheet_faces"] = sheet(out, close, os.path.join(out, "sheet_faces.jpg"), crop=True)
 
         if variants:
-            live = LiveSettings(game_dir, log)
+            live = LiveSettings(adapter.dlss5.folder if getattr(adapter, "dlss5", None) else game_dir, log)
+            touched = sorted({k for _, values in variants for k in values})
+            # undone to the ini's values; a settings hook without ini_values (dlss5_skin_sweep.py's
+            # menu) is undone to its own defaults by an empty apply
+            undo = live.ini_values(touched, {"SkinStructure": "-1", "AutoMask": "true"}) if hasattr(live, "ini_values") else {}
             switch.set("on")
             report["variants"] = {}
             for label, values in variants:
@@ -361,7 +387,7 @@ def run(adapter, out, location=None, npcs=3, settle_test=True, clock=None, weath
                 report["variants"][label] = {"values": values, "vs_off": {
                     n: diff(os.path.join(out, "%s_off.png" % n), os.path.join(out, "%s_%s.png" % (n, label))) for n in vs}}
                 log("    vs off: %s" % ", ".join("%s %.2f" % (n, x["mean"]) for n, x in report["variants"][label]["vs_off"].items()))
-            live.apply({})
+            live.apply(undo)   # the swept keys back to the ini's values
             cols = [("off", "DLSS 5 off"), ("on", "DLSS 5 on (default)")] + [(l, l) for l, _ in variants]
             report["sheet_variants"] = columns_sheet(out, list(vs), cols, os.path.join(out, "sheet_variants.jpg"))
             report["sheet_variants_faces"] = columns_sheet(out, close, cols, os.path.join(out, "sheet_variants_faces.jpg"),
@@ -398,6 +424,9 @@ def main():
     ap.add_argument("--clock", help="time of day to set first, HH:MM")
     ap.add_argument("--weather", help="weather to set and hold first (SUNNY, CLOUDS, OVERCAST, ...)")
     ap.add_argument("--no-settle", action="store_true", help="only the comparison views, no settle or repeat test")
+    ap.add_argument("--close-ups", action="store_true",
+                    help="only the close views of people (--npcs of them), rendered at their own field of view; "
+                         "no settle test")
     ap.add_argument("--out", help="output folder (default out/checks/upscaler_ab/<stamp>)")
     ap.add_argument("--variant", action="append", metavar="LABEL:KEY=VALUE[,KEY=VALUE]",
                     help="also capture DLSS 5 with these [DlssNr] settings, switched live (Direct3D 12 only), "
@@ -409,7 +438,8 @@ def main():
     adapter.open()
     try:
         report = run(adapter, out, a.location, a.npcs, not a.no_settle, a.clock, a.weather,
-                     variants=parse_variants(a.variant), game_dir=config.game(a.game).get("game_dir"))
+                     variants=parse_variants(a.variant), game_dir=config.game(a.game).get("game_dir"),
+                     close_ups=a.close_ups)
     finally:
         adapter.close()
     report["game"] = a.game
