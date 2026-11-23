@@ -4,7 +4,7 @@ Surveyed 2026-11-22 from the code at master `416cab2`, from web research that da
 read-only inspection of our CoreWeave machine. The first feasibility test ran there on 2026-11-23
 and passed (section "Feasibility test, part A"), and the same day Cyberpunk 2077 was installed,
 verified and captured there through the CLI (section "Cyberpunk through the CLI"); that code is
-not on master yet. RDR2, GTA V and DLSS 5 are still untested on Linux. Version-specific findings
+on master as `2d076b3`. RDR2, GTA V and DLSS 5 are still untested on Linux. Version-specific findings
 (drivers, Proton builds, DLSS 5 support) change quickly: check them again before relying on them.
 
 ## Verdict
@@ -25,10 +25,10 @@ The first test passed on 2026-11-23: modded Cyberpunk 2077 runs there under Prot
 display, with no root and no Steam client, and a 2560x1440 frame came out through our capture
 add-on with path tracing, DLAA and Ray Reconstruction on. So the display, the mod loaders, ReShade
 with our add-on and the clock plug-in are no longer unknowns for Cyberpunk. The same day our own
-Python side followed for Cyberpunk: a clean-slate `capture install`, `capture verify --quick`, a
-345-shot near sweep and a 30-clip-frame take ran there through the unchanged adapter and worker,
-at 7.3 s per shot against 2.5 s on the PC. Still open: the frame rate (the game gets 4 usable
-cores), packaging (no ffmpeg there yet), DLSS 5 (the driver), and the Rockstar launcher for the
+Python side followed for Cyberpunk: a clean-slate `capture install`, the full `capture verify`, a
+345-shot near sweep and a 30-clip-frame take ran there through the unchanged adapter and worker.
+A shot takes 5.6 s there against 2.5 s on the PC (7.3 s before the job was given one thread per
+core). Still open: the rest of that gap, DLSS 5 (the driver), and the Rockstar launcher for the
 other two games.
 
 ## The machine we have (inspected 2026-11-22)
@@ -141,9 +141,9 @@ The scripts that did part A are on the cluster under `out/tools/scripts`, outsid
 ## Cyberpunk through the CLI on CoreWeave (2026-11-23)
 
 Reported by the Claude session on the cluster, which ported the installer and the shared layers
-that day on Nathan's instruction. The code is uncommitted in the cluster's clone; none of it is on
-master, and nothing here was checked from the PC. The comparison numbers are from the PC's take
-records at the same place (`cyberpunk-cherry-blossom-market-001`, 2026-11-22).
+that day on Nathan's instruction. The code is on master (`a660617`, merged in `2d076b3`). The
+numbers from the cluster were not checked from the PC; the comparison numbers are from the PC's
+take records at the same place (`cyberpunk-cherry-blossom-market-001`, 2026-11-22).
 
 **What was added (game-agnostic unless noted)**
 
@@ -214,23 +214,56 @@ held at 0.0002)
 - 29 steps: worst error 0.0017 ms, mean 0.0013 ms; every clip frame's shots share one game clock
   value. The time sheet shows people walking steadily.
 
+**Frame rate and the job's CPUs** (same place, 2560x1440, path traced)
+
+| Slurm job | CPUs the game used | Frames/s running | Frames/s held | GPU | Seconds per shot |
+|---|---|---|---|---|---|
+| `--cpus-per-task=8` | 4 (ids 24, 25, 27, 28) | 17-18 | 25-26 | 40-50%, 220-250 W | 7.28 (345-pose sweep) |
+| the same with `--hint=nomultithread` | 8 cores (ids 2, 3, 8-13) | 28.1 | 36.3 and 38.5 | 71%, 290 W | 5.59 (every 8th sweep pose, 44 shots) |
+| the PC, for comparison | | 50 or more in the sweep | | | 2.50 |
+
+- **Cause of the first row:** the job's 8 CPUs were four cores with both threads (the node has 2
+  sockets of 32 cores with 2 threads each, and Slurm counts a thread as a CPU). The second thread
+  of each core has an id of 64 or more, which Wine did not use, so about 22 runnable threads
+  shared 4 cores. `WINE_CPU_TOPOLOGY` changed nothing.
+- **Asking for one thread per core** gives eight ids under 64 and all 82 game threads run on them.
+  Slurm still counts 8 CPUs for the job.
+- **Still 2.2 times the PC's shot time,** with the GPU at 71%. More cores are untried (the
+  partition's default is 12 CPUs per GPU). Presenting to Xvfb is not the limit: a Vulkan test
+  program runs at about 360 frames/s at 2560x1440.
+
+**Packaging and the full `verify`**
+
+- ffmpeg comes from a conda environment on the cluster (`~/.conda/envs/game-capture`, ffmpeg 9.1
+  with libx264); the host layer looks there. `capture package` then packaged both earlier takes,
+  which had ended "failed: ffmpeg not found".
+- The full `capture verify cyberpunk --launch` passes on Linux: start in 127-182 s, a 2560x1440
+  frame, a frozen take of 8 cameras over 3 clip frames (24 shots in 256-259 s, none recaptured),
+  both 1/30 s steps 0.00 ms off, and 8 cameras packaged.
+
+**On master, and checked on Windows**
+
+- The port is on master as `a660617`, merged in `2d076b3` (2026-11-23).
+- On the PC after the pull, with no game started: `tests/test_install.py` parts A, P, B, C, D, E
+  and F pass with the three mod bundles as `--mods`, the two other test files and the Lua check
+  pass, and `capture install cyberpunk --dry-run` reports the game's settings as already right.
+  `capture verify` was not run on Windows after the pull, and `capture/host/windows.py` has not
+  started a game yet.
+- Found there: the game stores its resolution with a list index that depends on the display (14
+  on the headless display, 12 on the PC), so the settings check now accepts the right value with
+  the game's own index.
+
 **Open on CoreWeave after this**
 
-- **Frame rate:** 17-18 frames/s with the world running and 25-26 held, with the GPU at 40-50%.
-  Every process in the prefix runs on 4 of the job's 8 logical CPUs. The session's inference: the
-  other four have ids of 64 and up, which do not fit Wine's 64-bit affinity mask. About 22
-  runnable threads share 4 cores. `WINE_CPU_TOPOLOGY` changed nothing. Presenting to Xvfb is not
-  the limit (a Vulkan test program runs at about 360 frames/s at 2560x1440). What Slurm says fits
-  the inference: the job's 8 CPUs are four cores with both threads (the OS shows them as 24, 25,
-  27, 28 and 88, 89, 91, 92; the node has 2 sockets of 32 cores with 2 threads each, and a thread
-  counts as a CPU). Untried: a job with one thread per core (`--threads-per-core=1` or
-  `--hint=nomultithread`) or with 16 CPUs, either of which should give 8 ids under 64. The
-  partition's default is 12 CPUs per GPU; the session runs inside an 8-CPU job.
-- **Packaging:** both takes end "failed: ffmpeg not found". Sheets and the flicker tool ran on the
-  raw frames. The full `verify` (without `--quick`) waits on the same thing.
+- **Frame rate:** 5.59 s per shot against the PC's 2.50 (above).
 - **The exposure lock's range**, found through this comparison and present on the PC too: at
   Kabuki and the Badlands the lock ends at the top of its search range (98.88) with the picture 9
-  to 12 levels brighter than auto-exposure had chosen. Not fixed.
+  to 12 levels brighter than auto-exposure had chosen. The session on the cluster is fixing it.
+- **A stale heartbeat** once, when `verify` started within about 10 s of another session's end;
+  fine 30 s later.
+- **RDR2 and GTA V Enhanced:** being started 2026-11-23 from clean-slate installs, the games
+  downloaded with DepotDownloader pinned to the PC's builds, the Rockstar launcher sign-in done
+  by Nathan. Nothing measured yet.
 - DLSS 5 (the driver), and more than one game per node.
 
 ## What CoreWeave offers
@@ -359,10 +392,10 @@ measurement.
    a 615 driver. Then RDR2 and GTA V Enhanced: do they start, does the Rockstar launcher log in
    and stay logged in, do Script Hook, RedLua and ReShade load.
 4. **Port, 2-3 weeks.** The table above, a container image or a user-space bundle, and `capture
-   verify` passing for each game. Started 2026-11-23 for Cyberpunk: the host layer, the window and
-   memory layers, the installer and Cyberpunk's launcher run on the cluster (uncommitted there),
-   with `verify --quick`, a near sweep and a short take over time passing. Left for Cyberpunk: the
-   frame rate, packaging, the full `verify`. RDR2 and GTA V Enhanced are not started.
+   verify` passing for each game. Done for Cyberpunk on 2026-11-23 (master `2d076b3`): the host
+   layer, the window and memory layers, the installer and Cyberpunk's launcher, with the full
+   `verify`, a near sweep, a short take over time and packaging passing on the cluster. Left for
+   Cyberpunk: the frame rate. RDR2 and GTA V Enhanced were started the same day.
 5. **Scale, 1-2 weeks.** Worker jobs on the folder queue with shared storage, restarts, accounts,
    monitoring.
 

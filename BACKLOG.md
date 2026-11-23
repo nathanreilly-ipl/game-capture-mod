@@ -221,6 +221,14 @@ machine (README: Install). Left open:
   is searched folder by folder; Cyberpunk's optional visual set has no CLI flag. (Closed
   2026-11-23: the bundle now carries the clock plug-in, and `tests/test_install.py` has a
   Cyberpunk part.)
+- **Two checkouts replace each other's builds of our plug-ins.** The capture add-on and the clock
+  plug-in are installed by comparing the file's bytes, and two builds of the same sources differ
+  byte for byte. Seen 2026-11-22 on the PC: after the clock plug-in was built in the main checkout,
+  `capture install cyberpunk --dry-run` wants to replace both files in the game, which hold the
+  Cyberpunk worktree's builds of the same sources ("replace, was a different version"). Harmless
+  (same sources), but an install is never "nothing to do" across checkouts. Options: compare the
+  source stamp installed beside the file, not the bytes; or build once and install from the
+  bundle's prebuilt everywhere.
 - **DLSS 5 for captures: whether to use it.** Off/on sheets exist (out/checks/upscaler_ab/); the
   effect is mostly on faces. Not measured: consistency between adjacent cameras of one instant
   (does the model treat the same surface the same from two views), and its automatic white
