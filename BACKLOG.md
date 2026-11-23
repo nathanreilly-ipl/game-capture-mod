@@ -209,6 +209,18 @@ step above, and a 32-camera moving sample at Vinewood passed QC; no full take ye
 
 `capture install`, `verify`, `uninstall` and `mods` exist and are applied on the development
 machine (README: Install). Left open:
+- **Clean-slate installs for GTA V Enhanced, and Cyberpunk 2077 on Windows.** Every adapter has
+  to be fully portable (Nathan, 2026-11-22; `AGENTS.md`, section 2): mod files moved out of the
+  game folder, a plain `capture install <game>`, then `capture verify <game> --launch`. RDR2 has
+  done it on Windows (2026-11-20) and Cyberpunk 2077 on Linux, from the PC's bundle on a fresh
+  game download (2026-11-23: 50 steps, verify passed); on the PC both other games were installed
+  part by part with `--only`. Known gaps, found while packing Cyberpunk for the CoreWeave machine
+  (2026-11-22): `capture mods bundle` does not carry a pack such as NaturalVision Enhanced; a file
+  installed in a subfolder (Cyber Engine Tweaks' fonts and scripts, RED4ext, redscript) shows as
+  MISSING in `capture mods status` unless its archive is in out/mods, since the existing install
+  is searched folder by folder; Cyberpunk's optional visual set has no CLI flag. (Closed
+  2026-11-23: the bundle now carries the clock plug-in, and `tests/test_install.py` has a
+  Cyberpunk part.)
 - **DLSS 5 for captures: whether to use it.** Off/on sheets exist (out/checks/upscaler_ab/); the
   effect is mostly on faces. Not measured: consistency between adjacent cameras of one instant
   (does the model treat the same surface the same from two views), and its automatic white

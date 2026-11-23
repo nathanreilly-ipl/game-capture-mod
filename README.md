@@ -393,6 +393,13 @@ order to build and prove it in, and the problems every game has had). In short:
   shared components with the game's choices (graphics API for ReShade, how OptiScaler is loaded)
   and adds the steps only this game needs. `adapters/<game>/visual/` holds the game's visual set
   (the ReShade preset for captures).
+- **Portable** (Nathan, 2026-11-22): an adapter is done only when a clean-slate install runs from
+  the CLI, as RDR2's did: mod files moved out of the game folder, a plain `capture install <game>`,
+  then `capture verify <game> --launch`, at least on the same machine, with nothing set up by hand.
+  `capture mods bundle <game> --with-supplied` carries the files to another machine. Keep
+  operating-system calls in the shared layers so the same works on another operating system once
+  the repository is set up for one (`docs/LINUX_PORT.md`). Cyberpunk 2077 had its clean-slate run
+  on Linux (2026-11-23); GTA V Enhanced has not had one yet (`AGENTS.md`, section 9).
 
 ## RDR2 adapter
 
