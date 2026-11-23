@@ -1,8 +1,11 @@
 # Porting capture_mod to CoreWeave Linux: a survey
 
-Surveyed 2026-11-22 from the code at master `416cab2` and from web research that day. Nothing here
-was built or tested on Linux. Version-specific findings (drivers, Proton builds, DLSS 5 support)
-change quickly: check them again before relying on them.
+Surveyed 2026-11-22 from the code at master `416cab2`, from web research that day, and from a
+read-only inspection of our CoreWeave machine. The first feasibility test ran there on 2026-11-23
+and passed (section "Feasibility test, part A"), and the same day Cyberpunk 2077 was installed,
+verified and captured there through the CLI (section "Cyberpunk through the CLI"); that code is
+not on master yet. RDR2, GTA V and DLSS 5 are still untested on Linux. Version-specific findings
+(drivers, Proton builds, DLSS 5 support) change quickly: check them again before relying on them.
 
 ## Verdict
 
@@ -11,6 +14,224 @@ code: DLSS 5 on Linux, and Rockstar's launcher without a person at a screen. Est
 feasibility test, then 4-6 weeks for all three games if the test finds no blocker; Cyberpunk 2077
 alone about 2 weeks. Windows on CoreWeave is ruled out (Nathan, 2026-11-22), so Linux is the only
 route there; the nodes have RTX PRO 6000 cards.
+
+The machine we actually have there was inspected the same day (next section). It changes the
+picture in three ways: we are an ordinary user in a Slurm job with no root and no way to install
+packages, so everything has to arrive in user space; there is no display server and no `/dev/dri`,
+so a headless display the NVIDIA driver can present to is the first thing to prove; and the driver
+is 580, older than the DLSS 5 reports for Linux ask for, so DLSS 5 waits on the cluster's admins.
+
+The first test passed on 2026-11-23: modded Cyberpunk 2077 runs there under Proton on a headless
+display, with no root and no Steam client, and a 2560x1440 frame came out through our capture
+add-on with path tracing, DLAA and Ray Reconstruction on. So the display, the mod loaders, ReShade
+with our add-on and the clock plug-in are no longer unknowns for Cyberpunk. The same day our own
+Python side followed for Cyberpunk: a clean-slate `capture install`, `capture verify --quick`, a
+345-shot near sweep and a 30-clip-frame take ran there through the unchanged adapter and worker,
+at 7.3 s per shot against 2.5 s on the PC. Still open: the frame rate (the game gets 4 usable
+cores), packaging (no ffmpeg there yet), DLSS 5 (the driver), and the Rockstar launcher for the
+other two games.
+
+## The machine we have (inspected 2026-11-22)
+
+Read-only checks by a Claude session running on the cluster; nothing was installed.
+
+- **Where:** a Slurm job (partition `rtxp6000`) inside a fixed container image, Ubuntu 22.04,
+  kernel 6.8. User `nathan.reilly`, no root (sudo asks for a password, no capabilities, a seccomp
+  filter on). No docker, podman, apptainer or bubblewrap. Unprivileged user namespaces work
+  (`unshare -Ur id` gives uid 0). The job has 1 of the node's 8 GPUs, 8 CPUs and 128 GB.
+- **GPU:** RTX PRO 6000 Blackwell, 96 GB, driver 580.105.08. `/dev/nvidia*` nodes only: no
+  `/dev/dri`, no `/dev/tty*`, no input devices.
+- **Driver libraries present:** NVIDIA's Vulkan driver entry (`/etc/vulkan/icd.d/nvidia_icd.json`,
+  API 1.4.312), its OpenGL, EGL, ray tracing and NGX libraries, and its Xorg modules
+  (`nvidia_drv.so`, `libglxserver_nvidia.so`).
+- **Missing:** the Vulkan loader (`libvulkan.so.1`); the Wine-side DLSS files (`nvngx.dll`,
+  `_nvngx.dll`), nowhere on the filesystem; every display server (Xorg, Xvfb, Xwayland, gamescope,
+  Sway, Weston); Wine, Steam, steamcmd; all 32-bit libraries; any compiler for Windows DLLs.
+- **Memory access:** `ptrace_scope` is 1 and cannot be changed, so one process may read or write
+  another's memory only if it is an ancestor of it or the target allows it.
+- **Storage:** node-local `/` and `/tmp` have 6.5 TB free but should be assumed gone when the job
+  ends; the shared home (`/mnt/home`, where the repo is cloned) is NFS with 2.0 TB free, 97% full.
+- **Internet** works (GitHub answers).
+
+What follows from it:
+
+- **Software comes in without root:** `.deb` files unpacked into a user folder (Vulkan loader, a
+  display server), Proton as a download, the Wine-side DLSS files taken from the 580.105.08 driver
+  package and put into the prefix by hand. Proton normally runs inside the Steam Linux Runtime,
+  which also brings the 32-bit libraries and needs user namespaces; whether the seccomp filter
+  lets that through is untested.
+- **The game is copied, not installed.** steamcmd and the Steam client are 32-bit programs, so
+  Cyberpunk's installed folder (with its mods) would be copied from the Windows PC; it starts from
+  its exe.
+- **The display was the open question, and Xvfb answered it** (part A below). With no root and no
+  `/dev/dri`, the candidates were Xvfb, then Xorg run as a user with NVIDIA's own driver modules,
+  then gamescope's headless backend; the first one worked, against this survey's expectation.
+- **DLSS 5 cannot be tested here yet.** One Linux project asks for driver 610 or newer; the
+  partition has 580, and a job cannot change it.
+- **Memory access must be designed for `ptrace_scope` 1:** our Python starts the game and stays
+  its ancestor, or the access runs inside Wine, where reading another process's memory goes
+  through Wine's own server. Not needed for Cyberpunk.
+
+## Feasibility test, part A: passed (2026-11-23)
+
+Run by the Claude session on the cluster: no root, driver 580.105.08, one RTX PRO 6000 Blackwell
+Server Edition, 8 cores. The game and the Proton prefix sit on the shared NFS disk.
+
+**What worked**
+
+- **Proton:** GE-Proton11-12 inside Steam Linux Runtime 4 (GE-Proton11 needs it; the older
+  "sniper" runtime fails on its Python), started with the runtime's entry point and `proton
+  waitforexitandrun`. The runtime's container starts with unprivileged user namespaces despite the
+  seccomp filter. No Steam client anywhere: the game starts from its exe without one.
+- **Display:** Xvfb at 2560x1440, taken from Ubuntu's `.deb` and unpacked into a folder. It needs
+  `/usr/bin/xkbcomp`, given to it through a private mount namespace (`unshare -Urm` with bind
+  mounts). NVIDIA's Vulkan driver presents to it: the game's picture is in the X root window, so
+  screen grabs work as well as the add-on.
+- **The game:** downloaded with DepotDownloader pinned to the PC's build (depot 1091501, manifest
+  3524634124112875626); 66,818,683,782 bytes and the exe's SHA-256 match the PC's.
+- **Mods:** the PC's non-Steam files copied over the download (55 files; the OptiScaler and DLSS 5
+  files left out), with `WINEDLLOVERRIDES="winmm,version=n,b"`. RED4ext 1.31.1 with Codeware,
+  redscript's compiler, Cyber Engine Tweaks 1.38.1, ReShade 6.8.0 hooking Wine's `d3d12.dll`
+  (VKD3D-Proton) with a 2560x1440 swap chain, our capture add-on registered, our clock plug-in
+  hooked into the exe and the video player, our loader's heartbeat about once a second.
+  `d3dcompiler_47` from winetricks was not needed.
+- **DLSS files:** `nvngx.dll` and `_nvngx.dll` from the 580.105.08 driver package, copied into the
+  prefix's `system32`, plus the registry value `HKLM\Software\NVIDIA Corporation\Global\NGXCore`
+  `FullPath`. Proton's log shows them and the game's DLSS and Ray Reconstruction DLLs loading.
+- **Three config files rewritten** to the game folder as Wine sees it (`Z:\mnt\data\...`): the two
+  `ReShade.ini` and `capture_clock.ini`.
+- **Settings and saves** from the PC, under `drive_c/users/steamuser`. `UserSettings.json` stayed
+  byte-identical, and with `user.gls` from the PC the user agreement screen did not appear.
+- **Our scripts, unchanged:** `adapters/common/redlua.py` ran `continue_game.lua` and the session
+  job; `adapters.cyberpunk.probes.repl` works with `CYBERPUNK_DIR` set. Keys go in with xdotool.
+
+**Numbers**
+
+- To a loaded save: 64 s from the main menu, about 100 s from process start (on NFS; 39 s on the
+  PC from a local disk).
+- In the world: about 42 frames/s (frame time 0.0236 s) at night in the Badlands; GPU load 38-77%,
+  up to 9.7 GB of its memory. Not compared with the PC on the same scene.
+- `shoot 120`: a 2560x1440 frame through the add-on in 4.1 s, colours matching a grab of the X
+  screen. Live settings read back as path tracing on, DLAA, Ray Reconstruction on, windowed
+  2560x1440.
+
+**Measured the same day through the scripts, with no port**
+
+- **Freeze:** 480 held frames in 15.2 real seconds moved the simulation 0.000000000 s.
+- **Clock hold** at the adapter's 1/5,000: the plug-in reports both modules hooked and holding.
+  Five captures of one pose 4 frames apart: neighbours differ by 1.99 levels with 4.01% of pixels
+  off by more than 12 with the clock running, 0.95 levels and 0.24% with it held.
+- **Memory access:** with `ptrace_scope` 1, a Python that is not an ancestor of the game read
+  `/proc/<pid>/maps`, opened `/proc/<pid>/mem` for reading and writing and read the exe's header;
+  `process_vm_readv` worked too. So Wine processes there can be read from outside without
+  starting them ourselves. A write was not exercised.
+- Frame rate: 8 frames/s right after the save loaded, 32 over the 480 held frames.
+
+**Not measured in part A**
+
+- Whether DLSS and Ray Reconstruction really engage, beyond their DLLs loading and the settings
+  reading true (the picture is clean, not noisy).
+- DLSS 5 (needs a newer driver), and writing the game's memory from outside.
+- The 1/30 s steps, the exposure lock, pose accuracy, a take and `capture verify` were not
+  measured in part A, because the adapter and the CLI did not run there. They are measured in the
+  next section.
+
+The scripts that did part A are on the cluster under `out/tools/scripts`, outside the repository.
+
+## Cyberpunk through the CLI on CoreWeave (2026-11-23)
+
+Reported by the Claude session on the cluster, which ported the installer and the shared layers
+that day on Nathan's instruction. The code is uncommitted in the cluster's clone; none of it is on
+master, and nothing here was checked from the PC. The comparison numbers are from the PC's take
+records at the same place (`cyberpunk-cherry-blossom-market-001`, 2026-11-22).
+
+**What was added (game-agnostic unless noted)**
+
+- **`capture/host`:** `windows.py` and `proton.py` (Proton in Steam Linux Runtime 4, Xvfb, one
+  prefix per game under `out/proton/<game>`, paths as the game sees them, start, stop, process
+  ids), `capture host status|setup|prefix <game>|stop <game>`, its downloads pinned in
+  `capture/host/linux.lock.json`, and `capture.sh` beside `capture.ps1`.
+- **`adapters/common/window.py` and `mem.py`** pick an implementation: the old files as
+  `window_win32.py` and `mem_win32.py`, new `window_x11.py` and `mem_linux.py`.
+- **Installer:** a Proton system beside the Windows one; ini values that hold a path can be
+  written as the game sees it (`Z:\...`); the clock plug-in installs from a prebuilt file with a
+  source stamp, as the capture add-on does, and `capture mods bundle` now carries it; the source
+  stamp no longer depends on line endings (it differed between two checkouts of the same commit
+  on the PC).
+- **Cyberpunk only:** the DLL overrides, the game folder's default on Linux, the settings path,
+  the start through the host layer, and closing the game through its window.
+- **Tests:** `tests/test_install.py` parts A and P pass on Linux, and a new part F covers the
+  Cyberpunk plan with both path styles.
+
+**Clean-slate install**
+
+- The game folder was reset to exactly the download's 155 files (109 others removed) with a fresh
+  prefix. `capture install cyberpunk --mods capture-mods-cyberpunk.zip` applied 50 steps; a second
+  run had nothing to do.
+- A killed game leaves no `UserSettings.json`. Closed through its window it exits in 5 s and
+  writes the file; the install then set 11 settings (resolution, path tracing, DLAA, the
+  transformer model, Ray Reconstruction, the six lens effects) and a third run had nothing to do.
+- To a loaded save: 182 s on the first start of a fresh prefix, 155 s on the second, 146 s in
+  `verify`.
+
+**`capture verify cyberpunk --launch --quick`: passed**
+
+- Scripts answer, a 2560x1440 frame comes through the add-on, 20 frames/s (in the city, afternoon).
+- The colour check passed only just (51.5 against 51.8 with red and blue swapped), because
+  `verify` grabs the screen after the world has been let go, so it compares two different
+  pictures. At one held instant the add-on frame and the screen grab differ by 0.19 levels (11.22
+  swapped). This weakness is not specific to Linux.
+- Held world through the adapter: rendered pose 0.02 mm and 0.000 degrees off the asked pose;
+  five 1/30 s steps of 0.033332000 to 0.033332500 s, worst error 0.0013 ms; the clock held; no
+  health problems.
+
+**Near sweep at one instant** (`H_near_sweep_t000`, 345 shots, settle 120, 4 frames averaged, clock
+held at 0.0002)
+
+| | CoreWeave | PC |
+|---|---|---|
+| Shots, recaptured, health problems | 345, 0, 0 | 345, 0, 0 |
+| Seconds per shot | 7.28 (2,594 s in all) | 2.50 (903 s in all) |
+| Game clock over the take | one value over 43.2 min | one value over 15 min |
+| Exposure lock (forced luminance / auto / locked) | 0.620824 / 49.52 / 49.47 | 0.642121 / 51.19 / 51.02 |
+| `tools/sweep_flicker.py` roughness | 5.14 | 4.38 |
+| Share of pixels off by more than 12 | 10.57% | 9.18% |
+| Brightness jitter | 0.069 | 0.045 |
+
+- The rig is the same by its solve record (147 cameras, far ring dropped for the same reason,
+  near radius 2.5743 m), and the rendered poses agree with the PC's within 0.1 mm.
+- The flicker numbers are higher on CoreWeave and the cause is not found. Clock and weather were
+  the same (12:00 from the location, the adapter's default sunny weather on both machines). The
+  crowd differs, and the PC never repeated a take with identical settings, so the spread between
+  two runs on one machine is not known. One candidate scales with the frame rate: a shot takes
+  2.9 times as long there, so at the clock scale of 0.0002 the real-time animations move 1.5 ms
+  between neighbouring poses against 0.5 ms on the PC. The flicker map has no hot spot. Not
+  pursued until the frame rate is fixed.
+
+**30 clip frames over time** (`H_near_moving` and two temporal cameras, `--last-frame 30`)
+
+- 89 of 89 shots, none recaptured, no health problems, 885 s.
+- 29 steps: worst error 0.0017 ms, mean 0.0013 ms; every clip frame's shots share one game clock
+  value. The time sheet shows people walking steadily.
+
+**Open on CoreWeave after this**
+
+- **Frame rate:** 17-18 frames/s with the world running and 25-26 held, with the GPU at 40-50%.
+  Every process in the prefix runs on 4 of the job's 8 logical CPUs. The session's inference: the
+  other four have ids of 64 and up, which do not fit Wine's 64-bit affinity mask. About 22
+  runnable threads share 4 cores. `WINE_CPU_TOPOLOGY` changed nothing. Presenting to Xvfb is not
+  the limit (a Vulkan test program runs at about 360 frames/s at 2560x1440). What Slurm says fits
+  the inference: the job's 8 CPUs are four cores with both threads (the OS shows them as 24, 25,
+  27, 28 and 88, 89, 91, 92; the node has 2 sockets of 32 cores with 2 threads each, and a thread
+  counts as a CPU). Untried: a job with one thread per core (`--threads-per-core=1` or
+  `--hint=nomultithread`) or with 16 CPUs, either of which should give 8 ids under 64. The
+  partition's default is 12 CPUs per GPU; the session runs inside an 8-CPU job.
+- **Packaging:** both takes end "failed: ffmpeg not found". Sheets and the flicker tool ran on the
+  raw frames. The full `verify` (without `--quick`) waits on the same thing.
+- **The exposure lock's range**, found through this comparison and present on the PC too: at
+  Kabuki and the Badlands the lock ends at the top of its search range (98.88) with the picture 9
+  to 12 levels brighter than auto-exposure had chosen. Not fixed.
+- DLSS 5 (the driver), and more than one game per node.
 
 ## What CoreWeave offers
 
@@ -62,15 +283,18 @@ as they do on Windows; the Python side drives the game from outside.
    so N parallel workers need N accounts and N copies. Whether each game's licence allows this use
    on cloud machines is a question for whoever handles that; this survey did not look into it.
 4. **Our frame capture.** Every frame comes out through our ReShade add-on, so the crash reports
-   for add-ons with DLSS under Proton (above) matter directly.
+   for add-ons with DLSS under Proton (above) matter directly. In part A the add-on, DLAA and Ray
+   Reconstruction ran together in Cyberpunk without a crash (2026-11-23); with OptiScaler and
+   DLSS 5 it is untried.
 5. **Untested under Proton:** NaturalVision Enhanced (its own plug-in, 95 shader replacements, a
-   DLC loader), Reality Redemption 2 (RDR2's hardware ray tracing, a ReShade add-on), our clock
-   plug-in (it patches the import tables of the game's exe and its video player, which should
-   behave the same under Wine), GTA V Enhanced's protection that crashes the game on purpose, and
-   RedLua's faults.
+   DLC loader), Reality Redemption 2 (RDR2's hardware ray tracing, a ReShade add-on), GTA V
+   Enhanced's protection that crashes the game on purpose, and RedLua's faults. Our clock plug-in
+   is no longer on this list: under Proton it hooks the exe and the video player and holds the
+   clock (2026-11-23: 4.01% of pixels changing with it running, 0.24% held).
 6. **The driver's libraries inside a container.** A headless Steam image has an open report of
    DLSS becoming unavailable because Proton could not find the driver's DLSS libraries in the
-   container. Whether CoreWeave's pods get the driver's graphics and DLSS libraries needs asking.
+   container. On our machine the same files are missing (`nvngx.dll`, `_nvngx.dll`), while the
+   driver's graphics libraries are there; the files would come from the driver package, untried.
 
 ## Per game
 
@@ -100,7 +324,7 @@ game-agnostic `capture/`.
 
 | Part | Files | On Linux | Effort |
 |---|---|---|---|
-| Game memory | `adapters/common/mem.py`, `adapters/rdr2/mem.py`; used by `gtav/timestep.py`, `rdr2/render_camera.py` | `/proc/<pid>/maps` and `/proc/<pid>/mem` (same addresses); the container needs ptrace permission | 1-2 days |
+| Game memory | `adapters/common/mem.py`, `adapters/rdr2/mem.py`; used by `gtav/timestep.py`, `rdr2/render_camera.py` | `/proc/<pid>/maps` and `/proc/<pid>/mem` (same addresses), from a process that started the game and stays its ancestor, or from inside Wine (`ptrace_scope` is 1 on our machine) | 1-2 days |
 | Window, keys, screenshots | `adapters/common/window.py`, `adapters/rdr2/window.py`, `rdr2/scripts/game_input.ps1`; used by `gtav/settings_menu.py`, `tools/dlss5_skin_sweep.py` | X11 calls on the game's own display (key events, screenshots, window size) | 2-3 days |
 | Launchers | `adapters/gtav/launch.py`, `adapters/cyberpunk/launch.py`, `rdr2/scripts/restart_game.ps1` | Start through Proton with the DLL overrides; Steam's and Rockstar's screens differ and need new handling | about 1 week |
 | Installer | `capture/install/plan.py` (process list, registry, administrator prompt), `prereqs.py`, `components/addon.py` and `clock.py` (builds), `components/reshade.py`, each `adapters/*/install.py` (Steam's folder from the registry, settings under Documents and AppData) | Paths resolved inside the prefix, overrides written for the launch, prebuilt DLLs, prerequisites through protontricks, no machine-wide step. The step engine (copies, ini/json/xml edits, records, lockfiles) is portable | about 1 week |
@@ -121,16 +345,25 @@ not something tried; it suits a quick test, not the final shape.
 Estimates assume one person who knows the code and has GPU access; they are judgement, not
 measurement.
 
-1. **Ask CoreWeave** (no work): do pods get the NVIDIA driver's graphics, display and DLSS
-   libraries; can our RTX PRO 6000 node pool run the 615 driver branch.
-2. **Feasibility test, 3-5 days.** One RTX PRO 6000 GPU on the 615 driver, one container with
-   Proton and a headless display. Cyberpunk 2077 from its exe with Cyber Engine Tweaks, RED4ext, ReShade and
-   our add-on: get one frame out with path tracing, DLAA and Ray Reconstruction; then try DLSS 5
-   through the OptiScaler fork. Then RDR2 and GTA V Enhanced: do they start, does the Rockstar
-   launcher log in and stay logged in, do Script Hook, RedLua and ReShade load.
-3. **Port, 2-3 weeks.** The table above, a container image, and `capture verify` passing for each
-   game.
-4. **Scale, 1-2 weeks.** Worker pods on the folder queue with shared storage, restarts, accounts,
+1. **Ask the cluster's admins** (no work): can the `rtxp6000` partition, or one node, run the 615
+   driver; can jobs get `/dev/dri` and the driver's Wine-side DLSS files; can we run our own
+   container image, or have a display server, a Vulkan loader and 32-bit libraries added; is
+   there a way to run a pod with our image outside Slurm.
+2. **Feasibility test, part A: done, passed 2026-11-23** (it took a day, not 3-5). In user space on driver
+   580, cheapest checks first: the Vulkan loader and `vulkaninfo` see the RTX PRO 6000; a display
+   server runs and a Vulkan test program presents to it; Proton starts a trivial exe; then
+   Cyberpunk 2077 from its exe with Cyber Engine Tweaks, RED4ext, ReShade and our add-on, the goal
+   one frame out with path tracing, DLAA and Ray Reconstruction. Needs downloads (Proton, a few
+   `.deb` files, the driver package for the DLSS files) and the game folder copied over.
+3. **Feasibility test, part B, after the admins' answer.** DLSS 5 through the OptiScaler fork on
+   a 615 driver. Then RDR2 and GTA V Enhanced: do they start, does the Rockstar launcher log in
+   and stay logged in, do Script Hook, RedLua and ReShade load.
+4. **Port, 2-3 weeks.** The table above, a container image or a user-space bundle, and `capture
+   verify` passing for each game. Started 2026-11-23 for Cyberpunk: the host layer, the window and
+   memory layers, the installer and Cyberpunk's launcher run on the cluster (uncommitted there),
+   with `verify --quick`, a near sweep and a short take over time passing. Left for Cyberpunk: the
+   frame rate, packaging, the full `verify`. RDR2 and GTA V Enhanced are not started.
+5. **Scale, 1-2 weeks.** Worker jobs on the folder queue with shared storage, restarts, accounts,
    monitoring.
 
 ## Sources

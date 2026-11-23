@@ -93,6 +93,21 @@ existing CLI (`.\capture.ps1 <command>`, which is `python -m capture` through uv
   start the game unattended, send Lua (or the game's script language) into the running game and
   read the answer, edit a script and reload it without restarting the game where possible, and run
   probes that print numbers. See section 5.
+- **Portable: a clean-slate install from the CLI** (Nathan, 2026-11-22). An adapter is not done
+  while its game was set up by hand. Everything the game needs to capture gets there through
+  `capture mods fetch`, `capture mods bundle` and `capture install <game>`: every third-party file
+  pinned in the lockfile, our own built files (the capture add-on, the clock plug-in) deployed by
+  the installer and carried by the bundle, every game and mod setting written by a step, and the
+  defaults being the capture setup. The proof is a clean-slate run, as RDR2's (2026-11-20): move
+  every mod file out of the game folder, run a plain `capture install <game>` (no `--only`), then
+  `capture verify <game> --launch`, at least on the same machine. Another machine gets the same
+  from the game plus `capture mods bundle <game> --with-supplied`. Anything you copy, click or
+  edit by hand while finding the method goes into the install plan before the game is called
+  done. Write the adapter so the same holds on another operating system once the repository is
+  set up for one (a Linux port is planned: `docs/LINUX_PORT.md`): the operating system's own
+  calls (windows, keys, process memory, the registry, starting and closing programs) stay in the
+  shared layers (`adapters/common/`, `capture/install/`), paths come from functions and not from
+  literals in the adapter, and nothing depends on one machine's folders.
 - **Decoupled.** Game-specific code lives in `adapters/<game>/` only; `capture/`, `rigs/`,
   `addons/` and `capture/install/components/` stay game-agnostic. When two games need the same
   thing, it moves into `adapters/common/` or a shared component with the game's choices passed in
@@ -298,7 +313,10 @@ and saves pictures under `out/probes/`. They are how the method was found, so ke
 - Everything is recorded for `capture uninstall`; `--dry-run` shows every step; `--only <tag>`
   re-runs one part while iterating.
 - Check: `install` twice in a row does nothing the second time; `tests/test_install.py` covers the
-  plan in a sandbox where the game has a section (add one for a new game).
+  plan in a sandbox where the game has a section (add one for a new game); and the clean-slate
+  run of section 2 ("Portable") passes: mod files moved out, a plain `capture install <game>`,
+  `capture verify <game> --launch`. `capture mods bundle <game> --with-supplied` must then find
+  every pinned file (no "NOT FOUND") and hold everything of ours that the game needs.
 
 ### 5.7 Scouting
 
@@ -441,6 +459,7 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 | exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot |
 | settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged |
 | visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried |
+| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed) | not yet: installed part by part (`--only`), never from a clean slate | not yet: installed part by part; the bundle lacks the clock plug-in; no part in `tests/test_install.py` |
 | scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) |
 | full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only |
 
