@@ -10,6 +10,10 @@ neither `capture/` nor an adapter asks which system it is on:
     stop(game, exe_names)             end them (and, under Proton, everything else in its prefix)
     start(game, exe, args, ...)       start the game's exe
     game_path(path, game)             a path of this machine as code inside the game sees it
+    host_path(path, game)             a path the game gave, on this machine
+    use_prefix(game, name)            the game shares the prefix `name` with others (one launcher, one sign-in)
+    steam_launch(game, app_id)        asks the Steam client to start a game (under Proton: the client in the game's prefix)
+    gpu_name()                        the GPU's name as the driver gives it (Linux)
     user_dir(game, kind)              the game user's folders (settings, saves)
     program_data(game)                the machine-wide data folder
     CLI                               how the command line is called here, for messages
@@ -36,6 +40,12 @@ pids = _impl.pids
 stop = _impl.stop
 start = _impl.start
 game_path = _impl.game_path
+host_path = _impl.host_path
+use_prefix = _impl.use_prefix
+steam_launch = _impl.steam_launch
+app_overrides = getattr(_impl, "app_overrides", None)
+prefix = getattr(_impl, "prefix", None)
+gpu_name = _impl.gpu_name
 user_dir = _impl.user_dir
 program_data = _impl.program_data
 

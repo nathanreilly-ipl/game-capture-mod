@@ -9,39 +9,68 @@ Set by Nathan, 2026-11-23, as the long-term priority. Started that day, once Cyb
 rendered a frame through the capture add-on under Proton on a CoreWeave node (docs/LINUX_PORT.md).
 
 **Done (2026-11-23, README "On Linux"):** `capture/host` (the machine a game runs on: Windows, or
-Proton on a headless display), `capture host status|setup|prefix|stop` with its pinned parts
+Proton on a headless display), `capture host status|setup|prefix|stop|steam` with its pinned parts
 (`capture/host/linux.lock.json`), `capture.sh`, `adapters/common/window.py` and `mem.py` with a
 Windows and a Linux implementation each, the installer on Linux (paths written as the game sees
-them, our two plug-ins taken built from a mods bundle), and Cyberpunk 2077 through all of it:
-install from a clean slate with the Windows PC's bundle, `verify --quick`, and two queued takes at
-the Cherry Blossom Market (the 345-pose near sweep; 30 clip frames of a moving and two fixed
-cameras), both captured without a recapture and packaged (ffmpeg from the machine's conda
-environment, found there since the same day).
+them, our two plug-ins taken built from a mods bundle, Wine's per-exe DLL overrides as a step),
+a Steam client inside a prefix for the games that need one, 32-bit Windows programs where 32-bit
+system calls are forbidden (`wow64/tls32.c`), and three games through all of it from the Windows
+PC's bundles on fresh depot downloads: Cyberpunk 2077, RDR2 and GTA V Enhanced each pass
+`capture verify <game>`, and the worker captured and packaged a near sweep and a 30-clip-frame
+take at three locations for Cyberpunk 2077 and RDR2 and at two so far for GTA V Enhanced (Alamo
+Sea, Vinewood Boulevard; the solver declined Legion Square: no collision-free near ring there).
 
 Left, game-agnostic:
 
 - **The game's files by the command line.** They were downloaded by hand with DepotDownloader
-  (README). A `capture game fetch <game>` would take the app, depot and manifest from the game's
-  adapter and the owner's Steam login; which tool, and where the login is kept, is Nathan's call.
-- **The game user's files.** Saves (and Cyberpunk's `user.gls`) are copied into the prefix by hand,
-  and the first start to make the game write its settings file is a manual step (start, `--close`,
-  install again). A command that takes a folder or a bundle of them and does the first start is
-  not written.
-- **`capture host setup` was run in parts only.** Proton, the runtime, the Ubuntu packages and
-  NVIDIA's package were fetched by hand on 2026-11-23 and the command written from that; its
-  downloads of those four were never run as written. ffmpeg was already in the conda environment
-  (`~/.conda/envs/game-capture`), so setup's conda step was only dry-run. Xvfb, xkbcomp and xdotool
-  could move from the unpacked Ubuntu packages to that environment too: conda-forge has xdotool;
-  a search on 2026-11-23 did not settle whether it has a usable Xvfb and xkbcomp, nor was it tried
-  whether one from there removes the private `/usr/bin` for xkbcomp.
-- **One game per machine.** One display (`:99`) and one prefix per game; a node has eight GPUs.
-  A worker per GPU needs its own display, prefix, game copy and exchange folder, and the GPU chosen
-  for the game (not looked into).
+  (README; `out/probes/linux_port/scripts/depot_download.sh` is what ran). A `capture game fetch
+  <game>` would take the app, depot and manifest from the game's adapter (RDR2 and GTA V now have
+  them as `STEAM` facts) and the owner's Steam login; which tool, and where the login is kept, is
+  Nathan's call. DepotDownloader keeps its login per path of its own program.
+- **The game user's files.** Saves and settings files are copied into the prefix by hand, and
+  the first start to make a game write its settings file is a manual step. Both Rockstar games
+  throw a settings file away that names other hardware: RDR2 goes by `videoCardDescription`
+  (an install step sets it), GTA V Enhanced also by `VideoDriverDescription`,
+  `MinimumVideoDriverDescription` and `CPUDescription`, whose values only the game knows (580.99
+  for driver 580.178.04): on 2026-11-23 they were taken by hand from the file the game wrote on
+  its first start and put into the PC's file. A command that takes a folder or a bundle of user
+  files, does the first start and merges such lines is not written.
+- **The Steam client in a prefix: what was done by hand.** `capture host steam <game>` unpacks
+  the client, installs its service, registers the game and keeps the client running. Not in it:
+  the two sign-ins (the owner's, once, in a remote view); accepting the game's EULA in Steam's
+  window (a click, once per game); the remote view itself (x11vnc, noVNC and websockify from
+  Ubuntu's packages, unpacked into `out/host/sysroot` and started by hand, password in
+  `out/host/vnc`); the prefix folder made readable by its owner only (it holds the logins;
+  `/mnt/data/<user>` was group-readable on the cluster). The client ends itself or stops taking
+  requests some minutes after a game it started is closed ("BMainLoop appears to have stalled >
+  15 seconds"; by signal and by taskkill alike), so a stop ends the whole prefix and `--keep`
+  starts the client again: every restart of a Rockstar game costs a client start (about 1.5 min).
+  Why it stalls was not looked into.
+- **`wow64/tls32.c` is a way around a restriction of the cluster** (README): Nathan knows; the
+  cluster's owner has not been asked. It finds Wine's function by its bytes (wine-staging 11.0,
+  GE-Proton11-12) and changes nothing when it does not find them; another Wine needs a look.
+  Entry 12 of the three per-thread GDT entries is taken without asking whether it is free.
+- **`capture host setup` was run in parts only.** Proton, the runtime and the Ubuntu packages
+  were fetched by hand on 2026-11-23 and the command written from that. Run as written since:
+  NVIDIA's package for a second driver version (580.178.04, 5 s to fetch, pinned afterwards) and
+  the build of `tls32.so`. ffmpeg, xclip and xsel are in the conda environment
+  (`~/.conda/envs/game-capture`), strace too (for the 32-bit finding). Xvfb, xkbcomp and xdotool
+  could move there from the unpacked Ubuntu packages: conda-forge has xdotool; whether it has a
+  usable Xvfb and xkbcomp was not settled.
+- **Nodes of one cluster differ.** Two jobs landed on driver 580.105.08 and 580.178.04; NGX
+  files are now chosen by the node's driver and a prefix gets them without a Proton run. Each
+  start of the runtime container took 50 to 70 s on the second node (network file system).
+  Proton's `waitforexitandrun` waits for everything in a prefix to end, so `host.run` blocks
+  while a Steam client lives there; `wine_direct` does not.
+- **Several games on one node.** One display per game (`CAPTURE_DISPLAY`), one GPU per game (a
+  job step), one prefix per game or per launcher. Cyberpunk ran beside the Rockstar prefix that
+  way on 2026-11-23. Two Rockstar games at once (one launcher, one Steam account) were not tried.
+  Nothing in the repo starts job steps; `capture/host` only refuses several GPUs.
 - **`tools/`** that press keys or list processes (`upscaler_ab`, `upscaler_sweep`,
   `dlss5_skin_sweep`, `preset_ab`) were not run on Linux; F13 to F16 (OptiScaler's live switches)
   are mapped in `window_x11.py` but never pressed there.
-- **The scout overlay and RedLua's console** (`redlua.minimize_console` does nothing without
-  Win32).
+- **The scout overlay** (RDR2's F8 to F11) was not looked at on Linux. `capture scout` works there
+  (GTA V's Alamo Sea location was scouted on the node).
 - **Frame rate: ask Slurm for one thread per core.** At the Cherry Blossom Market, 2560x1440
   path traced, the RTX PRO 6000 under Proton (2026-11-23):
 
@@ -63,47 +92,60 @@ Left, game-agnostic:
   a shot take 3.6 s, so about 2 s of each shot goes elsewhere (not looked into; the game's folder
   and `out/` are on a network file system).
 
-## Then: the game-specific parts that do not work on Linux as they are
+## Then: the game-specific parts on Linux, what is left
 
-Set by Nathan, 2026-11-23, to follow the item above. Everything under `adapters/<game>/` that
-needs Windows today, one game at a time. Each game's `capture verify <game> --launch` passing on
-the Linux machine is what closes its part.
+Set by Nathan, 2026-11-23, to follow the item above. `capture verify <game>` passes on the Linux
+machine for Cyberpunk 2077, RDR2 and GTA V Enhanced (2026-11-23; each game's README section has
+the numbers). What that took per game is in the adapters; what is left:
 
-**Cyberpunk 2077: done (2026-11-23)** but for DLSS 5: `paths.DLL_OVERRIDES` (`winmm,version=n,b`),
-the game folder and settings file under Proton, `launch.py` through `capture/host` (with a clean
-close, since a killed game writes no settings file). Its Lua, session job, adapter and probes run
-unchanged. `d3dcompiler_47` from winetricks was not needed.
-
-- **Every other game:** `adapters/<game>/install.py` (Steam's folder from the registry, settings
-  under Documents and AppData: `host.user_dir` instead, and the DLL overrides its script layer
-  needs); `launch.py` through `host.start`, and the screens on the way to "in game".
-- **RDR2:** the Rockstar Games Launcher's login with nobody at a screen; the camera pose written
-  into game memory for every shot (`render_camera.py`, `adapters/rdr2/mem.py`: onto
-  `adapters/common/mem.py`, which reads the same addresses on Linux); its own window module and
-  five PowerShell scripts (`adapters/rdr2/scripts/*.ps1`: restart, input, reload, run a job, Lua
-  check), to be moved onto `adapters/common/`; the loader's exchange folder as the game sees it
-  (`redlua.loader_text`); override `dinput8=n,b` for Script Hook RDR2; Reality Redemption 2
-  untested under Proton.
-- **GTA V Enhanced:** the Rockstar launcher and Steam's launch dialog; the minimum time step
-  written into game memory (`timestep.py`); the settings menu navigated by screenshots
-  (`settings_menu.py`, `launch.py` uses `window.user32` directly); override `xinput1_4=n,b` for the
-  ASI loader; NaturalVision Enhanced and the protection crash untested under Proton.
-- **Visual sets:** DLSS 5 through OptiScaler needs a newer driver than the CoreWeave machine has
-  (580; docs/LINUX_PORT.md, unknown 1), so each game's `--optiscaler` option waits on that.
+- **No DLSS 5 there.** OptiScaler needs a newer driver than the cluster has (580), so all three
+  were installed with `--no-optiscaler`. RDR2 then renders with the game's own DLSS at Quality
+  (its DLAA came from OptiScaler's ratio override), GTA V Enhanced with its own DLAA, Cyberpunk
+  with DLAA and Ray Reconstruction. Whether OptiScaler's ratio override alone works on 580 was
+  not tried. `capture verify` and the worker pass without it; `capture install <game>` without
+  the flag would add its steps.
+- **RDR2:** Reality Redemption 2's add-on loads (ReShade's log); its picture was not compared
+  with the PC's. The five PowerShell scripts (`adapters/rdr2/scripts/*.ps1`) are still Windows'
+  own: on Linux `launch.py` does the restart; reload, input and run-a-job have no Linux twin
+  (`redlua.run_job` runs a job from Python on both).
+- **GTA V Enhanced:** the settings menu navigated by screenshots (`settings_menu.py`: live ray
+  tracing and DLSS mode switches) was not run on Linux; NaturalVision Enhanced loads (Script
+  Hook's log) and its picture was not compared with the PC's; the protection crash was not seen
+  in the first hour. `adapters/gtav/launch.py` was rewritten onto `adapters/common/window` and
+  `capture/host` and has not been run on Windows since.
+- **RedLua gives a shape test's handle back as another object** of the same number (the
+  session's camera: "ScrHandle expected, got Cam"): every RDR2 take after the first failed in
+  its scene raycast on Linux until the ray was simply tried again (both games' session jobs,
+  2026-11-23). Not seen on Windows; nothing about it is Linux's.
+- **RedLua faulted in lua51.dll** in GTA V when a scout opened a session seconds after verify's
+  had ended (two "starting" lines in the loader's log, then Script Hook V's error box): the
+  known fault when a finished job is collected. The worker restarts the game; a box like that
+  is not detected as such (the heartbeat goes stale).
 - **Cyberpunk, a stale heartbeat right after a session:** a `verify` started within about 10 s
   of another session's end was refused once ("stale heartbeat", older than 5 s); 30 s later the
   heartbeat was a second old and verify passed (2026-11-23, Linux; not looked into, not tried on
-  Windows). A worker going from one job straight to the next could meet the same.
-- **Cyberpunk, the exposure lock's range:** at Kabuki in the afternoon the bisection ended at its
-  upper end (forced average luminance 98.9 of at most 100, frame brightness 78.0 where
-  auto-exposure gave 72.4; 2026-11-23). The take is still held at one exposure, but not at its
-  first shot's. Not known whether the PC does the same there.
+  Windows). GTA V's heartbeat also pauses for some seconds after "loader ready" while the world
+  loads. A worker going from one job straight to the next could meet the same.
+- **Cyberpunk, the exposure lock does not reach the first shot's brightness in sunlit places.**
+  The forced average luminance has a floor: at Kabuki at noon, one view, the frame's brightness
+  was 248.6 at 0.01, 161.7 at 1, 66.2 at 10, 64.4 at 100, 62.8 at 1000 and 61.0 at 1e6, where
+  auto-exposure gave 71 to 73 (`probes/exposure_range.py`, Linux, 2026-11-23). A first shot that
+  auto-exposure made darker than that floor is not reached, the search ends at its upper end and
+  the take is held brighter: Kabuki 78.0 for 72.4 and, with the upper end raised to 1e6 for a try,
+  71.6 for 63.2 on Linux; on Windows Kabuki 75.8 for 67.1, Badlands 178.3 for 165.9. Raising the
+  range is no fix (taken out again). The take is still held at one exposure. Not looked into:
+  why auto-exposure gets below the floor (its own metering, or a compensation the forced value
+  skips), whether `Rendering/ForcedPreExposure` or the free camera's exposure options can make up
+  the rest, and whether the first reading (one frame after the pose is set, where the search's
+  readings wait twelve) is itself darker than the settled frame.
 - **`capture verify`'s colour check** grabs the screen after the preview let the world go, so it
-  compares two different pictures (51.5 against 51.8 with the channels swapped, where one held
-  instant gives 0.19 against 11.22). Not a Linux matter, found there.
-
-RDR2 and GTA V also need Steam running and one account per running game (docs/LINUX_PORT.md,
-unknowns 2 and 3); that is a decision for Nathan, not code.
+  compares two different pictures in Cyberpunk (51.5 against 51.8 with the channels swapped,
+  where one held instant gives 0.19 against 11.22). RDR2 (0.6 against 11.9) and GTA V (3.0
+  against 41.8) separate well. Not a Linux matter, found there.
+- **The Witcher 3 and Kingdom Come: Deliverance** are being brought up on Windows first. The
+  Witcher 3's depots are on the cluster (69,954,964,012 bytes, default branch; to be checked
+  against the PC's build) and its exe starts under Proton to a 2560x1440 window; its console
+  input needs the X clipboard (xclip and xsel are installed).
 
 ## Next: finish the RDR2 install test (needs someone at the PC)
 

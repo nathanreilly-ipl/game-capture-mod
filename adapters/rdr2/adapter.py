@@ -33,15 +33,15 @@ from capture.adapter import Adapter, AdapterError
 
 from ..common.optiscaler_live import OptiScalerLive
 from . import render_camera as rc
-from . import window, zones
+from . import launch, window, zones
 from .mem import Process, find_pid
 from .session import CAPTURES, CamSession, heartbeat_age, vec
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 def game_dir():
-    """The game folder: RDR2_DIR, then this machine's config (written by `capture install`), then Steam's default."""
-    return (os.environ.get("RDR2_DIR") or config.game("rdr2").get("game_dir")
-            or r"C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2")
+    """The game folder: RDR2_DIR, then this machine's config (written by `capture install`), then the default place."""
+    from .install import DEFAULT_GAME_DIR
+    return os.environ.get("RDR2_DIR") or config.game("rdr2").get("game_dir") or DEFAULT_GAME_DIR
 
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
@@ -109,11 +109,12 @@ class RDR2Adapter(Adapter):
             return
         if not restart:
             raise AdapterError("RDR2 is not running with capture_loader.lua (no heartbeat)")
-        script = os.path.join(HERE, "scripts", "restart_game.ps1")
-        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
-                            "-GameDir", game_dir(), "-CaptureDir", CAPTURES], capture_output=True, text=True, timeout=600)
-        if r.returncode != 0 or not self._running():
-            raise AdapterError("game restart failed: %s" % (r.stdout[-500:] + r.stderr[-500:]))
+        try:
+            launch.start(game_dir())
+        except (RuntimeError, subprocess.SubprocessError) as e:
+            raise AdapterError("game restart failed: %s" % e)
+        if not self._running():
+            raise AdapterError("game restart failed: no loader heartbeat")
 
     def open(self):
         self.hwnd = window.find_game_window(find_pid())
@@ -256,7 +257,7 @@ class RDR2Adapter(Adapter):
         self.sess.pose(pos, pitch, yaw, vfov_deg)
         self.sess.cmd("wait", 45)
         r = self.sess.cmd("capture", "view")
-        shutil.move(r["file"], path)
+        shutil.move(self.sess.local(r["file"]), path)
 
     # --- frozen capture ----------------------------------------------------------------------
     def begin_frozen(self, first_shot):
@@ -288,7 +289,7 @@ class RDR2Adapter(Adapter):
 
     def capture(self, path, settle):
         r = self.sess.cmd("shoot", int(settle or self.settings["settle"]), "shot", timeout=60)
-        shutil.move(r["file"], path)
+        shutil.move(self.sess.local(r["file"]), path)
         self.last_size = [int(r["width"]), int(r["height"])]
         return {"width": int(r["width"]), "height": int(r["height"]), "rendered_pos": r["rendered_pos"],
                 "rendered_fov": r["rendered_fov"], "game_timer": int(r["game_timer"]), "player_pos": r["player"],

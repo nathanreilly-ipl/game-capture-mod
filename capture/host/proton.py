@@ -24,6 +24,7 @@ private mount namespace whose /usr/bin is links to the real one plus the unpacke
 import glob
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -58,6 +59,32 @@ def _newest(pattern):
     return os.path.dirname(found[-1]) if found else None
 
 
+def driver_version():
+    """The NVIDIA driver's version ("580.105.08"), or None."""
+    try:
+        with open("/proc/driver/nvidia/version") as f:
+            # "... Kernel Module for x86_64  580.178.04  Release Build ...": the first x.y[.z] standing alone
+            m = re.search(r"Kernel Module.*?\s(\d+\.\d+(?:\.\d+)?)\s", f.read())
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=30).stdout.split()
+        return out[0] if out else None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _ngx_dir():
+    """NVIDIA's NGX DLLs for this machine's driver (nodes of one cluster can run different ones);
+    failing that the newest set there is."""
+    v = driver_version()
+    d = os.path.join(host_dir(), "nvidia", v or "?")
+    return d if os.path.exists(os.path.join(d, "nvngx.dll")) else _newest("nvidia/*/nvngx.dll")
+
+
 def tools():
     """Where the pieces are (None for a missing one): proton, runtime, sysroot, ngx; and the
     display (":99") and its screen size ("2560x1440")."""
@@ -66,7 +93,7 @@ def tools():
     return {"proton": cfg.get("proton") or _newest("proton/*/proton"),
             "runtime": cfg.get("runtime") or _newest("runtime/*/_v2-entry-point"),
             "sysroot": sysroot if os.path.isdir(sysroot) else None,
-            "ngx": cfg.get("ngx") or _newest("nvidia/*/nvngx.dll"),
+            "ngx": cfg.get("ngx") or _ngx_dir(),
             "display": os.environ.get("CAPTURE_DISPLAY") or cfg.get("display") or ":99",
             "screen": cfg.get("screen") or "2560x1440"}
 
@@ -86,6 +113,35 @@ def missing():
     if not t["ngx"]:
         out.append("NVIDIA's nvngx.dll and _nvngx.dll for this driver (out/host/nvidia/<version>/)")
     return out
+
+
+def gpu_name():
+    """The name of the first GPU this process can see, as the driver gives it, or None."""
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    names = [line.strip() for line in r.stdout.splitlines() if line.strip()]
+    return names[0] if r.returncode == 0 and names else None
+
+
+def gpus():
+    """How many GPUs this process can see (0 when nvidia-smi does not say)."""
+    try:
+        r = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    return sum(1 for line in r.stdout.splitlines() if line.startswith("GPU ")) if r.returncode == 0 else 0
+
+
+def _one_gpu():
+    n = gpus()
+    if n > 1 and os.environ.get("CAPTURE_ANY_GPUS") != "1":
+        # Cyberpunk 2077 on a job with four GPUs, 2026-11-23: the game's list of display modes was
+        # empty ("Resolution is nil") and its window sat at 320,180; with one GPU visible all is well
+        raise HostError("this process sees %d GPUs, and a game under Proton then finds no display modes. Start it where "
+                        "one GPU is visible: under Slurm, in a job step (srun --exact --gres=gpu:1 -c <cores> %s ...). "
+                        "CAPTURE_ANY_GPUS=1 starts it anyway." % (n, CLI))
 
 
 def _require():
@@ -129,9 +185,19 @@ def _scratch(*parts):
     return d
 
 
+_PREFIX_OF = {}
+
+
+def use_prefix(game, name):
+    """Says that `game` runs in the prefix `name` instead of one of its own: games that share a
+    launcher and its sign-in (Rockstar's) share one prefix. Called by the game's package when it
+    is imported. Stopping one such game ends everything in the shared prefix."""
+    _PREFIX_OF[game] = name
+
+
 def prefix(game):
     """The game's Proton prefix folder (STEAM_COMPAT_DATA_PATH); its C: drive is pfx/drive_c."""
-    return config.game(game).get("prefix") or os.path.join(paths.OUT, "proton", game)
+    return config.game(game).get("prefix") or os.path.join(paths.OUT, "proton", _PREFIX_OF.get(game, game))
 
 
 def drive_c(game):
@@ -146,6 +212,19 @@ def game_path(path, game=None):
         if real == c or real.startswith(c + os.sep):
             return "C:\\" + real[len(c) + 1:].replace("/", "\\")
     return "Z:" + path.replace("/", "\\")
+
+
+def host_path(path, game=None):
+    """The other way round: a path as code inside the game gave it (C:\\... in the game's prefix,
+    Z:\\... elsewhere) on this machine."""
+    p = path.replace("\\", "/")
+    if len(p) > 1 and p[1] == ":":
+        drive, rest = p[0].upper(), p[2:].lstrip("/")
+        if drive == "Z":
+            return "/" + rest
+        if drive == "C" and game:
+            return os.path.join(drive_c(game), *rest.split("/"))
+    return path
 
 
 def user_dir(game, kind):
@@ -202,7 +281,10 @@ def _prefix_pids(game):
 def stop(game, exe_names=(), wait_s=60):
     """Ends the game and everything else in its prefix (a Wine server left behind would keep the
     prefix's registry open and make the next start join it). Wine's server writes the registry out
-    when asked to end, so it is asked first and only killed if it stays."""
+    when asked to end, so it is asked first and only killed if it stays. A Steam client in the
+    prefix ends with it: after a game it had started was closed (by signal or by taskkill) its main
+    loop stalled and it took no further requests or ended itself minutes later (RDR2 and GTA V,
+    2026-11-23). `capture host steam <game> --keep` starts it again; steam_launch waits for that."""
     todo = sorted(set(_prefix_pids(game)) | {p for n in exe_names for p in pids(n)})
     for sig, patience in ((signal.SIGTERM, min(20, wait_s)), (signal.SIGKILL, wait_s)):
         for pid in todo:
@@ -268,6 +350,9 @@ def _env(game, app_id=None, dll_overrides=None):
            if k not in ("LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "PYTHONUNBUFFERED")}
     env.update(DISPLAY=t["display"], XDG_RUNTIME_DIR=_scratch("xdg"),
                STEAM_COMPAT_CLIENT_INSTALL_PATH=_scratch("steam"), STEAM_COMPAT_DATA_PATH=prefix(game))
+    if not os.path.isdir("/proc/asound") or not glob.glob("/proc/asound/card*"):
+        # no sound hardware: a default device that plays nothing (alsa_null.conf says why)
+        env["ALSA_CONFIG_PATH"] = "/usr/share/alsa/alsa.conf:" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "alsa_null.conf")
     if app_id:
         env.update(SteamAppId=str(app_id), SteamGameId=str(app_id), STEAM_COMPAT_APP_ID=str(app_id))
     if dll_overrides:
@@ -275,6 +360,167 @@ def _env(game, app_id=None, dll_overrides=None):
     if os.environ.get("CAPTURE_PROTON_LOG"):      # Proton's own log (large): out/host/logs/steam-<app>.log
         env.update(PROTON_LOG="1", PROTON_LOG_DIR=_logs())
     return env
+
+
+# --- Wine without Proton's script: a real Steam client in the prefix, 32-bit programs ------------------
+# Proton's script wraps every program in its own stand-in for the Steam client (lsteamclient, a
+# built-in steam.exe), which needs the Linux Steam client. Games that must be started by a real Steam
+# client (Rockstar's launcher refuses without one) get the Windows client in their prefix, and that
+# client and what it starts run through wine_direct(): Wine's preloader, the environment Proton would
+# give (below), Proton's stand-in switched off.
+#
+# What Proton's script sets for a game, read from a game it started (GE-Proton11-12, 2026-11-23):
+# DXVK, vkd3d-proton and NVAPI in place of Wine's own Direct3D, the fast synchronisation primitives.
+PROTON_OVERRIDES = ("dotnetfx35.exe=b;dotnetfx35setup.exe=b;beclient.dll=b,n;beclient_x64.dll=b,n;winebth.sys=d;opencl=n,d;"
+                    "d3d11=n;d3d10core=n;d3d9=n;dxgi=n;d3d12=n;d3d12core=n;nvapi64=n;nvofapi64=n;nvapi=n;nvcuda=b")
+PROTON_ENV = {"WINEDEBUG": "-all", "DXVK_LOG_LEVEL": "none", "VKD3D_DEBUG": "none", "VKD3D_SHADER_DEBUG": "none",
+              "WINENTSYNC": "1", "WINEESYNC": "1", "WINEFSYNC": "1", "WINE_LARGE_ADDRESS_AWARE": "1",
+              "DXVK_ENABLE_NVAPI": "1", "DXVK_NVAPI_SET_NGX_DEBUG_OPTIONS": "DLSSIndicator=0,DLSSGIndicator=0,",
+              "__GLVND_DISALLOW_PATCHING": "1"}
+WOW64_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wow64")
+STEAM_PARTS = ("Program Files (x86)", "Steam")
+
+
+def tls32():
+    """The preload library that lets Wine start 32-bit Windows programs where the 32-bit system call
+    entry is forbidden (wow64/tls32.c; built by `capture host setup` into out/host/lib), or None."""
+    p = os.path.join(host_dir(), "lib", "tls32.so")
+    return p if os.path.exists(p) else None
+
+
+def _wine_env(game, dll_overrides=None, cwd=None):
+    t = tools()
+    files = os.path.join(t["proton"], "files")
+    env = _env(game)
+    for k in ("SteamAppId", "SteamGameId", "STEAM_COMPAT_APP_ID", "UMU_ID"):
+        env.pop(k, None)
+    env.update(PROTON_ENV)
+    if os.environ.get("CAPTURE_WINEDEBUG"):
+        env["WINEDEBUG"] = os.environ["CAPTURE_WINEDEBUG"]
+    env.update(WINEPREFIX=os.path.join(prefix(game), "pfx"),
+               WINEDLLPATH=":".join(os.path.join(files, "lib", d) for d in ("wine/nvidia-libs/nvml/wine", "vkd3d", "wine")),
+               WINEDLLOVERRIDES=(dll_overrides + ";" if dll_overrides else "") + PROTON_OVERRIDES,
+               PROTON_DISABLE_LSTEAMCLIENT="1",     # Wine's loader: no stand-in when steamclient64.dll is loaded
+               WINEARCH="wow64")                    # 32-bit Windows programs in 64-bit processes
+    if tls32():
+        env["CAPTURE_PRELOAD"] = tls32()
+    if cwd:
+        env["CAPTURE_CWD"] = cwd
+    return env
+
+
+def _wine_cmd(t, *args):
+    return [os.path.join(t["runtime"], "_v2-entry-point"), "--verb=run", "--", os.path.join(WOW64_DIR, "wine.sh"),
+            os.path.join(t["proton"], "files")] + list(args)
+
+
+def wine_direct(game, *args, dll_overrides=None, cwd=None, wait=True, timeout=600):
+    """Runs a Windows program in the game's prefix through Wine itself (see above). wait: returns the
+    finished process (its output captured); otherwise starts it detached, its output in the game's log."""
+    t = _require()
+    ensure_display()
+    ensure_prefix(game)
+    env = _wine_env(game, dll_overrides, cwd)
+    if not wait:
+        _one_gpu()      # what it starts may be a game, or a Steam client that starts one
+    if wait:
+        return subprocess.run(_wine_cmd(t, *args), env=env, cwd=_scratch(), stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=timeout)
+    with open(os.path.join(_logs(), "%s.log" % game), "ab") as log:
+        log.write(("\n=== %s (wine) %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(args))).encode())
+        log.flush()
+        return subprocess.Popen(_wine_cmd(t, *args), env=env, cwd=_scratch(), stdin=subprocess.DEVNULL, stdout=log,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+
+
+def app_overrides(game, exe_name, overrides):
+    """DLL overrides for one exe, kept in the prefix's registry (HKCU\\Software\\Wine\\AppDefaults): they
+    hold however the game is started, by us or by a Steam client. overrides: {"dinput8": "native,builtin"}."""
+    for dll, order in overrides.items():
+        r = wine_direct(game, "reg", "add", "HKCU\\Software\\Wine\\AppDefaults\\%s\\DllOverrides" % exe_name,
+                        "/v", dll, "/t", "REG_SZ", "/d", order, "/f")
+        if r.returncode != 0:
+            raise HostError("could not set the DLL override %s for %s:\n%s" % (dll, exe_name, (r.stdout + r.stderr)[-800:]))
+
+
+def steam_exe(game):
+    """The Windows Steam client in the game's prefix (a real one, not Proton's stand-in), or None."""
+    p = os.path.join(drive_c(game), *STEAM_PARTS, "steam.exe")
+    return p if os.path.exists(p) and os.path.getsize(p) > 1000000 else None
+
+
+def steam_running(game):
+    for pid in _prefix_pids(game):
+        try:
+            with open("/proc/%d/cmdline" % pid, "rb") as f:
+                arg0 = f.read().split(b"\0")[0].decode(errors="replace").replace("\\", "/").lower()
+        except OSError:
+            continue
+        if arg0.endswith("/steam/steam.exe"):
+            return True
+    return False
+
+
+def start_steam(game, wait_s=600):
+    """Starts the prefix's Steam client if it is not running; returns once its window is up (signed in
+    with the remembered login, or waiting at its sign-in window: the owner signs in there once)."""
+    if not steam_exe(game):
+        raise HostError("no Steam client in %s (the Windows client's folder goes in %s)" % (
+            prefix(game), os.path.join(drive_c(game), *STEAM_PARTS)))
+    if not tls32():
+        raise HostError("out/host/lib/tls32.so is not built (run: %s host setup): Steam's service is a 32-bit program" % CLI)
+    if steam_running(game):
+        return
+    t = time.time()
+    while _prefix_pids(game) and time.time() - t < 60:
+        time.sleep(2)       # what a stop is still ending: a client started into a dying Wine server ends at once
+    p = wine_direct(game, "C:\\Program Files (x86)\\Steam\\steam.exe", "-no-cef-sandbox", "-silent",
+                    cwd=os.path.join(drive_c(game), *STEAM_PARTS), wait=False)
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        time.sleep(5)
+        if steam_running(game) and os.path.exists(os.path.join(drive_c(game), *STEAM_PARTS, "logs", "connection_log.txt")):
+            return
+        if p.poll() is not None and not steam_running(game):
+            raise HostError("the Steam client ended at once (see %s)" % os.path.join(_logs(), "%s.log" % game))
+    raise HostError("the Steam client did not come up in %d s (see %s)" % (wait_s, os.path.join(_logs(), "%s.log" % game)))
+
+
+def steam_logged_on(game):
+    """True once the prefix's running Steam client has logged on (its connection log says so after
+    the client's start)."""
+    log = os.path.join(drive_c(game), *STEAM_PARTS, "logs", "connection_log.txt")
+    started = None
+    for pid in _prefix_pids(game):
+        try:
+            with open("/proc/%d/cmdline" % pid, "rb") as f:
+                arg0 = f.read().split(b"\0")[0].decode(errors="replace").replace("\\", "/").lower()
+            if arg0.endswith("/steam/steam.exe"):
+                started = os.stat("/proc/%d" % pid).st_mtime
+        except OSError:
+            pass
+    if started is None or not os.path.exists(log) or os.path.getmtime(log) < started:
+        return False
+    with open(log, encoding="utf-8", errors="replace") as f:
+        tail = f.read()[-4000:]
+    i = tail.rfind("[Logged On")
+    return i >= 0 and "Logged Off" not in tail[i:] and "Disconnected" not in tail[i:]
+
+
+def steam_launch(game, app_id, wait_s=900):
+    """Asks the prefix's Steam client to start a game, as steam://rungameid does on Windows. Waits
+    for a client that is being started elsewhere (the keeper's job step) and for its logon."""
+    deadline = time.time() + wait_s
+    while not (steam_running(game) and steam_logged_on(game)):
+        if time.time() > deadline:
+            raise HostError("the Steam client in %s is not up and logged on (run: %s host steam %s --keep, in a job step "
+                            "with one GPU; its sign-in window is on display %s)" % (prefix(game), CLI, game, tools()["display"]))
+        if not steam_running(game) and gpus() <= 1:
+            start_steam(game)
+        time.sleep(5)
+    time.sleep(10)      # logged on is a little before it takes requests
+    # the client that is running takes the request; this second steam.exe only passes it on and ends
+    return wine_direct(game, "C:\\Program Files (x86)\\Steam\\steam.exe", "-applaunch", str(app_id), timeout=300)
 
 
 def _logs():
@@ -311,6 +557,15 @@ def ensure_prefix(game, app_id=None):
             have = json.load(f)
     if have == want and all(os.path.exists(os.path.join(system32, n)) for n in NGX_FILES):
         return
+    if have and os.path.isdir(system32):
+        # the prefix is there with its registry value; only the driver changed (another node of a
+        # cluster): the files of this driver's version, no Proton run (it would wait for whatever
+        # runs in the prefix to end)
+        for n in NGX_FILES:
+            shutil.copyfile(os.path.join(t["ngx"], n), os.path.join(system32, n))
+        with open(marker, "w", encoding="utf-8") as f:
+            json.dump(want, f)
+        return
     r = run(game, "reg", "add", NGX_KEY, "/v", "FullPath", "/t", "REG_SZ", "/d", "C:\\Windows\\System32", "/f", app_id=app_id)
     if r.returncode != 0 or not os.path.isdir(system32):
         raise HostError("Proton could not make the prefix %s:\n%s" % (prefix(game), (r.stdout + r.stderr)[-1500:]))
@@ -325,6 +580,7 @@ def start(game, exe, args=(), cwd=None, dll_overrides=None, app_id=None):
     container (the game itself is found with pids()). dll_overrides: Wine's WINEDLLOVERRIDES for
     the DLLs a script layer replaces ("winmm,version=n,b"); app_id: the game's Steam id."""
     t = _require()
+    _one_gpu()
     ensure_display()
     ensure_prefix(game, app_id)
     with open(os.path.join(_logs(), "%s.log" % game), "ab") as log:

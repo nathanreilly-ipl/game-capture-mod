@@ -510,8 +510,14 @@ class CyberpunkAdapter(Adapter):
         value gives a darker frame)."""
         target = self._brightness(1)
         self.sess.cmd("option", "set Rendering ForcedInstantAutoExposure true")
-        lo, hi = -3.0, 2.0   # log10 of the forced average luminance
-        got = None
+
+        # log10 of the forced average luminance. The frame hardly darkens past a value of about 10
+        # (Kabuki at noon, one view, 2026-11-23: 161.7 at 1, 66.2 at 10, 64.4 at 100, 61.0 at 1e6,
+        # where auto-exposure gave 72; probes/exposure_range.py), so a first shot that auto-exposure
+        # made darker than that floor is not reached: the search ends at its upper end and the take
+        # is held a little brighter (Kabuki 71.6 for 63.2). A wider range does not help (tried).
+        lo, hi = -3.0, 2.0
+        got = mid = None
         for _ in range(10):
             mid = (lo + hi) / 2
             self.sess.cmd("option", "set Rendering ForcedExposureAvgLum %.6f" % (10 ** mid))

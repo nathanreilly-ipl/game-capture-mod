@@ -15,7 +15,11 @@ import time
 from capture.host import proton
 
 # key names as window_win32.SCAN has them -> X key names
-KEYS = {"Enter": "Return", "Esc": "Escape", "Space": "space", "Back": "BackSpace", "Q": "q", "E": "e"}
+KEYS = {"Enter": "Return", "Esc": "Escape", "Space": "space", "Back": "BackSpace", "Q": "q", "E": "e",
+        "Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right", "F3": "F3", "F4": "F4", "F5": "F5", "F6": "F6"}
+# a caller may pass a keyboard scan code where window_win32.SCAN has no name for the key
+SCAN_KEYS = {0x1C: "Return", 0x01: "Escape", 0x39: "space", 0x0E: "BackSpace", 0x10: "q", 0x12: "e", 0x48: "Up", 0x50: "Down",
+             0x4B: "Left", 0x4D: "Right", 0x3D: "F3", 0x3E: "F4", 0x3F: "F5", 0x40: "F6"}
 # Windows virtual-key codes -> X key names, for press_vk (the function keys F1..F24 and letters, digits)
 VK = {0x0D: "Return", 0x1B: "Escape", 0x20: "space", 0x08: "BackSpace"}
 VK.update({0x70 + i: "F%d" % (i + 1) for i in range(24)})
@@ -118,6 +122,10 @@ def _press(win, name, hold_s):
 def press(win, key, hold_s=0.08):
     """Presses one key (a name as in window_win32.SCAN, or an X key name), only while the game
     window has the keyboard."""
+    if isinstance(key, int):
+        if key not in SCAN_KEYS:
+            raise ValueError("no X key for scan code 0x%02X" % key)
+        return _press(win, SCAN_KEYS[key], hold_s)
     return _press(win, KEYS.get(key, key), hold_s)
 
 
@@ -159,6 +167,46 @@ class _ClientMessage(ctypes.Structure):
                 ("data", ctypes.c_long * 5), ("pad", ctypes.c_long * 12)]    # padded to the size of an XEvent
 
 
+def rect(win):
+    """The window on the screen: (left, top, right, bottom), or None."""
+    g = _geometry(win) if win else None
+    return (g[0], g[1], g[0] + g[2], g[1] + g[3]) if g else None
+
+
+def click_screen(x, y):
+    """A left click at a point of the screen."""
+    _xdo("mousemove", int(x), int(y))
+    time.sleep(0.3)
+    _xdo("mousedown", 1)
+    time.sleep(0.08)
+    _xdo("mouseup", 1)
+
+
+def click(win, x, y):
+    """A left click at a point of the window's client area."""
+    r = rect(win)
+    if r:
+        click_screen(r[0] + x, r[1] + y)
+
+
+def window_pid(win):
+    """The process a window belongs to (0 if unknown)."""
+    out = _xdo("getwindowpid", win)
+    return int(out[0]) if out else 0
+
+
+def move(win, x, y):
+    """Puts the window's top left corner at a point of the screen."""
+    if win:
+        _xdo("windowmove", win, int(x), int(y))
+
+
+def hide(win):
+    """Takes a window off the screen without closing it (a console, a launcher that stays up)."""
+    if win:
+        _xdo("windowunmap", win)
+
+
 def close(win):
     """Asks the window to close, as a window manager's close button does (WM_DELETE_WINDOW, which
     Wine hands the game as WM_CLOSE): the game shuts down in its own way and writes what it
@@ -186,15 +234,21 @@ def close(win):
 def grab(win):
     """A picture of the window as it is on the display (PIL image), or None."""
     from PIL import Image
-    size = client_size(win)
-    if not size:
+    g = _geometry(win) if win else None
+    if not g:
+        return None
+    # only what is on the screen can be read: a window reaching past an edge gives BadMatch, and
+    # Xlib's answer to that ends the program (RDR2's window stood at 0,13 on a 1440-line screen)
+    sw, sh = desktop_size()
+    size = (min(g[2], sw - max(g[0], 0)), min(g[3], sh - max(g[1], 0)))
+    if size[0] <= 0 or size[1] <= 0:
         return None
     x = _xlib()
     d = x.XOpenDisplay(proton.tools()["display"].encode())
     if not d:
         return None
     try:
-        img = x.XGetImage(d, int(win), 0, 0, size[0], size[1], 0xFFFFFFFF, 2)   # all planes, ZPixmap
+        img = x.XGetImage(d, int(win), max(-g[0], 0), max(-g[1], 0), size[0], size[1], 0xFFFFFFFF, 2)   # all planes, ZPixmap
         if not img:
             return None
         im = img.contents

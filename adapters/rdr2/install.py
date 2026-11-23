@@ -22,8 +22,9 @@ import json
 import os
 import re
 
-from capture import config
-from capture.install.components import addon, optiscaler, reshade
+from capture import config, host
+from capture import paths as capture_paths
+from capture.install.components import addon, optiscaler, reshade, wine
 
 from . import raytracing
 from ..common import redlua
@@ -36,7 +37,23 @@ TITLE = "Red Dead Redemption 2 (story mode, Steam)"
 EXE = "RDR2.exe"
 STEAM_APP = "1174180"
 LOCK = os.path.join(HERE, "mods.lock.json")
-EXCHANGE = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures")
+# The Steam copy as the PC has it (2026-11-23), for a Steam client that is given the downloaded
+# files instead of downloading them (capture/host/steam.py): RDR2.exe 1.0.1491.50
+STEAM = {"app": STEAM_APP, "name": "Red Dead Redemption 2", "installdir": "Red Dead Redemption 2", "buildid": "13773296",
+         "size": 128327186218,
+         "depots": {"1174181": ("4757128409362785099", 746), "1174182": ("2258488483491377476", 78804578319),
+                    "1174183": ("4785346550216140531", 390640), "1174184": ("2698939236196220127", 5460348964),
+                    "1174185": ("8173342615013177810", 17767404187), "1174186": ("357926288062992323", 26009156930),
+                    "1899671": ("4635231945872575760", 285697072)},
+         "scripts": {"1174181": "installscript.vdf", "1899671": "installscript_sdk.vdf"},
+         "shared": {"228987": "228980", "228990": "228980"}}
+# Windows: Steam's default library. Linux (the game under Proton, capture/host): where a download
+# of the game's Windows depots is kept, since there is no Steam client there.
+DEFAULT_GAME_DIR = (os.path.join(capture_paths.OUT, "games", "rdr2") if host.LINUX
+                    else r"C:\Program Files (x86)\Steam\steamapps\common\Red Dead Redemption 2")
+# Under Proton, Wine must load the game folder's own dinput8.dll (Script Hook's ASI loader)
+DLL_OVERRIDES = "dinput8=n,b"
+EXCHANGE = os.path.join(host.user_dir(GAME, "documents"), "RDR2Modding", "captures")
 SCRIPTS = ("capture_loader.lua", "scout_overlay.lua")
 # The default capture setup (2026-11-20): DLSS 5 (OptiScaler) and ray tracing (Reality Redemption 2),
 # so Direct3D 12, at the 2560x1440 capture size. --no-optiscaler, --no-ray-tracing, --api vulkan
@@ -66,7 +83,7 @@ NATIVE_PATCHES = (("0x5CD6A2CCE5087161", "_SET_PHOTO_MODE_EXPOSURE_LOCKED", "BOO
 
 
 def settings_xml():
-    return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "Rockstar Games", "Red Dead Redemption 2",
+    return os.path.join(host.user_dir(GAME, "documents"), "Rockstar Games", "Red Dead Redemption 2",
                         "Settings", "system.xml")
 
 
@@ -75,6 +92,8 @@ def find_game_dir():
     known = config.game(GAME).get("game_dir") or os.environ.get("RDR2_DIR")
     if known and os.path.exists(os.path.join(known, EXE)):
         return known
+    if host.LINUX:   # no Steam client: the game's Windows depots, downloaded to the default place
+        return DEFAULT_GAME_DIR if os.path.exists(os.path.join(DEFAULT_GAME_DIR, EXE)) else None
     libs = []
     try:
         import winreg
@@ -164,6 +183,7 @@ def steps(ctx):
         out.append(CopyFile(ctx.file("scripthook_rdr2", name), os.path.join(g, name)))
     if opt.get("native_trainer", True):
         out.append(CopyFile(ctx.file("scripthook_rdr2", "NativeTrainer.asi"), os.path.join(g, "NativeTrainer.asi")))
+    out += wine.dll_overrides(ctx, EXE, ["dinput8"])      # under Proton: Script Hook's ASI loader
     out.append(WriteText(os.path.join(g, "ScriptHookRDR2.dev"), "", what="turns on Script Hook's CTRL+R script reload",
                          only_if_missing=True))
     for name in ("RedLua.asi", "lua51.dll", "RedLua/Langs/en.lng", "RedLua/Langs/ru.lng"):
@@ -206,6 +226,11 @@ def steps(ctx):
         out += optiscaler.not_loaded(ctx, g, loader="asi")
 
     # game settings
+    card = ctx.system.gpu_name()
+    if card:
+        # the game throws its graphics settings away (1280x720, DLSS off) when the card named in the file
+        # is not the machine's: seen with the PC's file on the CoreWeave node, 2026-11-23
+        out.append(XmlSet(xml, "videoCardDescription", card, why="this machine's GPU: the game resets its settings otherwise"))
     if opt.get("api") in API_SETTING:  # --api switches the game itself too
         out.append(XmlSet(xml, "API", API_SETTING[opt["api"]], why="the graphics API ReShade is installed for"))
     if opt.get("optiscaler"):

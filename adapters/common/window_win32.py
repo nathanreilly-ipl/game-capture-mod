@@ -172,6 +172,49 @@ def grab(hwnd):
 user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
 
 
+def rect(hwnd):
+    """The window on the screen: (left, top, right, bottom), or None."""
+    r = wt.RECT()
+    if not hwnd or not user32.GetWindowRect(hwnd, ctypes.byref(r)):
+        return None
+    return r.left, r.top, r.right, r.bottom
+
+
+def click_screen(x, y):
+    """A left click at a point of the screen."""
+    user32.SetCursorPos(int(x), int(y))
+    time.sleep(0.3)
+    user32.mouse_event(0x0002, 0, 0, 0, 0)
+    time.sleep(0.08)
+    user32.mouse_event(0x0004, 0, 0, 0, 0)
+
+
+def click(hwnd, x, y):
+    """A left click at a point of the window's client area."""
+    pt = wt.POINT(int(x), int(y))
+    user32.ClientToScreen(hwnd, ctypes.byref(pt))
+    click_screen(pt.x, pt.y)
+
+
+def window_pid(hwnd):
+    """The process a window belongs to (0 if unknown)."""
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return pid.value
+
+
+def move(hwnd, x, y):
+    """Puts the window's top left corner at a point of the screen."""
+    if hwnd:
+        user32.SetWindowPos(hwnd, None, int(x), int(y), 0, 0, 0x0001 | 0x0004 | 0x0010)   # NOSIZE | NOZORDER | NOACTIVATE
+
+
+def hide(hwnd):
+    """Takes a window off the screen without closing it (minimized, not activated)."""
+    if hwnd:
+        user32.ShowWindow(hwnd, 7)   # SW_SHOWMINNOACTIVE
+
+
 def close(hwnd):
     """Asks the window to close, as its close button does (WM_CLOSE): the game shuts down in its
     own way and writes what it writes on exit. True if the request was sent."""
