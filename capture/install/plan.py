@@ -26,10 +26,15 @@ class System:
     """What an install touches outside the game folder, on Windows. Tests replace it; under Proton
     it is ProtonSystem (default_system picks)."""
     game = None     # the game being installed (install.context sets it)
+    wine = False    # True where the game runs under Wine (components/wine.py adds its steps then)
 
     def game_path(self, path):
         """A path of this machine as code inside the game sees it (a config value the game reads)."""
         return path
+
+    def gpu_name(self):
+        """The GPU's name as the game will read it, where the installer can tell (None: not asked)."""
+        return None
 
     def program_data(self):
         return os.environ.get("ProgramData", r"C:\ProgramData")
@@ -93,9 +98,15 @@ class ProtonSystem(System):
     are inside the game's own prefix, nothing needs an administrator, and a path written for the
     game to read is given as the game sees it (Z:\\..., C:\\...)."""
 
+    wine = True
+
     def game_path(self, path):
         from .. import host
         return host.game_path(path, self.game)
+
+    def gpu_name(self):
+        from .. import host
+        return host.gpu_name()
 
     def program_data(self):
         from .. import host

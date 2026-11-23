@@ -280,7 +280,7 @@ def cmd_mods(a):
 
 def cmd_host(a):
     from .host import setup
-    if not setup.main(a.action, a.game):
+    if not setup.main(a.action, a.game, client=a.client, keep=a.keep):
         raise SystemExit(1)
 
 
@@ -424,8 +424,10 @@ def main(argv=None):
     s.set_defaults(fn=cmd_mods)
 
     s = sub.add_parser("host", help="Linux: what this machine needs to run a Windows game (Proton, a headless display)")
-    s.add_argument("action", choices=("status", "setup", "prefix", "stop"))
-    s.add_argument("game", nargs="?", help="prefix, stop: the game")
+    s.add_argument("action", choices=("status", "setup", "prefix", "stop", "steam"))
+    s.add_argument("game", nargs="?", help="prefix, stop, steam: the game")
+    s.add_argument("--client", help="steam: the Windows Steam client's folder or zip (Steam/...), put into the prefix")
+    s.add_argument("--keep", action="store_true", help="steam: start the client and keep it running (in a job step with one GPU)")
     s.set_defaults(fn=cmd_host)
 
     s = sub.add_parser("worker", help="capture queued jobs")

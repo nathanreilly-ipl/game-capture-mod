@@ -12,6 +12,10 @@ returned (an HWND, or an X window id); adapters only pass it back.
     press(handle, key, hold_s), press_vk(handle, vk, scan, hold_s)      only while the window is in front
     grab(handle) -> PIL image of the window as it is on screen
     close(handle) -> bool                           ask it to close, as its close button does
+    hide(handle)                                    off the screen without closing it
+    move(handle, x, y)                              its top left corner to a point of the screen
+    rect(handle) -> (left, top, right, bottom) on the screen; window_pid(handle) -> pid
+    click(handle, x, y) at a point of the client area; click_screen(x, y) at a point of the screen
     keep_awake()
 """
 import os

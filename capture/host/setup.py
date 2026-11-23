@@ -4,6 +4,8 @@
     capture host setup             fetches and unpacks what is missing into out/host (no root needed)
     capture host prefix <game>     makes the game's Proton prefix; prints where its saves and settings go
     capture host stop <game>       ends the game and everything else in its prefix
+    capture host steam <game> [--client <zip|folder>] [--keep]
+                                   a Steam client in the game's prefix, for games that need one (steam.py)
 
 The parts and where they come from are pinned in linux.lock.json, next to this file: Proton, the
 Steam Linux Runtime it runs in, a headless display with its tools (Ubuntu packages, unpacked into a
@@ -36,20 +38,7 @@ def lock():
 
 
 def driver_version():
-    """The NVIDIA driver's version ("580.105.08"), or None."""
-    try:
-        with open("/proc/driver/nvidia/version") as f:
-            m = re.search(r"Kernel Module[^\d]*(\d+\.\d+(?:\.\d+)?)", f.read())
-            if m:
-                return m.group(1)
-    except OSError:
-        pass
-    try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
-                             capture_output=True, text=True).stdout.split()
-        return out[0] if out else None
-    except OSError:
-        return None
+    return proton.driver_version()
 
 
 def _gpus():
@@ -84,6 +73,9 @@ def status(log=print):
 
     gpus = _gpus()
     row("NVIDIA GPU and driver", bool(gpus and version), "%s; driver %s" % ("; ".join(gpus) or "none seen by nvidia-smi", version))
+    if len(gpus) > 1:
+        row("one GPU visible", False, "%d are: a game then finds no display modes; start it in a job step with one "
+            "(srun --exact --gres=gpu:1 ...)" % len(gpus), needed=False)
     row("unprivileged user namespaces (Proton's container; Xvfb's private /usr/bin)", _user_namespaces(),
         "unshare -Ur works" if _user_namespaces() else "refused: the Steam Linux Runtime cannot start its container here")
     row("Proton", t["proton"], t["proton"] or "wanted: %s" % parts["proton"]["version"])
@@ -96,6 +88,8 @@ def status(log=print):
     have = t["ngx"] and os.path.basename(t["ngx"]) == version
     row("NVIDIA NGX DLLs for driver %s (DLSS under Proton)" % version, have,
         t["ngx"] if have else "wanted in %s%s" % (want_ngx, " (found for another driver: %s)" % t["ngx"] if t["ngx"] else ""))
+    row("32-bit Windows programs (wow64/tls32.c, for a Steam client in a prefix)", proton.tls32(),
+        proton.tls32() or "not built (host setup builds it where there is a C compiler)", needed=False)
     row("ffmpeg (packaging takes into videos)", _ffmpeg(), _ffmpeg() or "none installed, none in the conda environment %s" % proton.env_dir())
     alive = proton.display_alive() if proton.tool("xdotool") else False
     row("headless display %s (%s)" % (t["display"], t["screen"]), alive, "up" if alive else "not running; started with the game", needed=False)
@@ -194,6 +188,28 @@ def _setup_conda(part, log):
     log("  %s in %s" % (", ".join(part["programs"]), os.path.join(env, "bin")))
 
 
+def _tls32_source():
+    return os.path.join(proton.WOW64_DIR, "tls32.c")
+
+
+def _setup_tls32(log):
+    """Builds wow64/tls32.c (32-bit Windows programs where 32-bit system calls are forbidden) into
+    out/host/lib with the machine's C compiler; rebuilt when the source is newer."""
+    dst = os.path.join(proton.host_dir(), "lib", "tls32.so")
+    src = _tls32_source()
+    if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+        return
+    cc = shutil.which("cc") or shutil.which("gcc")
+    if not cc:
+        log("  no C compiler here: %s is not built (only 32-bit Windows programs need it: a Steam client's service)" % dst)
+        return
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    r = subprocess.run([cc, "-O2", "-fPIC", "-shared", "-o", dst, src, "-ldl"], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("could not build %s: %s" % (src, r.stderr[-800:]))
+    log("  built %s" % dst)
+
+
 def setup(log=print):
     """Fetches and unpacks what is missing. Returns status()."""
     parts = lock()
@@ -204,6 +220,7 @@ def setup(log=print):
             _unpack(_fetch(parts[key], parts[key]["name"], log), os.path.join(host, parts[key]["into"]), log)
     for key, fn in (("packages", _setup_packages), ("ngx", _setup_ngx), ("conda", _setup_conda)):
         fn(parts[key], lambda m, key=key: log(m))
+    _setup_tls32(log)
     return status(log)
 
 
@@ -218,7 +235,7 @@ def prefix(game, log=print):
         log("  %-14s %s" % (kind, proton.user_dir(game, kind)))
 
 
-def main(action, game=None, log=print):
+def main(action, game=None, log=print, client=None, keep=False):
     if os.name == "nt":
         log("nothing to set up on Windows: the game runs as it is")
         return True
@@ -228,6 +245,9 @@ def main(action, game=None, log=print):
         return setup(log)
     if not game:
         raise SystemExit("capture host %s <game>" % action)
+    if action == "steam":
+        from . import steam
+        return steam.main(game, client, keep, log)
     if action == "prefix":
         prefix(game, log)
     elif action == "stop":

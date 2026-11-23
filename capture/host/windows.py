@@ -35,6 +35,14 @@ def game_path(path, game=None):
     return path
 
 
+def use_prefix(game, name):
+    pass
+
+
+def host_path(path, game=None):
+    return path
+
+
 def user_dir(game, kind):
     """kind: local_appdata, appdata, documents or saved_games."""
     home = os.environ.get("USERPROFILE", "")
@@ -44,3 +52,12 @@ def user_dir(game, kind):
 
 def program_data(game=None):
     return os.environ.get("ProgramData", r"C:\ProgramData")
+
+
+def steam_launch(game, app_id):
+    """Asks the Steam client to start a game."""
+    os.startfile("steam://rungameid/%s" % app_id)
+
+
+def gpu_name():
+    return None     # not asked on Windows: nothing there depends on it

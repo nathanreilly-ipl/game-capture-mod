@@ -322,9 +322,18 @@ return function(ctx)
 		for line in fin:lines() do
 			local a = numbers(line)
 			if #a >= 6 then
-				local h = native.call('SHAPETEST', 'START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE',
-					a[1], a[2], a[3], a[4], a[5], a[6], flags, ped, 7)
-				local status = native.call('SHAPETEST', 'GET_SHAPE_TEST_RESULT', h, hit, endc, norm, ent)
+				-- RedLua keeps one Lua object per handle number, whatever the handle is of: a shape test
+				-- whose number is that of the session's camera comes back as that Cam object, and asking
+				-- for its result fails ("ScrHandle expected, got Cam": every take after the first failed
+				-- so, 2026-11-23). The next test gets another number, so the ray is tried again.
+				local status, asked
+				for _ = 1, 8 do
+					local h = native.call('SHAPETEST', 'START_EXPENSIVE_SYNCHRONOUS_SHAPE_TEST_LOS_PROBE',
+						a[1], a[2], a[3], a[4], a[5], a[6], flags, ped, 7)
+					asked, status = pcall(native.call, 'SHAPETEST', 'GET_SHAPE_TEST_RESULT', h, hit, endc, norm, ent)
+					if asked then break end
+				end
+				if not asked then error(status, 0) end
 				-- The BOOL* hit reads back 0 through RedLua (probed 2026-11-20); a hit is an end point
 				-- on this ray instead (which also rejects a stale point from an earlier ray).
 				local dx, dy, dz = a[4] - a[1], a[5] - a[2], a[6] - a[3]

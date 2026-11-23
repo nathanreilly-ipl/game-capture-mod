@@ -45,14 +45,14 @@ from capture.adapter import Adapter, AdapterError
 
 from ..common import mem, redlua, window
 from ..common.optiscaler_live import OptiScalerLive
-from . import launch, settings_menu, zones
+from . import install, install_enhanced, launch, settings_menu, zones
 from .timestep import MinStep
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXE = launch.EXE
 WINDOW_CLASS = launch.WINDOW_CLASS
-EXCHANGE = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtav")
-EXCHANGE_ENHANCED = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtave")
+EXCHANGE = install.EXCHANGE
+EXCHANGE_ENHANCED = install_enhanced.EXCHANGE
 SESSION_JOB = os.path.join(HERE, "lua", "jobs", "cam_session.lua")
 CLIENT = (2560, 1440)
 
@@ -63,10 +63,11 @@ DEFAULTS = {"settle": 40, "step_frame_s": 0.0005, "first_settle": 90, "clock_set
             "min_step": 1e-7, "populate_s": 45, "crowd": 12, "crowd_radius": 12.0, "lock_white_point": True}
 
 
-def game_dir():
-    """The game folder: GTAV_DIR, then this machine's config (written by `capture install`), then Steam's default."""
-    return (os.environ.get("GTAV_DIR") or config.game("gtav").get("game_dir")
-            or r"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V")
+def game_dir(game="gtav"):
+    """The game folder: this machine's config (written by `capture install`), GTAV_DIR for Legacy, then the default place."""
+    folder = install_enhanced.FOLDER if game == "gtave" else install.FOLDER
+    return (config.game(game).get("game_dir") or (os.environ.get("GTAV_DIR") if game == "gtav" else None)
+            or install.default_game_dir(game, folder))
 
 
 def _rz(deg):
@@ -102,8 +103,7 @@ class GTAVAdapter(Adapter):
         self.last_size = None
         self._parked_from = None
         self.min_step = MinStep(self.edition.exe)
-        folder = config.game(self.name).get("game_dir") or (game_dir() if self.name == "gtav" else None)
-        self.dlss5 = OptiScalerLive(folder) if folder else None   # DLSS 5, if installed there
+        self.dlss5 = OptiScalerLive(game_dir(self.name))   # DLSS 5, if installed there
         self.white_point = None    # DLSS 5's white point held for the take, if any
 
     # --- lifecycle -------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class GTAVAdapter(Adapter):
         if not window.set_client_size(self.hwnd, *CLIENT):
             raise AdapterError("the game window is %s, not %s" % (window.client_size(self.hwnd), CLIENT))
         if self.sess is None:
-            self.sess = redlua.Session(self.exchange, SESSION_JOB, idle_s=900, timeout_s=12 * 3600)
+            self.sess = redlua.Session(self.exchange, SESSION_JOB, idle_s=900, timeout_s=12 * 3600, game=self.name)
 
     def close(self):
         if self.sess is not None:
@@ -262,7 +262,7 @@ class GTAVAdapter(Adapter):
         self._pose(pos, right, fwd, up, vfov_deg)
         self.sess.cmd("wait", 45)
         r = self.sess.cmd("capture", "view")
-        shutil.move(r["file"], path)
+        shutil.move(self.sess.local(r["file"]), path)
 
     # --- frozen capture ----------------------------------------------------------------------
     def begin_frozen(self, first_shot):
@@ -284,7 +284,7 @@ class GTAVAdapter(Adapter):
 
     def capture(self, path, settle):
         r = self.sess.cmd("shoot", int(settle or self.settings["settle"]), "shot", timeout=60)
-        shutil.move(r["file"], path)
+        shutil.move(self.sess.local(r["file"]), path)
         self.last_size = [int(r["width"]), int(r["height"])]
         return {"width": int(r["width"]), "height": int(r["height"]), "rendered_pos": r["rendered_pos"],
                 "rendered_rot": r["rendered_rot"], "rendered_fov": r["rendered_fov"], "game_timer": int(r["game_timer"]),

@@ -29,6 +29,8 @@ Script Hook V 3889.0.1158.13 supports Enhanced 1.0.1158.13; an Enhanced update n
 """
 import os
 
+from capture import host
+
 from . import install as legacy
 
 HERE = legacy.HERE
@@ -38,7 +40,17 @@ EXE = "GTA5_Enhanced.exe"
 STEAM_APP = "3240220"
 FOLDER = "Grand Theft Auto V Enhanced"
 LOCK = legacy.LOCK
-EXCHANGE = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtave")
+# The Steam copy as the PC has it (2026-11-23), for a Steam client that is given the downloaded
+# files (capture/host/steam.py): GTA5_Enhanced.exe 1.0.1158.13
+STEAM = {"app": STEAM_APP, "name": "Grand Theft Auto V Enhanced", "installdir": FOLDER, "buildid": "25971420",
+         "size": 103265684584,
+         "depots": {"3240221": ("7738940149188702855", 600), "3240222": ("8737726049140786475", 34299685325),
+                    "3240223": ("619408595394031782", 9154916352), "3240224": ("7913232881396830533", 55641487360),
+                    "3240225": ("862898123192382483", 3883897875), "1899671": ("4635231945872575760", 285697072)},
+         "scripts": {"3240221": "installscript.vdf", "1899671": "installscript_sdk.vdf"}}
+EXCHANGE = os.path.join(host.user_dir(GAME, "documents"), "RDR2Modding", "captures_gtave")
+# Under Proton, Wine must load the game folder's own xinput1_4.dll (Ultimate ASI Loader)
+DLL_OVERRIDES = "xinput1_4=n,b"
 # The capture default (Nathan, 2026-11-21): NaturalVision Enhanced, the game's ray tracing and
 # DLSS 5 (OptiScaler, skin structure 2), no ReShade effects. --no-graphics-mod / --no-optiscaler /
 # --preset change it.
@@ -51,7 +63,7 @@ from .settings_menu import settings_xml  # noqa: E402  (Documents\Rockstar Games
 
 def nve_settings():
     """NaturalVision Enhanced's settings, which it reads at start (and writes back on exit)."""
-    return os.path.join(os.environ.get("APPDATA", ""), "NVE", "settings-gen9.json")
+    return os.path.join(host.user_dir(GAME, "appdata"), "NVE", "settings-gen9.json")
 
 
 # NVE's effects that differ from camera to camera; its menu is in ReShade's overlay. Its motion blur

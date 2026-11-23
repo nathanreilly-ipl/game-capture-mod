@@ -51,7 +51,8 @@ class MenuError(RuntimeError):
 
 
 def settings_xml():
-    return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "Rockstar Games", "GTAV Enhanced", "settings.xml")
+    from capture import host
+    return os.path.join(host.user_dir("gtave", "documents"), "Rockstar Games", "GTAV Enhanced", "settings.xml")
 
 
 def read_settings(path=None):

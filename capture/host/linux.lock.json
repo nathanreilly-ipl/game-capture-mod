@@ -38,7 +38,8 @@
    "page": "https://www.nvidia.com/en-us/drivers/unix/",
    "url": "https://download.nvidia.com/XFree86/Linux-x86_64/{version}/NVIDIA-Linux-x86_64-{version}.run",
    "files": ["nvngx.dll", "_nvngx.dll"],
-   "sha256": {"580.105.08": "d9c6e8188672f3eb74dd04cfa69dd58479fa1d0162c8c28c8d17625763293475"},
+   "sha256": {"580.105.08": "d9c6e8188672f3eb74dd04cfa69dd58479fa1d0162c8c28c8d17625763293475",
+              "580.178.04": "5975a86ee45bffcb626f51ae33d1169b108186a2ea47ad651e72f13fa4b6d6f9"},
    "installed_in": ["/usr/lib/x86_64-linux-gnu/nvidia/wine", "/usr/lib/nvidia/wine", "/usr/lib64/nvidia/wine"],
    "licence": "NVIDIA software licence: not redistributable"
   },

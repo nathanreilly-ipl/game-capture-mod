@@ -6,10 +6,13 @@ CAPTURES is the folder the game-side scripts and the ReShade add-on exchange fil
 callers move them to their own output folder."""
 import os
 
+from capture import host
+
 from ..common import redlua
 from ..common.redlua import look_at, vec  # noqa: F401  (used by render_camera and the probes)
 
-CAPTURES = os.path.join(os.environ["USERPROFILE"], "Documents", "RDR2Modding", "captures")
+GAME = "rdr2"
+CAPTURES = os.path.join(host.user_dir(GAME, "documents"), "RDR2Modding", "captures")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SESSION_JOB = os.path.join(HERE, "lua", "jobs", "cam_session.lua")
 
@@ -20,7 +23,7 @@ def heartbeat_age():
 
 class CamSession(redlua.Session):
     def __init__(self, job_id=None, idle_s=300, timeout_s=3600):
-        super().__init__(CAPTURES, SESSION_JOB, job_id, idle_s, timeout_s)
+        super().__init__(CAPTURES, SESSION_JOB, job_id, idle_s, timeout_s, game=GAME)
 
     def pose(self, pos, pitch, yaw, fov=50.0):
         return self.cmd("pose", "%.6f %.6f %.6f %.6f %.6f %.6f" % (pos[0], pos[1], pos[2], pitch, yaw, fov))

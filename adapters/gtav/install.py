@@ -26,8 +26,9 @@ OptiScaler is not offered for Legacy: it has no upscaler call for it to take ove
 import os
 import re
 
-from capture import config
-from capture.install.components import addon, optiscaler, pack, reshade
+from capture import config, host
+from capture import paths as capture_paths
+from capture.install.components import addon, optiscaler, pack, reshade, wine
 from capture.install.plan import CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText, XmlSet
 
 from ..common import redlua
@@ -40,7 +41,7 @@ EXE = "GTA5.exe"
 STEAM_APP = "271590"
 FOLDER = "Grand Theft Auto V"           # under steamapps\common (Enhanced is "Grand Theft Auto V Enhanced")
 LOCK = os.path.join(HERE, "mods.lock.json")
-EXCHANGE = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "RDR2Modding", "captures_gtav")
+EXCHANGE = os.path.join(host.user_dir(GAME, "documents"), "RDR2Modding", "captures_gtav")
 OPTIONS = {"native_trainer": True, "preset": False, "api": "d3d11", "resolution": "2560x1440"}
 REDLUA_SETTINGS = {"auto_updates": False, "autorun": True, "menu_hotkey": 118, "menu_language": "ingame",
                    "menu_position": 0}
@@ -52,7 +53,15 @@ DLSS_SHARPEN = "0.800000"   # the value on the development machine
 
 
 def settings_xml():
-    return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "Rockstar Games", "GTA V", "settings.xml")
+    return os.path.join(host.user_dir(GAME, "documents"), "Rockstar Games", "GTA V", "settings.xml")
+
+
+def default_game_dir(game=GAME, folder=FOLDER):
+    """Windows: Steam's default library. Linux (the game under Proton, capture/host): where a
+    download of the game's Windows depots is kept, since there is no Steam client there."""
+    if host.LINUX:
+        return os.path.join(capture_paths.OUT, "games", game)
+    return os.path.join(r"C:\Program Files (x86)\Steam\steamapps\common", folder)
 
 
 def find_game_dir(game=GAME, exe=EXE, folder=FOLDER, env="GTAV_DIR"):
@@ -60,6 +69,9 @@ def find_game_dir(game=GAME, exe=EXE, folder=FOLDER, env="GTAV_DIR"):
     known = config.game(game).get("game_dir") or os.environ.get(env)
     if known and os.path.exists(os.path.join(known, exe)):
         return known
+    if host.LINUX:   # no Steam client: the game's Windows depots, downloaded to out/games/<game>
+        d = default_game_dir(game, folder)
+        return d if os.path.exists(os.path.join(d, exe)) else None
     libs = []
     try:
         import winreg
@@ -115,6 +127,7 @@ def steps(ctx, ed=LEGACY):
     mod, name, installed_as = ed["asi_loader"]
     out.append(CopyFile(ctx.file(mod, name), os.path.join(g, installed_as),
                         what="ASI loader (%s) as %s" % (ctx.files.mods[mod].get("title", mod), installed_as)))
+    out += wine.dll_overrides(ctx, ed["exe"], [os.path.splitext(installed_as)[0]])     # under Proton: the ASI loader
     if installed_as != "dinput8.dll":
         # Script Hook V's own loader, where its readme puts it: Enhanced loads dinput8.dll only late,
         # for DirectInput, and that loader then loads every plug-in a second time
@@ -133,7 +146,7 @@ def steps(ctx, ed=LEGACY):
                          what="-nobattleye: story mode with mods, never online"))
 
     # our scripts (can be written while the game runs)
-    out.append(WriteText(os.path.join(g, "RedLua", "Scripts", "capture_loader.lua"), redlua.loader_text(exchange),
+    out.append(WriteText(os.path.join(g, "RedLua", "Scripts", "capture_loader.lua"), redlua.loader_text(ctx.system.game_path(exchange)),
                          tag="scripts", what="adapters/common/lua/capture_loader.lua, watching %s" % exchange))
     out.append(MakeDir(exchange, tag="scripts"))
 
@@ -181,13 +194,27 @@ def steps(ctx, ed=LEGACY):
             out.append(XmlSet(xml, "dlssQuality", DLSS_MODES[mode], why="DLSS mode: %s" % mode))
             out.append(XmlSet(xml, "dlssSharpen", DLSS_SHARPEN, why="pinned (DLSS itself does not sharpen: "
                                                                      "OptiScaler logs SharpenEnabled false)"))
+    card = ctx.system.gpu_name()
+    if card:
+        # as RDR2: the game throws its graphics settings away when the card named in the file is not
+        # the machine's (RDR2 did, with the PC's file on the CoreWeave node, 2026-11-23)
+        out.append(XmlSet(xml, "VideoCardDescription", card, why="this machine's GPU: the game resets its settings otherwise"))
     out.append(XmlSet(xml, "VSync", "0", why="uncapped frame rate"))
     out.append(XmlSet(xml, "PauseOnFocusLoss", "0", why="the game keeps running if focus is lost"))
     if opt.get("resolution"):
         w, h = (int(v) for v in opt["resolution"].lower().split("x"))
         if abs(w / h - 16 / 9) > 0.01:
             raise ValueError("the capture window must be 16:9, not %dx%d" % (w, h))
-        out += [XmlSet(xml, "Windowed", "1", why="windowed"), XmlSet(xml, "ScreenWidth", str(w)),
+        mode, why = "1", "windowed"
+        if host.LINUX and ed.get("title") == "GTA V Enhanced":
+            from ..common import window
+            if tuple(window.desktop_size()) == (w, h):
+                # On a display of exactly the capture size Enhanced does not open a window that large:
+                # set to windowed it came up 1920x1080 in the middle of a 2560x1440 headless display,
+                # and did not follow a resize. 3 is what the game itself wrote there on its first
+                # start, and it then fills the display (2026-11-23).
+                mode, why = "3", "fills the display, which is the capture size (what the game chose there)"
+        out += [XmlSet(xml, "Windowed", mode, why=why), XmlSet(xml, "ScreenWidth", str(w)),
                 XmlSet(xml, "ScreenHeight", str(h))]
     return out
 

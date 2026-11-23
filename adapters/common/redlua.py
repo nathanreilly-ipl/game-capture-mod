@@ -84,24 +84,24 @@ CONSOLE_TITLE = "RedLua debug console"
 
 
 def minimize_console():
-    """Minimizes RedLua's debug console, which opens on top of the game window (it covered part
-    of GTA V's window in screen grabs, 2026-11-21). Returns how many were minimized."""
+    """Takes RedLua's debug console off the screen: it opens on top of the game window (it covered
+    part of GTA V's window in screen grabs, 2026-11-21). Returns how many windows that was."""
     from . import window
-    if not hasattr(window, "user32"):   # under Proton RedLua's console is one more X window; not handled yet
-        return 0
     n = 0
     for h in window.windows_titled(CONSOLE_TITLE):
-        window.user32.ShowWindow(h, 7)   # SW_SHOWMINNOACTIVE
+        window.hide(h)
         n += 1
     return n
 
 
-def job_ref(exchange, job_file, staged):
-    """What the loader is told to load. RedLua loads the job file where it is. A loader that can
-    only read inside its own folder (Cyber Engine Tweaks: the exchange folder is a subfolder of
-    the mod) gets a copy in <exchange>/job_src and its path relative to the mod's folder."""
+def job_ref(exchange, job_file, staged, game=None):
+    """What the loader is told to load. RedLua loads the job file where it is (its path as the
+    game sees it: capture/host, with the game's name). A loader that can only read inside its own
+    folder (Cyber Engine Tweaks: the exchange folder is a subfolder of the mod) gets a copy in
+    <exchange>/job_src and its path relative to the mod's folder."""
     if not staged:
-        return os.path.abspath(job_file)
+        from capture import host
+        return host.game_path(os.path.abspath(job_file), game)
     dst = os.path.join(exchange, "job_src", os.path.basename(job_file))
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     with open(job_file, "rb") as f:
@@ -112,14 +112,14 @@ def job_ref(exchange, job_file, staged):
     return "%s/job_src/%s" % (os.path.basename(os.path.normpath(exchange)), os.path.basename(job_file))
 
 
-def run_job(exchange, job_file, timeout_s=60, wait=True, staged=False, **args):
+def run_job(exchange, job_file, timeout_s=60, wait=True, staged=False, game=None, **args):
     """Runs one Lua job through the loader; returns its result.txt as a dict (waits for it).
     staged: the loader cannot read outside its folder or make folders (see job_ref)."""
     if heartbeat_age(exchange) > 5:
         raise RuntimeError("capture_loader.lua is not running in the game (no heartbeat in %s)" % exchange)
     stem = re.sub(r"[^A-Za-z0-9_-]", "_", os.path.splitext(os.path.basename(job_file))[0])
     job_id = "%s_%s" % (stem, time.strftime("%Y%m%d_%H%M%S"))
-    lines = ["id=%s" % job_id, "file=%s" % job_ref(exchange, job_file, staged), "timeout_s=%d" % timeout_s]
+    lines = ["id=%s" % job_id, "file=%s" % job_ref(exchange, job_file, staged, game), "timeout_s=%d" % timeout_s]
     lines += ["%s=%s" % (k, v) for k, v in args.items()]
     result = os.path.join(exchange, "jobs", job_id, "result.txt")
     if staged:
@@ -140,11 +140,13 @@ def run_job(exchange, job_file, timeout_s=60, wait=True, staged=False, **args):
 class Session:
     """A long job (job_file) driven one command at a time: cmd(name, *args) -> answer dict."""
 
-    def __init__(self, exchange, job_file, job_id=None, idle_s=300, timeout_s=3600, staged=False):
-        """staged: the loader cannot read outside its folder or make folders (see job_ref)."""
+    def __init__(self, exchange, job_file, job_id=None, idle_s=300, timeout_s=3600, staged=False, game=None):
+        """staged: the loader cannot read outside its folder or make folders (see job_ref).
+        game: the game's name in the registry, for paths as the game sees them (capture/host)."""
         if heartbeat_age(exchange) > 5:
             raise RuntimeError("capture_loader.lua is not running (stale heartbeat in %s)" % exchange)
         self.exchange = exchange
+        self.game = game
         self.job_id = job_id or time.strftime("cam_session_%Y%m%d_%H%M%S")
         self.job_dir = os.path.join(exchange, "jobs", self.job_id)
         self.seq = 0
@@ -156,7 +158,7 @@ class Session:
         if staged:
             os.makedirs(self.job_dir, exist_ok=True)
         write_atomic(os.path.join(exchange, "command.txt"),  # the loader runs in the game's folder
-                     "id=%s\nfile=%s\ntimeout_s=%d\nidle_s=%d\n" % (self.job_id, job_ref(exchange, job_file, staged), timeout_s, idle_s))
+                     "id=%s\nfile=%s\ntimeout_s=%d\nidle_s=%d\n" % (self.job_id, job_ref(exchange, job_file, staged, game), timeout_s, idle_s))
         self.state = self._wait_for(0, 30)
 
     def _wait_for(self, seq, timeout):
@@ -181,6 +183,11 @@ class Session:
             raise RuntimeError("%s failed: %s" % (name, kv.get("message")))
         self.state = kv
         return kv
+
+    def local(self, path):
+        """A file path from an answer (as the game wrote it) on this machine."""
+        from capture import host
+        return host.host_path(path, self.game)
 
     def end(self):
         try:

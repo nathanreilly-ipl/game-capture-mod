@@ -161,20 +161,25 @@ of them stops it from loading (its loader file goes, backed up).
 
 The same command line runs on a Linux machine with an NVIDIA GPU and no desktop (`./capture.sh`
 is `capture.ps1`'s twin): the game is the Windows one, under Proton in the Steam Linux Runtime
-container, on a headless X display, and our in-game parts are the same files. Nothing needs root
-or a Steam client. Cyberpunk 2077 is the game brought up so far (its section below has the
-numbers); found and measured on a CoreWeave Slurm node, 2026-11-23 (Ubuntu 22.04 image, NVIDIA
-580.105.08, one RTX PRO 6000; docs/LINUX_PORT.md).
+container, on a headless X display, and our in-game parts are the same files. Nothing needs root.
+Cyberpunk 2077 and RDR2 pass `verify` and capture there (their sections below have the numbers);
+GTA V Enhanced installs. Found and measured on CoreWeave Slurm nodes, 2026-11-23 (Ubuntu 22.04
+image, NVIDIA 580.105.08 and 580.178.04, RTX PRO 6000; docs/LINUX_PORT.md).
 
 ```bash
 ./capture.sh host status                 # GPU and driver, Proton, its runtime, the display tools, NGX, ffmpeg
-./capture.sh host setup                  # fetches and unpacks what is missing into out/host (pinned: capture/host/linux.lock.json)
-#   (written from what was fetched by hand on 2026-11-23; its own downloads were not run as written: BACKLOG)
+./capture.sh host setup                  # fetches, unpacks and builds what is missing into out/host (pinned: capture/host/linux.lock.json)
+#   (its NVIDIA download and its build of wow64/tls32.c ran as written; Proton, the runtime and the display tools
+#    were fetched by hand on 2026-11-23 and the command written from that: BACKLOG)
 #   ...the game's Windows files into out/games/<game> (below), and a mods bundle from a Windows machine
 ./capture.sh install cyberpunk --mods capture-mods-cyberpunk.zip --dry-run
 ./capture.sh install cyberpunk --mods capture-mods-cyberpunk.zip
 ./capture.sh host prefix cyberpunk       # makes the game's Proton prefix; prints where saves and settings go
 ./capture.sh verify cyberpunk --launch   # as on Windows; then scout, submit, worker
+# a game that only starts through a Steam client (RDR2, GTA V: Rockstar's launcher), once per prefix:
+./capture.sh host steam rdr2 --client steam_client_windows.zip   # the Windows client into the prefix, its service, the game in its library
+srun --exact --gres=gpu:1 -c 6 ./capture.sh host steam rdr2 --keep &   # the client, kept running, in a job step with one GPU
+#   ...the owner signs in once in its window (and in Rockstar's launcher), through a remote view of the display
 ```
 
 - **What differs is in one place.** `capture/host` (game-agnostic) answers what the rest asks of
@@ -211,9 +216,43 @@ numbers); found and measured on a CoreWeave Slurm node, 2026-11-23 (Ubuntu 22.04
 - **DLSS** needs NVIDIA's `nvngx.dll` and `_nvngx.dll` (from the driver package of the machine's
   driver version) in the prefix, and a registry value; `host setup` and the first start do both.
   DLSS 5 through OptiScaler is not tried there: it needs a newer driver than 580.
-- **Not there yet:** RDR2 and GTA V (their launchers, their own window and memory modules, RedLua's
-  loader path as the game sees it), the scout overlay, `tools/` that press keys, more than one game
-  per machine (one display, one prefix per game), and a download of the game's files by the
+- **One GPU per game.** A game that sees several GPUs finds no display modes (Cyberpunk 2077 on
+  a job with four: an empty resolution list, "Resolution is nil", its window at 320,180;
+  2026-11-23). `capture/host` refuses to start one then. Under Slurm a job step gives one:
+  `srun --exact --gres=gpu:1 -c 5 ./capture.sh worker --game cyberpunk`, and `CAPTURE_DISPLAY=:100`
+  gives a second game its own display.
+- **A Steam client for the games that need one.** Rockstar's launcher starts a Steam copy only
+  with a Steam client running (without one it offers BUY NOW), and Proton's stand-in for the
+  client needs the Linux one. `capture host steam <game>` puts the Windows client into the game's
+  prefix (its files from a Windows machine's Steam folder without steamapps, userdata and config),
+  installs its service, and links the downloaded game folder into its library with an app
+  manifest written from the game's `STEAM` facts, so nothing is downloaded again. That client and
+  the games it starts run through Wine itself (`host.wine_direct`: the environment Proton gives a
+  game, `PROTON_DISABLE_LSTEAMCLIENT=1` so that Proton's Wine does not treat the real
+  `steamclient64.dll` as its stand-in). RDR2 and GTA V share one prefix (`out/proton/rockstar`:
+  one launcher, one sign-in each for Steam and Rockstar, remembered there). A game's own DLL
+  overrides are per exe in the prefix's registry (an install step), since a game started by Steam
+  does not get our environment. Seen on the way: Steam shows the game's EULA once; its first-time
+  setup runs DXSETUP; Rockstar's launcher refuses a machine without a sound device ("Sound card
+  check failed": `capture/host/alsa_null.conf` gives ALSA a silent default one); both games throw
+  the settings file away when it names another graphics card (an install step writes this
+  machine's); the client ends itself when a game it started is killed (`--keep` starts it again).
+- **32-bit Windows programs where 32-bit system calls are forbidden.** The CoreWeave containers
+  kill every `int $0x80` call (seccomp), and Wine sets each thread's 32-bit `%fs` segment with
+  one (`set_thread_area`; the 64-bit table has none). So the Linux Steam client cannot run there
+  at all, and under Wine no 32-bit program started: Steam's service (`bin\SteamService.exe`),
+  DirectX's and Visual C++'s installers. `capture/host/wow64/tls32.c` is preloaded into Wine and
+  replaces that one function: a short-lived child sets the thread's descriptor through ptrace
+  (`PTRACE_SET_THREAD_AREA`), with `WINEARCH=wow64` so that 32-bit programs run in 64-bit
+  processes. No forbidden call is made; it is still a way around a restriction of the cluster,
+  which its owner should know about. Proton's own script cannot be used for such programs: its
+  `files/bin/wine` starts the 32-bit preloader first and dies the same way.
+- **A remote view for the sign-ins.** x11vnc on the game's display behind noVNC
+  (`http://localhost:6080/vnc.html` through the editor's port forwarding, with a password); set
+  up by hand on 2026-11-23 from Ubuntu's packages unpacked into `out/host/sysroot` (BACKLOG).
+- **Not there yet:** GTA V Enhanced's start and capture (its launch code is ported, not run), The
+  Witcher 3 (its exe starts under Proton; the adapter is being written on Windows), the scout
+  overlay, `tools/` that press keys, and a download of the game's files by the
   command line. BACKLOG.md has the list.
 
 ## Workflow
@@ -484,6 +523,29 @@ Parameters typed `Any` only accept `native.new('Any', 1)`; out-pointers are
 `native.new('float', 1)` read with `[0]`; RedLua's `natives.json` names some natives only by
 hash (`patch_natives.ps1`).
 
+### On Linux (measured 2026-11-23)
+
+The same adapter, Lua and session job run under Proton on a headless display ("On Linux" under
+Install), started by a Steam client that lives in the game's prefix. On a CoreWeave node (RTX PRO
+6000, driver 580.178.04, GE-Proton11-12), from a clean slate: the game's depot download (128.5 GB,
+the PC's build), `capture install rdr2 --mods <the PC's bundle> --no-optiscaler` (127 steps, then
+nothing to do), the PC's saves and settings file copied in, `capture host steam rdr2`, the two
+sign-ins. Then:
+
+- `capture verify rdr2` passes: 60 to 64 frames/s at 2560x1440, a frame through the add-on
+  (difference to a screen grab 0.6, with red and blue swapped 11.9), a frozen take of 8 cameras
+  over 3 clip frames (24 shots in 54 s, none recaptured, the two 1/30 s steps within 2.18 ms) and
+  its packaging. So the photo-mode freeze, the render camera written into the game's memory
+  (`/proc/<pid>/mem`) and the exposure lock work there as they are.
+- Start with nobody at the keyboard (`adapters/rdr2/launch.py`): Steam's request to the loader's
+  heartbeat in 296 s (the game's window after 125 s; game and prefix on a network file system).
+- Six takes by the worker, none with a recaptured shot: at the Lakeshore, in Saint Denis and in
+  Rhodes a 345-pose near sweep (4.0, 5.1 and 5.5 min; 0.58 to 0.84 s per shot) and 30 clip frames
+  of a moving and two fixed cameras (89 shots; 1.8 to 2.2 min). Saint Denis's sweep was taken
+  three times: twice a camera stood inside something a game script owns (the obstacle policy).
+- Different from the PC: no DLSS 5 (driver 580), so the game's own DLSS at Quality instead of
+  DLAA through OptiScaler; Reality Redemption 2 loads, its picture was not compared.
+
 ### Research probes
 
 `adapters/rdr2/probes/` holds the tools the method was found with (memory scans, the frozen
@@ -690,6 +752,33 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   take ran clean. The worker treats it like a closed game: a stale heartbeat ends the game and
   starts it again.
 
+### GTA V Enhanced on Linux (measured 2026-11-23)
+
+As RDR2 on Linux, in the same prefix (one Steam client, one Rockstar launcher). On the same
+CoreWeave node, from a clean slate: the depot download (103.3 GB, the PC's build), `capture install
+gtave --mods <the PC's bundle> --mods <NaturalVision's archive> --no-optiscaler` (23 steps after
+the PC's user files were copied in, then nothing to do), `capture host steam gtave`. Then:
+
+- `capture verify gtave` passes: 77 frames/s at 2560x1440, a frame through the add-on (3.0 against
+  41.8 with red and blue swapped), a frozen take of 8 cameras over 3 clip frames (24 shots in
+  74 s, none recaptured, both steps exact to 0.00 ms) and its packaging. So the minimum time step
+  written into the game's memory (`timestep.py`) works there as it is.
+- Start (`adapters/gtav/launch.py`, rewritten onto the shared window and host layers): Steam showed
+  no launch-option dialog for `-applaunch`; the launcher starts `GTA5_Enhanced_BE.exe` (32-bit),
+  which with `-nobattleye` starts the game; the landing page's tabs were answered as on Windows
+  (E, then Enter on STORY). Steam's request to the heartbeat in 125 to 135 s.
+- Takes by the worker, none with a recaptured shot: at the Alamo Sea (scouted on the node with
+  `capture scout`) 30 clip frames in 2.8 min and the 345-pose near sweep in 5.8 min (0.85 s per
+  shot); on Vinewood Boulevard 3.4 and 7.1 min. The solver declined Legion Square (no
+  collision-free near ring). RedLua faulted in lua51.dll at the start of most sessions after the
+  first (the fault described under "RedLua in GTA V"), so the worker restarted the game between
+  takes.
+- The game throws the PC's settings file away unless its four hardware lines are this machine's
+  (BACKLOG: the game user's files), and on a display of exactly the capture size it needs
+  `Windowed` 3 (an install step under Proton): set to windowed it opened 1920x1080.
+- No DLSS 5 (driver 580): the game's own DLAA. NaturalVision Enhanced loads; its picture was not
+  compared with the PC's.
+
 ### How a take is captured in GTA V (measured 2026-11-21)
 
 - **Freeze.** GTA V has no photo-mode freeze. `SET_GAME_PAUSED` stops rendering (a moved camera
@@ -817,6 +906,10 @@ PC's bundle>` (50 steps, then nothing to do), the saves copied in, one start and
   cameras (89 shots, 14.8 min, every step within 0.0017 ms of 1/30 s). Both were packaged
   afterwards with `capture package` (ffmpeg from the conda environment); the worker's own
   packaging and QC step has not run there.
+- At Kabuki and in the Badlands the same two takes each, through the worker's own packaging
+  and QC (run in a job step with one GPU): near sweeps in 43.5 and 36.6 min, the 30 clip frames
+  in 14.1 min at Kabuki, none with a recaptured shot. Their exposure lock ended at its upper end
+  (BACKLOG: the forced luminance has a floor).
 - Speed depends on how the Slurm job asks for its CPUs: 7.28 s per shot and 17 to 18 frames/s
   with `--cpus-per-task=8` (the game ran on 4 cores), 5.59 s per shot and 28 frames/s with
   `--hint=nomultithread` added (8 cores), against 2.50 s on the PC (BACKLOG has the table).
