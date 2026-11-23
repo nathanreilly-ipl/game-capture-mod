@@ -33,6 +33,9 @@ def ffmpeg_exe():
     exe = os.environ.get("FFMPEG") or shutil.which("ffmpeg")
     if exe:
         return exe
+    if os.name != "nt":     # the machine's conda environment (capture/host: env_dir, `capture host setup`)
+        from .host import proton
+        return proton.tool("ffmpeg")
     found = glob.glob(os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages",
                                    "Gyan.FFmpeg*", "*", "bin", "ffmpeg.exe"))
     return found[0] if found else None

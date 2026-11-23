@@ -87,6 +87,8 @@ def minimize_console():
     """Minimizes RedLua's debug console, which opens on top of the game window (it covered part
     of GTA V's window in screen grabs, 2026-11-21). Returns how many were minimized."""
     from . import window
+    if not hasattr(window, "user32"):   # under Proton RedLua's console is one more X window; not handled yet
+        return 0
     n = 0
     for h in window.windows_titled(CONSOLE_TITLE):
         window.user32.ShowWindow(h, 7)   # SW_SHOWMINNOACTIVE

@@ -1,0 +1,54 @@
+{
+ "schema": "capture_host_lock/v1",
+ "note": "What `capture host setup` puts under out/host on a Linux machine so a Windows game can run there (capture/host/proton.py). Pinned as installed and measured on 2026-11-23; nothing here is committed or redistributed by us.",
+ "parts": {
+  "proton": {
+   "title": "GE-Proton (Proton with the community's patches)",
+   "version": "GE-Proton11-12",
+   "page": "https://github.com/GloriousEggroll/proton-ge-custom/releases",
+   "url": "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-12/GE-Proton11-12-x86_64.tar.gz",
+   "name": "GE-Proton11-12-x86_64.tar.gz",
+   "size": 566859228,
+   "sha256": "0595159e417c3dbbfb7cc3ae0d3ed15a617cc607aa23ef756ea79029d7af5d70",
+   "into": "proton",
+   "has": "proton/GE-Proton11-12-x86_64/proton",
+   "licence": "BSD-3-Clause and others (Wine: LGPL)"
+  },
+  "runtime": {
+   "title": "Steam Linux Runtime 4 (the container GE-Proton11 runs in; its tool id 4183110)",
+   "version": "4.0.20261110.268882",
+   "page": "https://repo.steampowered.com/steamrt4/images/",
+   "url": "https://repo.steampowered.com/steamrt4/images/4.0.20261110.268882/SteamLinuxRuntime_4.tar.xz",
+   "name": "SteamLinuxRuntime_4.tar.xz",
+   "size": 175327868,
+   "sha256": "44ac1a893aab6d8b602e08f36e857c1aaae268a7842731683b09db83dc627f24",
+   "into": "runtime",
+   "has": "runtime/SteamLinuxRuntime_4/_v2-entry-point",
+   "licence": "Valve's Steam Runtime (many open-source licences)"
+  },
+  "packages": {
+   "title": "Xvfb (the headless display), xkbcomp, xdotool and what they need: Ubuntu packages, unpacked into out/host/sysroot, not installed",
+   "page": "the machine's own apt sources",
+   "apt": ["xvfb", "xserver-common", "x11-xkb-utils", "libxfont2", "libunwind8", "xdotool", "libxdo3", "xauth"],
+   "programs": ["Xvfb", "xkbcomp", "xdotool"],
+   "licence": "MIT/X11 and BSD"
+  },
+  "ngx": {
+   "title": "NVIDIA NGX for Wine (nvngx.dll, _nvngx.dll): DLSS in a Proton prefix. From NVIDIA's driver package of the machine's own driver version, unpacked, not installed",
+   "page": "https://www.nvidia.com/en-us/drivers/unix/",
+   "url": "https://download.nvidia.com/XFree86/Linux-x86_64/{version}/NVIDIA-Linux-x86_64-{version}.run",
+   "files": ["nvngx.dll", "_nvngx.dll"],
+   "sha256": {"580.105.08": "d9c6e8188672f3eb74dd04cfa69dd58479fa1d0162c8c28c8d17625763293475"},
+   "installed_in": ["/usr/lib/x86_64-linux-gnu/nvidia/wine", "/usr/lib/nvidia/wine", "/usr/lib64/nvidia/wine"],
+   "licence": "NVIDIA software licence: not redistributable"
+  },
+  "conda": {
+   "title": "ffmpeg (packaging takes into videos), from conda-forge into the machine's conda environment (CAPTURE_ENV, config host.env, else ~/.conda/envs/game-capture); only installed when no ffmpeg is found",
+   "page": "https://anaconda.org/conda-forge/ffmpeg",
+   "channel": "conda-forge",
+   "packages": ["ffmpeg"],
+   "programs": ["ffmpeg"],
+   "licence": "GPL (conda-forge's gpl build)"
+  }
+ }
+}

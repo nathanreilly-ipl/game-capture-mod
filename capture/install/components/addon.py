@@ -1,8 +1,10 @@
 """Our frame-capture ReShade add-on (addons/capture), for any game (game-agnostic).
 
 It is built from source when the machine has the C++ build tools (Visual Studio or Build Tools
-with "Desktop development with C++", which includes CMake). Without them, a prebuilt add-on from
-a mods bundle is used, if it was built from exactly these sources.
+with "Desktop development with C++", which includes CMake). Without them (any Linux machine: the
+add-on is a Windows DLL that runs inside the game under Proton), a prebuilt add-on from a mods
+bundle is used, if it was built from exactly these sources (`capture mods bundle` on a machine
+that built it puts the file and its stamp in). prebuilt() does that for the clock plug-in too.
 """
 import os
 import shutil
@@ -23,13 +25,22 @@ BUILT_STAMP = os.path.join(BUILD_DIR, STAMP)
 EXTRA_NAMES = (NAME, STAMP)
 
 
-def source_digest():
+def digest_of(src_dir, tag=b""):
+    """One hash over a source folder, the same on every checkout: line ends are taken as LF
+    (git on Windows may check the same file out with CRLF in one worktree and LF in another,
+    which made a build look stale, 2026-11-23)."""
     parts = []
-    for d, _, names in os.walk(ADDON_SRC):
+    for d, _, names in os.walk(src_dir):
         for n in sorted(names):
             p = os.path.join(d, n)
-            parts.append(os.path.relpath(p, ADDON_SRC).replace(os.sep, "/").encode() + b"\0" + open(p, "rb").read())
-    return sha256_bytes(b"\0".join(sorted(parts)) + RESHADE_TAG.encode())
+            with open(p, "rb") as f:
+                data = f.read().replace(b"\r\n", b"\n")
+            parts.append(os.path.relpath(p, src_dir).replace(os.sep, "/").encode() + b"\0" + data)
+    return sha256_bytes(b"\0".join(sorted(parts)) + tag)
+
+
+def source_digest():
+    return digest_of(ADDON_SRC, RESHADE_TAG.encode())
 
 
 def find_cmake():
@@ -72,16 +83,29 @@ def build(log=print):
     log("  built %s" % BUILT)
 
 
-def _prebuilt(ctx):
-    """A prebuilt add-on from the mods folders or a bundle, if built from these sources."""
-    a, s = ctx.files.named(NAME), ctx.files.named(STAMP)
-    if a and s and s.read().decode("ascii", "replace").strip() == source_digest():
-        cache = os.path.join(ctx.record.dir, "prebuilt", NAME)
+def prebuilt(ctx, name, stamp, digest):
+    """(path of a copy, where it was found) of one of our own built files from the mods folders or
+    a bundle, if its stamp says it was built from the sources with this digest; else (None, None)."""
+    a, s = ctx.files.named(name), ctx.files.named(stamp)
+    if a and s and s.read().decode("ascii", "replace").strip() == digest:
+        cache = os.path.join(ctx.record.dir, "prebuilt", name)
         os.makedirs(os.path.dirname(cache), exist_ok=True)
         with open(cache, "wb") as f:
             f.write(a.read())
         return cache, a.where
     return None, None
+
+
+def no_build_note(what):
+    if os.name == "nt":
+        return ("%s cannot be built here: install Visual Studio Build Tools with 'Desktop development with C++', "
+                "or use a mods bundle that includes it" % what)
+    return ("%s is a Windows DLL, built on a Windows machine: pass --mods a bundle made there by `capture mods bundle` "
+            "(it carries the built file and its stamp), from the same sources as this checkout" % what)
+
+
+def _prebuilt(ctx):
+    return prebuilt(ctx, NAME, STAMP, source_digest())
 
 
 def steps(ctx, game_dir, output_dir, config_dir=None):
@@ -103,15 +127,14 @@ def steps(ctx, game_dir, output_dir, config_dir=None):
             return "ok", "prebuilt from %s" % state["prebuilt"][1]
         if find_cmake():
             return "todo", "build with CMake"
-        return "missing", ("the capture add-on cannot be built here: install Visual Studio Build Tools with 'Desktop "
-                           "development with C++', or use a mods bundle that includes the add-on")
+        return "missing", no_build_note("the capture add-on")
 
     out = [Call("capture add-on built from addons/capture", build_status, lambda c: build(c.log), tag="addon"),
            CopyFile(usable, os.path.join(game_dir, NAME), tag="addon", what="capture add-on"),
            IniSet(config_path(game_dir, config_dir), "CAPTURE_MOD", "OutputDir", output_dir, tag="addon",
-                  why="where the add-on exchanges files with the scripts")]
+                  why="where the add-on exchanges files with the scripts", game_path=True)]
     if config_dir:
         # ReShade looks for add-ons in its base folder, which is config_dir then
         out.append(IniSet(config_path(game_dir, config_dir), "ADDON", "AddonPath", game_dir, tag="addon",
-                          why="the add-on stays in the game folder; ReShade's base folder is elsewhere"))
+                          why="the add-on stays in the game folder; ReShade's base folder is elsewhere", game_path=True))
     return out

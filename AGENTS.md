@@ -104,12 +104,15 @@ existing CLI (`.\capture.ps1 <command>`, which is `python -m capture` through uv
   from the game plus `capture mods bundle <game> --with-supplied`. Anything you copy, click or
   edit by hand while finding the method goes into the install plan before the game is called
   done. Write the adapter so the same holds on another operating system once the repository is
-  set up for one (a Linux port is planned: `docs/LINUX_PORT.md`): the operating system's own
+  set up for one (Linux since 2026-11-23: README "On Linux", `docs/LINUX_PORT.md`): the operating system's own
   calls (windows, keys, process memory, the registry, starting and closing programs) stay in the
   shared layers (`adapters/common/`, `capture/install/`), paths come from functions and not from
   literals in the adapter, and nothing depends on one machine's folders.
 - **Decoupled.** Game-specific code lives in `adapters/<game>/` only; `capture/`, `rigs/`,
-  `addons/` and `capture/install/components/` stay game-agnostic. When two games need the same
+  `addons/` and `capture/install/components/` stay game-agnostic. So does what differs between
+  Windows and Linux: it goes through `capture/host` and the two-sided modules in
+  `adapters/common/`, never an `if` on the system in an adapter's capture code (a game adds only
+  its own facts: its DLL overrides for Wine, where its files are). When two games need the same
   thing, it moves into `adapters/common/` or a shared component with the game's choices passed in
   (examples: `reshade.steps(..., asi_dir=)`, `clock.steps(asi_dir, control, status, modules)`,
   `redlua.Session(..., staged=True)`, the adapter attributes `min_fps` and `prepare_take`).
@@ -126,10 +129,14 @@ capture/install/         installer framework: steps with status/apply/record, lo
                          sources by sha256, verify, docs; install/__init__.py registers games
 capture/install/components/   shared install pieces: reshade, addon (our ReShade add-on), clock
                          (our clock plug-in), optiscaler (DLSS 5), pack (multi-GB overhauls)
+capture/host/            the machine a game runs on: Windows as it is, or Linux with the game under
+                         Proton on a headless display (proton.py; `capture host`, linux.lock.json).
+                         Processes, start/stop, the game user's folders, paths as the game sees them
 addons/capture/          our ReShade add-on: saves the frame after ReShade's effects on request
 addons/clock/            our clock plug-in (ASI): slows the real-time clock of named modules
 adapters/common/         shared by adapters: window (focus, keys, grabs, client size), mem (process
-                         memory), redlua (loader script + session client for RedLua games)
+                         memory), each with a Windows and a Linux implementation behind one
+                         interface, redlua (loader script + session client for RedLua games)
 adapters/<game>/         adapter.py, install.py, mods.lock.json, launch.py, lua/ (loader, session
                          job), visual/ (presets), probes/ (how the method was found), settings
 rigs/                    rig providers (file, ring, camrigs) and their contract
@@ -459,7 +466,7 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 | exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot |
 | settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged |
 | visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried |
-| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed) | not yet: installed part by part (`--only`), never from a clean slate | not yet: installed part by part; the bundle lacks the clock plug-in; no part in `tests/test_install.py` |
+| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed) | not yet: installed part by part (`--only`), never from a clean slate | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part |
 | scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) |
 | full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only |
 

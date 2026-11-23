@@ -7,31 +7,29 @@ It hooks only the modules a game names (its exe, its video player): the graphics
 ReShade and the script host keep the real clock. The capture scripts hold and release it through
 a control file; capture_clock.ini, next to the plug-in, says where that is.
 
-Built from source with the C++ build tools, as the capture add-on is (addon.py).
+Built from source with the C++ build tools, as the capture add-on is (addon.py), or taken
+prebuilt from a mods bundle when it was built from exactly these sources (a machine without the
+build tools; any Linux machine, where it runs inside the game under Proton).
 """
 import os
 import subprocess
 
 from ... import paths
-from ...util import sha256_bytes
 from ..plan import Call, CopyFile, InstallError, IniSet
-from .addon import find_cmake
+from .addon import digest_of, find_cmake, no_build_note, prebuilt
 
 SRC = os.path.join(paths.REPO, "addons", "clock")
 BUILD_DIR = os.path.join(paths.REPO, "addons", "build_clock")
 NAME = "capture_clock.asi"
 INI = "capture_clock.ini"
 BUILT = os.path.join(BUILD_DIR, "Release", NAME)
-BUILT_STAMP = os.path.join(BUILD_DIR, "capture_clock.src.sha256")
+STAMP = "capture_clock.src.sha256"
+BUILT_STAMP = os.path.join(BUILD_DIR, STAMP)
+EXTRA_NAMES = (NAME, STAMP)     # found by name in a mods bundle, as the add-on's are
 
 
 def source_digest():
-    parts = []
-    for d, _, names in os.walk(SRC):
-        for n in sorted(names):
-            p = os.path.join(d, n)
-            parts.append(os.path.relpath(p, SRC).replace(os.sep, "/").encode() + b"\0" + open(p, "rb").read())
-    return sha256_bytes(b"\0".join(sorted(parts)))
+    return digest_of(SRC)
 
 
 def is_built():
@@ -54,17 +52,28 @@ def build(log=print):
 def steps(asi_dir, control, status, modules):
     """asi_dir: where the game's ASI loader looks; control, status: the files the capture scripts
     and the plug-in talk through; modules: the game's modules whose clock is held."""
+    state = {}
+
+    def usable(c=None):
+        if is_built():
+            return BUILT
+        if c is not None and "prebuilt" not in state:
+            state["prebuilt"] = prebuilt(c, NAME, STAMP, source_digest())
+        return state.get("prebuilt", (None, None))[0]
+
     def build_status(c):
         if is_built():
             return "ok", "built"
+        if usable(c):
+            return "ok", "prebuilt from %s" % state["prebuilt"][1]
         if find_cmake():
             return "todo", "build with CMake"
-        return "missing", "the clock plug-in cannot be built here: install Visual Studio Build Tools with 'Desktop development with C++'"
+        return "missing", no_build_note("the clock plug-in")
 
     ini = os.path.join(asi_dir, INI)
     why = "where the clock plug-in takes commands and which modules' clock it holds"
     return [Call("clock plug-in built from addons/clock", build_status, lambda c: build(c.log), tag="clock"),
-            CopyFile(lambda: BUILT if is_built() else None, os.path.join(asi_dir, NAME), tag="clock", what="clock plug-in"),
-            IniSet(ini, "clock", "Control", control, tag="clock", why=why),
-            IniSet(ini, "clock", "Status", status, tag="clock", why=why),
+            CopyFile(usable, os.path.join(asi_dir, NAME), tag="clock", what="clock plug-in"),
+            IniSet(ini, "clock", "Control", control, tag="clock", why=why, game_path=True),
+            IniSet(ini, "clock", "Status", status, tag="clock", why=why, game_path=True),
             IniSet(ini, "clock", "Modules", ",".join(modules), tag="clock", why=why)]

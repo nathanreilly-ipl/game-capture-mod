@@ -71,6 +71,29 @@ commands that take several frames answer later (cam_session.lua).
 World frame (checked in game): metres, right-handed, +Z up, yaw counter-clockwise from +Y
 (north), so forward = (-sin h, cos h, 0), the same as RDR2 and GTA V.
 
+Linux: the same game under Proton on a headless display (capture/host; nothing in this file
+knows). Measured on a CoreWeave node, 2026-11-23 (RTX PRO 6000, driver 580.105.08, GE-Proton11-12,
+Xvfb 2560x1440, no DLSS 5), at the Cherry Blossom Market at noon unless said:
+- held world: 0.000000000 s of simulation time over 480 frames (Badlands); one simulation time
+  over the 345 shots of a near sweep that took 43.2 min;
+- camera: rendered pose 0.02 mm and 0.000 degrees off the asked one; the sweep's poses 0, 172 and
+  344 within 0.1 mm of the Windows take's, from the same solved rig (the scene's 66,000 rays
+  answer alike: 38,587 hits, the same room grid);
+- time steps: 29 steps of a 30-clip-frame take within 0.0017 ms of 1/30 s, every clip frame's
+  shots at one simulation time;
+- colours: the add-on's frame and a grab of the X display at one held instant differ by 0.19
+  levels of 255 (11.22 with red and blue swapped);
+- clock plug-in: both modules hooked under Wine; one pose captured five times, 4 frames apart,
+  had 4.01% of pixels differing by more than 12 with the clock running and 0.24% with it held
+  (Badlands at night, one frame per capture);
+- near sweep: roughness 5.14, brightness jitter 0.069, 10.6% of pixels over 12
+  (tools/sweep_flicker.py; Windows, same rig and settings: 4.38 and 0.045), no hot spot in the
+  map; exposure lock 0.621 / 49.52 / 49.47 (Windows 0.642 / 51.19 / 51.02); no health problem
+  and no recapture in 345 and in 89 shots;
+- speed: 7.28 s per shot (Windows 2.50), 17 to 18 frames/s running and 25 to 26 held, with the
+  game on 4 CPU cores (a Slurm job of 8 CPUs, which were 4 cores' threads); 5.59 s per shot, 28
+  running and 36 to 38 held on 8 cores (the same job with --hint=nomultithread; BACKLOG).
+
 Settings (job settings "adapter"):
     settle          frames between a camera move and its capture (120: see Settle below)
     first_settle    frames on the first shot (240)

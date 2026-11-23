@@ -62,7 +62,10 @@ QUALITY = [  # (group, name, value)
 
 
 def user_settings_path():
-    return os.path.join(os.environ.get("LOCALAPPDATA", ""), "CD Projekt Red", "Cyberpunk 2077", "UserSettings.json")
+    """%LOCALAPPDATA%\\CD Projekt Red\\Cyberpunk 2077\\UserSettings.json (under Proton: of the
+    game's prefix)."""
+    from capture import host
+    return os.path.join(host.user_dir("cyberpunk", "local_appdata"), "CD Projekt Red", "Cyberpunk 2077", "UserSettings.json")
 
 
 def display(size=(2560, 1440), desktop=None):
@@ -70,7 +73,7 @@ def display(size=(2560, 1440), desktop=None):
     when it is as large as the desktop (a window with a title bar would not fit)."""
     if desktop is None:
         from ..common import window
-        desktop = (window.user32.GetSystemMetrics(0), window.user32.GetSystemMetrics(1))
+        desktop = window.desktop_size()
     mode = "BorderlessWindowed" if tuple(size) == tuple(desktop) else "Windowed"
     return [("/video/display", "WindowMode", mode),
             ("/video/display", "Resolution", "%dx%d" % tuple(size)),
@@ -109,6 +112,11 @@ def file_changes(path, settings):
             if not values or value not in values:
                 raise ValueError("%s is not a value of %s %s (%s)" % (value, group, name, values))
             want["index"] = values.index(value)
+            if option.get("is_dynamic") and option.get("value") == value:
+                # A list the game makes from the display's modes (Resolution): a value's position
+                # differs between displays (2560x1440 is 12 in LISTS, from the PC's monitor; the game
+                # on a headless X display wrote 14, 2026-11-23), so a right value keeps its index
+                continue
         if any(option.get(k) != v for k, v in want.items()):
             out.append((group, name, {k: option.get(k) for k in want}, want))
     return out

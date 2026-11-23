@@ -15,8 +15,8 @@ import os
 import sys
 
 from .. import config, paths
-from .components import addon
-from .plan import Ctx, InstallError, Record, System, run, uninstall as _uninstall
+from .components import addon, clock
+from .plan import Ctx, InstallError, Record, System, default_system, run, uninstall as _uninstall   # noqa: F401
 from .sources import SHARED_LOCK, Files, load_locks
 
 INSTALLERS = {"rdr2": "adapters.rdr2.install", "gtav": "adapters.gtav.install",
@@ -37,7 +37,9 @@ def work_dir(game):
 
 def context(game, game_dir=None, options=None, mods=(), system=None, work=None, log=print):
     mod = installer(game)
-    system = system or System()
+    system = system or default_system(game)
+    if system.game is None:
+        system.game = game
     game_dir = game_dir or mod.find_game_dir()
     exe_path = getattr(mod, "EXE_PATH", mod.EXE)   # a game whose exe is not at the top of its folder
     if not game_dir or not os.path.exists(os.path.join(game_dir, exe_path)):
@@ -49,7 +51,7 @@ def context(game, game_dir=None, options=None, mods=(), system=None, work=None, 
         options = {k: v for k, v in record.data.get("options", {}).items() if k in mod.OPTIONS}
     opts = dict(mod.OPTIONS, **{k: v for k, v in options.items() if v is not None})
     files = Files(load_locks(SHARED_LOCK, mod.LOCK), roots=mods, installed=mod.installed_dirs(game_dir, system),
-                  extra_names=addon.EXTRA_NAMES)
+                  extra_names=addon.EXTRA_NAMES + clock.EXTRA_NAMES)
     return Ctx(game, game_dir, mod.EXE, opts, files, record, system, log), mod
 
 

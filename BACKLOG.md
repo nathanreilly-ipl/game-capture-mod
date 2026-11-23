@@ -3,6 +3,108 @@
 Work that is designed for but not built. Each item says what the current system does instead,
 and what is already in place so the item can be added without reworking the pipeline.
 
+## Top priority: the game-agnostic code on Linux, what is left
+
+Set by Nathan, 2026-11-23, as the long-term priority. Started that day, once Cyberpunk 2077
+rendered a frame through the capture add-on under Proton on a CoreWeave node (docs/LINUX_PORT.md).
+
+**Done (2026-11-23, README "On Linux"):** `capture/host` (the machine a game runs on: Windows, or
+Proton on a headless display), `capture host status|setup|prefix|stop` with its pinned parts
+(`capture/host/linux.lock.json`), `capture.sh`, `adapters/common/window.py` and `mem.py` with a
+Windows and a Linux implementation each, the installer on Linux (paths written as the game sees
+them, our two plug-ins taken built from a mods bundle), and Cyberpunk 2077 through all of it:
+install from a clean slate with the Windows PC's bundle, `verify --quick`, and two queued takes at
+the Cherry Blossom Market (the 345-pose near sweep; 30 clip frames of a moving and two fixed
+cameras), both captured without a recapture and packaged (ffmpeg from the machine's conda
+environment, found there since the same day).
+
+Left, game-agnostic:
+
+- **The game's files by the command line.** They were downloaded by hand with DepotDownloader
+  (README). A `capture game fetch <game>` would take the app, depot and manifest from the game's
+  adapter and the owner's Steam login; which tool, and where the login is kept, is Nathan's call.
+- **The game user's files.** Saves (and Cyberpunk's `user.gls`) are copied into the prefix by hand,
+  and the first start to make the game write its settings file is a manual step (start, `--close`,
+  install again). A command that takes a folder or a bundle of them and does the first start is
+  not written.
+- **`capture host setup` was run in parts only.** Proton, the runtime, the Ubuntu packages and
+  NVIDIA's package were fetched by hand on 2026-11-23 and the command written from that; its
+  downloads of those four were never run as written. ffmpeg was already in the conda environment
+  (`~/.conda/envs/game-capture`), so setup's conda step was only dry-run. Xvfb, xkbcomp and xdotool
+  could move from the unpacked Ubuntu packages to that environment too: conda-forge has xdotool;
+  a search on 2026-11-23 did not settle whether it has a usable Xvfb and xkbcomp, nor was it tried
+  whether one from there removes the private `/usr/bin` for xkbcomp.
+- **One game per machine.** One display (`:99`) and one prefix per game; a node has eight GPUs.
+  A worker per GPU needs its own display, prefix, game copy and exchange folder, and the GPU chosen
+  for the game (not looked into).
+- **`tools/`** that press keys or list processes (`upscaler_ab`, `upscaler_sweep`,
+  `dlss5_skin_sweep`, `preset_ab`) were not run on Linux; F13 to F16 (OptiScaler's live switches)
+  are mapped in `window_x11.py` but never pressed there.
+- **The scout overlay and RedLua's console** (`redlua.minimize_console` does nothing without
+  Win32).
+- **Frame rate: ask Slurm for one thread per core.** At the Cherry Blossom Market, 2560x1440
+  path traced, the RTX PRO 6000 under Proton (2026-11-23):
+
+  | Slurm job | CPUs the game used | frames/s running | held | GPU | s per shot |
+  |---|---|---|---|---|---|
+  | `--cpus-per-task=8` | 4 (24, 25, 27, 28) | 17 to 18 | 25 to 26 | 40 to 50%, 220 to 250 W | 7.28 (345-pose near sweep) |
+  | the same with `--hint=nomultithread` | 8 (2, 3, 8 to 13) | 28.1 | 36.3, 38.5 | 71%, 290 W | 5.59 (every 8th pose, 44 shots) |
+
+  The PC (RTX 5090) took 2.50 s per shot. Slurm counts threads as CPUs there (`CR_CPU_MEMORY`),
+  so 8 CPUs were 4 cores with both threads, the second thread being the first's number plus 64,
+  and no process in the game's prefix ran on a CPU numbered 64 or more (a Windows affinity mask
+  has 64 bits; that this is the reason is an inference). With the hint the job was given 8 cores
+  (16 threads allowed, counted as 8 CPUs) and all 82 of the game's threads were on the eight
+  numbered below 64 (the Windows session's idea; `out/probes/linux_port/cpu_test`).
+  `WINE_CPU_TOPOLOGY` changed nothing (tried, taken out). Presenting to Xvfb is not the limit:
+  vkcube does 2560x1440 at about 360 frames/s there. Left: the hint is not in the job this was
+  developed in (`vscode-tunnel.sbatch`, Nathan's); nothing in the repo starts Slurm jobs; more
+  than 8 cores was not tried (the GPU was still at 71%); and at 37 frames/s held the 132 frames of
+  a shot take 3.6 s, so about 2 s of each shot goes elsewhere (not looked into; the game's folder
+  and `out/` are on a network file system).
+
+## Then: the game-specific parts that do not work on Linux as they are
+
+Set by Nathan, 2026-11-23, to follow the item above. Everything under `adapters/<game>/` that
+needs Windows today, one game at a time. Each game's `capture verify <game> --launch` passing on
+the Linux machine is what closes its part.
+
+**Cyberpunk 2077: done (2026-11-23)** but for DLSS 5: `paths.DLL_OVERRIDES` (`winmm,version=n,b`),
+the game folder and settings file under Proton, `launch.py` through `capture/host` (with a clean
+close, since a killed game writes no settings file). Its Lua, session job, adapter and probes run
+unchanged. `d3dcompiler_47` from winetricks was not needed.
+
+- **Every other game:** `adapters/<game>/install.py` (Steam's folder from the registry, settings
+  under Documents and AppData: `host.user_dir` instead, and the DLL overrides its script layer
+  needs); `launch.py` through `host.start`, and the screens on the way to "in game".
+- **RDR2:** the Rockstar Games Launcher's login with nobody at a screen; the camera pose written
+  into game memory for every shot (`render_camera.py`, `adapters/rdr2/mem.py`: onto
+  `adapters/common/mem.py`, which reads the same addresses on Linux); its own window module and
+  five PowerShell scripts (`adapters/rdr2/scripts/*.ps1`: restart, input, reload, run a job, Lua
+  check), to be moved onto `adapters/common/`; the loader's exchange folder as the game sees it
+  (`redlua.loader_text`); override `dinput8=n,b` for Script Hook RDR2; Reality Redemption 2
+  untested under Proton.
+- **GTA V Enhanced:** the Rockstar launcher and Steam's launch dialog; the minimum time step
+  written into game memory (`timestep.py`); the settings menu navigated by screenshots
+  (`settings_menu.py`, `launch.py` uses `window.user32` directly); override `xinput1_4=n,b` for the
+  ASI loader; NaturalVision Enhanced and the protection crash untested under Proton.
+- **Visual sets:** DLSS 5 through OptiScaler needs a newer driver than the CoreWeave machine has
+  (580; docs/LINUX_PORT.md, unknown 1), so each game's `--optiscaler` option waits on that.
+- **Cyberpunk, a stale heartbeat right after a session:** a `verify` started within about 10 s
+  of another session's end was refused once ("stale heartbeat", older than 5 s); 30 s later the
+  heartbeat was a second old and verify passed (2026-11-23, Linux; not looked into, not tried on
+  Windows). A worker going from one job straight to the next could meet the same.
+- **Cyberpunk, the exposure lock's range:** at Kabuki in the afternoon the bisection ended at its
+  upper end (forced average luminance 98.9 of at most 100, frame brightness 78.0 where
+  auto-exposure gave 72.4; 2026-11-23). The take is still held at one exposure, but not at its
+  first shot's. Not known whether the PC does the same there.
+- **`capture verify`'s colour check** grabs the screen after the preview let the world go, so it
+  compares two different pictures (51.5 against 51.8 with the channels swapped, where one held
+  instant gives 0.19 against 11.22). Not a Linux matter, found there.
+
+RDR2 and GTA V also need Steam running and one account per running game (docs/LINUX_PORT.md,
+unknowns 2 and 3); that is a decision for Nathan, not code.
+
 ## Next: finish the RDR2 install test (needs someone at the PC)
 
 **Done (2026-11-20), the clean-slate run on the development machine:** every mod file moved out
@@ -107,16 +209,18 @@ step above, and a 32-camera moving sample at Vinewood passed QC; no full take ye
 
 `capture install`, `verify`, `uninstall` and `mods` exist and are applied on the development
 machine (README: Install). Left open:
-- **Clean-slate installs for GTA V Enhanced and Cyberpunk 2077.** Every adapter has to be fully
-  portable (Nathan, 2026-11-22; `AGENTS.md`, section 2): mod files moved out of the game folder, a
-  plain `capture install <game>`, then `capture verify <game> --launch`. Only RDR2 has done it.
-  Known gaps, found while packing Cyberpunk for the CoreWeave machine (2026-11-22): both games
-  were installed part by part with `--only`; `capture mods bundle` carries the capture add-on but
-  not the clock plug-in (`capture_clock.asi`), nor a pack such as NaturalVision Enhanced; a file
+- **Clean-slate installs for GTA V Enhanced, and Cyberpunk 2077 on Windows.** Every adapter has
+  to be fully portable (Nathan, 2026-11-22; `AGENTS.md`, section 2): mod files moved out of the
+  game folder, a plain `capture install <game>`, then `capture verify <game> --launch`. RDR2 has
+  done it on Windows (2026-11-20) and Cyberpunk 2077 on Linux, from the PC's bundle on a fresh
+  game download (2026-11-23: 50 steps, verify passed); on the PC both other games were installed
+  part by part with `--only`. Known gaps, found while packing Cyberpunk for the CoreWeave machine
+  (2026-11-22): `capture mods bundle` does not carry a pack such as NaturalVision Enhanced; a file
   installed in a subfolder (Cyber Engine Tweaks' fonts and scripts, RED4ext, redscript) shows as
   MISSING in `capture mods status` unless its archive is in out/mods, since the existing install
-  is searched folder by folder; `tests/test_install.py` has no Cyberpunk part; Cyberpunk's
-  optional visual set has no CLI flag.
+  is searched folder by folder; Cyberpunk's optional visual set has no CLI flag. (Closed
+  2026-11-23: the bundle now carries the clock plug-in, and `tests/test_install.py` has a
+  Cyberpunk part.)
 - **DLSS 5 for captures: whether to use it.** Off/on sheets exist (out/checks/upscaler_ab/); the
   effect is mostly on faces. Not measured: consistency between adjacent cameras of one instant
   (does the model treat the same surface the same from two views), and its automatic white

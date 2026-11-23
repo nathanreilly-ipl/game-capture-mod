@@ -12,6 +12,10 @@ B. The RDR2 plan in a sandbox (a fake game folder, a fake ProgramData and regist
    gets --optiscaler (a stand-in for NVIDIA's model), then its own preset edits survive a reinstall.
 C. RDR2's default install (Direct3D 12, OptiScaler, ray tracing, 2560x1440), then both off, uninstall.
 D. The GTA V Legacy plan in a sandbox: install, again (nothing to do), uninstall.
+F. The Cyberpunk 2077 plan in a sandbox, when its mod files and our two built plug-ins are
+   available (built here, or prebuilt in a mods bundle): install, again (nothing to do), uninstall;
+   once as on Windows and once with a machine that gives the game its paths differently (as under
+   Proton: Z:\\...), where only the paths written for the game to read may differ.
 """
 import argparse
 import os
@@ -22,7 +26,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from capture import install as inst  # noqa: E402
 from capture.install import plan, sources  # noqa: E402
-from capture.install.components import addon  # noqa: E402
+from capture.install.components import addon, clock  # noqa: E402
 from capture.util import sha256_bytes, sha256_file, write_json  # noqa: E402
 from adapters.gtav import install as gtav_install  # noqa: E402
 
@@ -45,6 +49,13 @@ class FakeSystem(plan.System):
 
     def unregister_vulkan_layer(self, manifest):
         self.layers.discard(manifest)
+
+
+class FakeProton(FakeSystem):
+    """A machine where the game sees this machine's paths differently (Proton: drive Z:)."""
+
+    def game_path(self, path):
+        return "Z:" + path.replace("/", "\\")
 
 
 def tree(root):
@@ -490,6 +501,61 @@ def part_e(tmp, mods, shv_loader):
           % (n, os.path.relpath(base, root), note))
 
 
+def part_f(tmp, mods, system_class, label):
+    """The Cyberpunk 2077 plan in a sandbox: install, again (nothing to do), uninstall."""
+    import json
+    from adapters.cyberpunk import paths as cp, settings as cs
+    lines = []
+    root = os.path.join(tmp, "cyberpunk_" + label)
+    game = os.path.join(root, "game")
+    os.makedirs(os.path.join(game, "bin", "x64"))
+    open(os.path.join(game, cp.EXE), "wb").write(b"not the real game")
+    # a settings file as the game writes it, on other settings than the capture profile
+    wanted = cs.profile((2560, 1440), desktop=(3840, 2160))
+    groups = {}
+    for group, name, value in wanted:
+        if (group, name) in cs.LISTS:
+            values = cs.LISTS[(group, name)]
+            other = next(v for v in values if v != value)
+            option = {"name": name, "type": "string_list", "values": values, "value": other, "index": values.index(other)}
+        elif value in ("true", "false"):
+            option = {"name": name, "type": "bool", "value": value != "true"}
+        else:
+            option = {"name": name, "type": "float", "value": 0.5}
+        groups.setdefault(group, []).append(option)
+    user = os.path.join(root, "UserSettings.json")
+    with open(user, "w", encoding="utf-8") as f:
+        json.dump({"data": [{"group_name": g, "options": o} for g, o in groups.items()]}, f)
+    opts = {"user_settings": user, "desktop": (3840, 2160)}
+    system, work = system_class(root), os.path.join(root, "work")
+    before, user_before = tree(game), open(user, "rb").read()
+    n = inst.install("cyberpunk", game, opts, mods, system=system, work=work, log=lines.append)
+    plugins = os.path.join(game, "bin", "x64", "plugins")
+    exchange = cp.exchange(game)
+    for rel in (os.path.join("bin", "x64", "version.dll"), os.path.join("bin", "x64", "winmm.dll"),
+                os.path.join("red4ext", "RED4ext.dll"), os.path.join("red4ext", "plugins", "Codeware", "Codeware.dll"),
+                os.path.join("engine", "tools", "scc.exe")):
+        assert os.path.exists(os.path.join(game, rel)), rel
+    for rel in ("cyber_engine_tweaks.asi", "ReShade.asi", "ReShade.ini", "ReShadePreset.capture.ini", addon.NAME, clock.NAME,
+                clock.INI, os.path.join("cyber_engine_tweaks", "mods", cp.MOD_NAME, "init.lua")):
+        assert os.path.exists(os.path.join(plugins, rel)), rel
+    assert os.path.isdir(os.path.join(exchange, "jobs"))
+    # what the game reads as a path is written as the game sees it; everything else as it is here
+    assert plan.Ini(os.path.join(plugins, "ReShade.ini")).get("CAPTURE_MOD", "OutputDir") == system.game_path(exchange)
+    ini = plan.Ini(os.path.join(plugins, clock.INI))
+    assert ini.get("clock", "Control") == system.game_path(os.path.join(exchange, "clock.txt"))
+    assert ini.get("clock", "Status") == system.game_path(os.path.join(exchange, "clock_status.txt"))
+    assert ini.get("clock", "Modules") == "Cyberpunk2077.exe,bink2w64.dll"
+    assert plan.Ini(os.path.join(plugins, "ReShade.ini")).get("GENERAL", "PresetPath") == ".\\ReShadePreset.capture.ini"
+    assert not cs.file_changes(user, wanted), "the capture settings are in the game's settings file"
+    assert inst.install("cyberpunk", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    inst.uninstall("cyberpunk", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert open(user, "rb").read() == user_before, "the game's settings are back"
+    print("F ok (%s): the Cyberpunk 2077 plan in a sandbox: %d steps, then nothing to do; uninstall put it all back" % (label, n))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mods", action="append", default=[])
@@ -523,6 +589,17 @@ def main():
         else:
             print("D skipped: Script Hook V, RedLua for GTA V or ReShade is not in out/mods (or the add-on is not built)")
             print("E skipped: as D")
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("cyberpunk").LOCK), roots=a.mods,
+                              extra_names=addon.EXTRA_NAMES + clock.EXTRA_NAMES)
+        need = [("cyber_engine_tweaks", "bin/x64/version.dll"), ("red4ext", "bin/x64/winmm.dll"), ("reshade", "ReShade64.dll")]
+        ours = all(part.is_built() or (probe.named(part.NAME) and probe.named(part.STAMP)) for part in (addon, clock))
+        if all(probe.ref(m, f).found for m, f in need) and ours:
+            part_f(tmp, a.mods, FakeSystem, "paths as they are")
+            part_f(tmp, a.mods, FakeProton, "paths as under Proton")
+        else:
+            print("F skipped: Cyber Engine Tweaks, RED4ext or ReShade is not in out/mods, or our add-on and clock plug-in "
+                  "are neither built nor in a bundle there")
 
 
 if __name__ == "__main__":
