@@ -43,11 +43,18 @@ def load_locks(*lock_paths):
 
 def _unpacked(archive, size):
     """The files of a RAR archive, unpacked once into out/mods/.unpacked with Windows' own tar
-    (libarchive reads RAR); [] if it cannot be read."""
+    (libarchive reads RAR; on Linux bsdtar is the same program, where it is installed); [] if it
+    cannot be read."""
+    import shutil
     import subprocess
     dst = os.path.join(MODS_DIR, ".unpacked", "%s-%d" % (os.path.basename(archive), size))
     if not os.path.isdir(dst):
-        tar = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "tar.exe")
+        if os.name == "nt":
+            tar = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "tar.exe")
+        else:
+            tar = shutil.which("bsdtar")
+            if not tar:
+                return []
         os.makedirs(dst + ".part", exist_ok=True)
         if subprocess.run([tar, "-xf", archive, "-C", dst + ".part"], capture_output=True).returncode != 0:
             return []

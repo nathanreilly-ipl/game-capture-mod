@@ -1,0 +1,44 @@
+"""The machine a game runs on. Game-agnostic.
+
+On Windows a game runs as it is (windows.py). On Linux the same Windows game runs under Proton
+inside the Steam Linux Runtime container, on a headless X display of its own (proton.py); the
+in-game parts (script layer, loader, ReShade, our add-on and clock plug-in) are the same files and
+run inside the game either way. What differs outside the game goes through this package, so
+neither `capture/` nor an adapter asks which system it is on:
+
+    pids(exe_name)                    the game's processes
+    stop(game, exe_names)             end them (and, under Proton, everything else in its prefix)
+    start(game, exe, args, ...)       start the game's exe
+    game_path(path, game)             a path of this machine as code inside the game sees it
+    user_dir(game, kind)              the game user's folders (settings, saves)
+    program_data(game)                the machine-wide data folder
+    CLI                               how the command line is called here, for messages
+
+`game` is the game's name in the adapters registry: under Proton each game has its own prefix
+(out/proton/<game>), which is where its user folders are.
+
+Adapters reach windows, keys and screen grabs through adapters/common/window.py and process memory
+through adapters/common/mem.py, which pick their own implementation the same way.
+"""
+import os
+
+LINUX = os.name != "nt"
+WINDOWS = not LINUX
+NAME = "linux" if LINUX else "windows"
+
+if LINUX:
+    from . import proton as _impl
+else:
+    from . import windows as _impl
+
+CLI = _impl.CLI
+pids = _impl.pids
+stop = _impl.stop
+start = _impl.start
+game_path = _impl.game_path
+user_dir = _impl.user_dir
+program_data = _impl.program_data
+
+
+def process_running(exe_name):
+    return bool(pids(exe_name))

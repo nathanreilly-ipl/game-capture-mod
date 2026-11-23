@@ -157,6 +157,65 @@ of them stops it from loading (its loader file goes, backed up).
   in `out/config.json`.
 - `tests/test_install.py --mods <folder>` runs the whole RDR2 plan in a sandbox.
 
+### On Linux (a Windows game under Proton)
+
+The same command line runs on a Linux machine with an NVIDIA GPU and no desktop (`./capture.sh`
+is `capture.ps1`'s twin): the game is the Windows one, under Proton in the Steam Linux Runtime
+container, on a headless X display, and our in-game parts are the same files. Nothing needs root
+or a Steam client. Cyberpunk 2077 is the game brought up so far (its section below has the
+numbers); found and measured on a CoreWeave Slurm node, 2026-11-23 (Ubuntu 22.04 image, NVIDIA
+580.105.08, one RTX PRO 6000; docs/LINUX_PORT.md).
+
+```bash
+./capture.sh host status                 # GPU and driver, Proton, its runtime, the display tools, NGX, ffmpeg
+./capture.sh host setup                  # fetches and unpacks what is missing into out/host (pinned: capture/host/linux.lock.json)
+#   (written from what was fetched by hand on 2026-11-23; its own downloads were not run as written: BACKLOG)
+#   ...the game's Windows files into out/games/<game> (below), and a mods bundle from a Windows machine
+./capture.sh install cyberpunk --mods capture-mods-cyberpunk.zip --dry-run
+./capture.sh install cyberpunk --mods capture-mods-cyberpunk.zip
+./capture.sh host prefix cyberpunk       # makes the game's Proton prefix; prints where saves and settings go
+./capture.sh verify cyberpunk --launch   # as on Windows; then scout, submit, worker
+```
+
+- **What differs is in one place.** `capture/host` (game-agnostic) answers what the rest asks of
+  the machine: the game's processes, starting and stopping it, the game user's folders, and a path
+  of this machine as the game sees it (drive `Z:`; `C:` inside the game's own prefix,
+  `out/proton/<game>`). `adapters/common/window.py` and `mem.py` pick their Windows or Linux
+  implementation (`window_x11.py`: xdotool and an X screen grab; `mem_linux.py`: `/proc/<pid>/mem`,
+  same addresses as on Windows). An adapter's code is the same on both; what a game adds for Linux
+  is its DLL overrides for Wine and where its files are.
+- **Our two plug-ins come built.** The capture add-on and the clock plug-in are Windows DLLs; a
+  Linux machine has no tools to build them. `capture mods bundle <game> [--with-supplied]` on a
+  Windows machine that built them puts both in the bundle with a stamp of the sources they were
+  built from, and `install --mods <bundle>` uses them when the stamp matches this checkout
+  (line ends do not matter).
+- **Ordinary programs come from one conda environment.** ffmpeg (and anything else of that kind a
+  machine lacks) is looked for in `~/.conda/envs/game-capture` (`CAPTURE_ENV` or `host.env` in
+  `out/config.json` name another) and run by its path, without activating the environment;
+  `host setup` installs it there from conda-forge when none is found. Python stays with uv
+  (`capture.sh`). Xvfb and xdotool are still the unpacked Ubuntu packages in `out/host/sysroot`.
+- **The game's files** are not installed by Steam there (its client is a 32-bit program; the
+  image had no 32-bit libraries). They were downloaded with DepotDownloader (SteamRE, a third-party
+  tool, with the owner's own Steam login) for the Windows platform, pinned to the build the script
+  layer supports: `-app 1091500 -depot 1091501 -manifest 3524634124112875626 -os windows`, 66.8 GB.
+  A clean download plus `capture install` is the PC's install (all 155 depot files compared).
+- **The game user's files** (saves; for Cyberpunk also `user.gls`, without which the first start
+  stops at the user agreement) are copied by hand into the prefix's `Saved Games` folder
+  (`host prefix` prints it). A game writes its settings file only when it exits by itself: start it
+  once, close it (`python -m adapters.cyberpunk.launch`, then `--close`), and run `install` again
+  for the settings step. A killed game writes none.
+- **The display** is Xvfb at 2560x1440 (config `host.screen`): the game presents to it through
+  NVIDIA's Vulkan driver and a grab of it shows the game. It is the game's alone, so nothing takes
+  the window's focus. Where `/usr/bin/xkbcomp` is missing and cannot be installed, Xvfb is started
+  in a private mount namespace that has it.
+- **DLSS** needs NVIDIA's `nvngx.dll` and `_nvngx.dll` (from the driver package of the machine's
+  driver version) in the prefix, and a registry value; `host setup` and the first start do both.
+  DLSS 5 through OptiScaler is not tried there: it needs a newer driver than 580.
+- **Not there yet:** RDR2 and GTA V (their launchers, their own window and memory modules, RedLua's
+  loader path as the game sees it), the scout overlay, `tools/` that press keys, more than one game
+  per machine (one display, one prefix per game), and a download of the game's files by the
+  command line. BACKLOG.md has the list.
+
 ## Workflow
 
 Scout locations, submit a rig for them, let workers capture. Scout and worker can run on
@@ -731,6 +790,30 @@ Not done yet: a full ST-DM take; the visual mods and DLSS 5 exist but are off by
   instead raised a Windows administrator prompt on every start (Steam's first-time setup), which
   nobody answers and which blanks every screen grab for two minutes. Started directly, Steam does
   not list the game as running: other sessions must look for `Cyberpunk2077.exe`.
+
+### On Linux (measured 2026-11-23)
+
+The same adapter, Lua and probes run under Proton on a headless display ("On Linux" under
+Install; `adapters/cyberpunk/adapter.py` has every number). On a CoreWeave node with an RTX PRO
+6000, from a clean slate: the game's depot download, `capture install cyberpunk --mods <the
+PC's bundle>` (50 steps, then nothing to do), the saves copied in, one start and clean close, and
+`install` again for the 11 game settings. Then:
+
+- `capture verify cyberpunk --launch` passes: unattended start in 127 to 182 s (game and prefix
+  on a network file system), scripts answer, a 2560x1440 frame through the add-on, a frozen take
+  of 8 cameras over 3 clip frames (24 shots in 256 to 259 s, none recaptured, both 1/30 s steps
+  exact to 0.00 ms) and its packaging into videos.
+- Two queued takes at the Cherry Blossom Market, both without a health problem or a recapture:
+  the near sweep (345 poses at one instant, 43.2 min, one simulation time throughout, poses
+  within 0.1 mm of the Windows take's from the same solved rig, roughness 5.14 and brightness
+  jitter 0.069 against 4.38 and 0.045 on Windows), and 30 clip frames of a moving and two fixed
+  cameras (89 shots, 14.8 min, every step within 0.0017 ms of 1/30 s). Both were packaged
+  afterwards with `capture package` (ffmpeg from the conda environment); the worker's own
+  packaging and QC step has not run there.
+- Speed depends on how the Slurm job asks for its CPUs: 7.28 s per shot and 17 to 18 frames/s
+  with `--cpus-per-task=8` (the game ran on 4 cores), 5.59 s per shot and 28 frames/s with
+  `--hint=nomultithread` added (8 cores), against 2.50 s on the PC (BACKLOG has the table).
+- No DLSS 5 (driver 580), no visual set.
 
 ### How a take is captured in Cyberpunk 2077 (measured 2026-11-21)
 

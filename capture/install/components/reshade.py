@@ -155,7 +155,8 @@ def steps(ctx, exe_path, api, preset=None, preset_label=None, effects=(), keep_p
     if config_dir:
         out += [MakeDir(config_dir, tag="reshade"),
                 IniSet(os.path.join(home, "ReShade.ini"), "INSTALL", "BasePath", config_dir, tag="reshade",
-                       why="ReShade's config, preset and log live there: the game denies writes to its own folder")]
+                       why="ReShade's config, preset and log live there: the game denies writes to its own folder",
+                       game_path=True)]
     ini = config_path(home, config_dir)
     if keep_preset:
         for ref, rel in effects:

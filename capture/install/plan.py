@@ -23,7 +23,13 @@ class InstallError(RuntimeError):
 
 # --- the machine ---------------------------------------------------------------------------------
 class System:
-    """What an install touches outside the game folder. Tests replace it."""
+    """What an install touches outside the game folder, on Windows. Tests replace it; under Proton
+    it is ProtonSystem (default_system picks)."""
+    game = None     # the game being installed (install.context sets it)
+
+    def game_path(self, path):
+        """A path of this machine as code inside the game sees it (a config value the game reads)."""
+        return path
 
     def program_data(self):
         return os.environ.get("ProgramData", r"C:\ProgramData")
@@ -80,6 +86,45 @@ class System:
         os.remove(tmp)
         if open(path, "rb").read() != data:
             raise InstallError("could not write %s (was the administrator prompt declined?)" % path)
+
+
+class ProtonSystem(System):
+    """The same for a game under Proton on Linux (capture/host/proton.py): the machine-wide places
+    are inside the game's own prefix, nothing needs an administrator, and a path written for the
+    game to read is given as the game sees it (Z:\\..., C:\\...)."""
+
+    def game_path(self, path):
+        from .. import host
+        return host.game_path(path, self.game)
+
+    def program_data(self):
+        from .. import host
+        return host.program_data(self.game)
+
+    def process_running(self, exe_name):
+        from .. import host
+        return host.process_running(exe_name)
+
+    def vulkan_layer_registered(self, manifest):
+        return False    # a prefix of ours has no machine-wide ReShade layer
+
+    def register_vulkan_layer(self, manifest):
+        raise InstallError("ReShade as a Vulkan layer is not set up for games under Proton; use the game's Direct3D API")
+
+    def unregister_vulkan_layer(self, manifest):
+        pass
+
+    def write_file(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+
+
+def default_system(game=None):
+    """The System of the machine this runs on, for `game`."""
+    system = System() if os.name == "nt" else ProtonSystem()
+    system.game = game
+    return system
 
 
 # --- the record ----------------------------------------------------------------------------------
@@ -369,23 +414,29 @@ class MakeDir(Step):
 
 
 class IniSet(Step):
-    def __init__(self, path, section, key, value, tag="settings", closed=True, why=""):
+    def __init__(self, path, section, key, value, tag="settings", closed=True, why="", game_path=False):
+        """game_path: the value is a path on this machine that code inside the game reads; it is
+        written as the game sees it (the same path on Windows, Z:\\... under Proton)."""
         self.path, self.section, self.key, self.value = path, section, key, value
-        self.tag, self.needs_game_closed, self.why = tag, closed, why
+        self.tag, self.needs_game_closed, self.why, self.game_path = tag, closed, why, game_path
 
     def describe(self):
         return "%s [%s] %s=%s%s" % (os.path.basename(self.path), self.section, self.key, self.value,
                                     "  (%s)" % self.why if self.why else "")
 
+    def _value(self, ctx):
+        return ctx.system.game_path(self.value) if self.game_path else self.value
+
     def status(self, ctx):
         cur = Ini(self.path).get(self.section, self.key)
-        return ("ok", "set") if cur == self.value else ("todo", "was %s" % (cur if cur is not None else "unset"))
+        return ("ok", "set") if cur == self._value(ctx) else ("todo", "was %s" % (cur if cur is not None else "unset"))
 
     def apply(self, ctx):
         ini = Ini(self.path)
+        value = self._value(ctx)
         ctx.record.makedirs(os.path.dirname(self.path))
-        ctx.record.setting("ini", self.path, "%s|%s" % (self.section, self.key), ini.get(self.section, self.key), self.value)
-        ini.set(self.section, self.key, self.value)
+        ctx.record.setting("ini", self.path, "%s|%s" % (self.section, self.key), ini.get(self.section, self.key), value)
+        ini.set(self.section, self.key, value)
         ini.save()
 
 
@@ -521,7 +572,7 @@ class Call(Step):
 class Ctx:
     def __init__(self, game, game_dir, exe_name, options, files, record, system=None, log=print):
         self.game, self.game_dir, self.exe_name, self.options = game, game_dir, exe_name, options
-        self.files, self.record, self.system, self.log = files, record, system or System(), log
+        self.files, self.record, self.system, self.log = files, record, system or default_system(game), log
 
     def file(self, mod_id, name):
         return self.files.ref(mod_id, name)

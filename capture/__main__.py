@@ -1,9 +1,11 @@
-"""Command line: python -m capture <command> (or .\\capture.ps1 <command> from the repo root).
+"""Command line: python -m capture <command> (.\\capture.ps1 <command> from the repo root on
+Windows, ./capture.sh <command> on Linux).
 
     install    install everything a game needs (mods, ReShade, our add-on and scripts, settings)
     verify     check that an install can scout, capture and iterate
     uninstall  put back what install changed
     mods       the third-party files an install needs: status, fetch, bundle, docs
+    host       Linux only: what this machine needs to run a Windows game (Proton, a headless display)
     scout      record a location (and its 4 outward previews) from the running game
     locations  list the recorded locations
     providers  list the rig providers (rig formats) this machine can use
@@ -19,7 +21,7 @@ import json
 import os
 import sys
 
-from . import adapters_registry, paths
+from . import adapters_registry, host, paths
 from . import locations as locs
 from .package import package
 from .queue import Queue
@@ -218,7 +220,7 @@ def cmd_install(a):
     except inst.InstallError as e:
         raise SystemExit("install stopped: %s" % e)
     if not a.dry_run and not a.only and not a.no_verify:
-        print("next: .\\capture.ps1 verify %s --launch   (starts the game and checks everything works)" % a.game)
+        print("next: %s verify %s --launch   (starts the game and checks everything works)" % (host.CLI, a.game))
     return n
 
 
@@ -239,7 +241,7 @@ def cmd_verify(a):
 def cmd_mods(a):
     from . import install as inst
     from .install import docs, sources
-    from .install.components import addon
+    from .install.components import addon, clock
     if a.action == "docs":
         print("wrote", docs.generate())
         return
@@ -248,9 +250,15 @@ def cmd_mods(a):
         sources.fetch(ctx.files)
     elif a.action == "bundle":
         out = a.output or os.path.join(paths.OUT, "bundles", "capture-mods-%s.zip" % a.game)
-        extra = [("capture_addon/" + addon.NAME, addon.BUILT), ("capture_addon/" + addon.STAMP, addon.BUILT_STAMP)] if addon.is_built() else []
-        if not extra:
-            print("the capture add-on is not built here, so the bundle will not include it")
+        # our own built files and the stamps saying which sources they were built from: a machine
+        # without the C++ build tools (any Linux machine) installs them from the bundle
+        extra = []
+        for part, what in ((addon, "capture add-on"), (clock, "clock plug-in")):
+            if part.is_built():
+                folder = "capture_addon/" if part is addon else "capture_clock/"
+                extra += [(folder + part.NAME, part.BUILT), (folder + part.STAMP, part.BUILT_STAMP)]
+            else:
+                print("the %s is not built here from the current sources, so the bundle will not include it" % what)
         sources.bundle(ctx.files, out, with_supplied=a.with_supplied, extra=extra)
     else:
         print("looking in: %s" % ", ".join(ctx.files.roots + ["the existing install"]))
@@ -268,6 +276,12 @@ def cmd_mods(a):
             print("  %-8s %-22s %s" % ("found" if src else "MISSING", m["archive"]["name"][:22],
                                        src or "get it from " + str(m.get("page"))))
         print("what each file is and where to get it: docs/MOD_FILES.md")
+
+
+def cmd_host(a):
+    from .host import setup
+    if not setup.main(a.action, a.game):
+        raise SystemExit(1)
 
 
 def cmd_worker(a):
@@ -408,6 +422,11 @@ def main(argv=None):
     s.add_argument("--with-supplied", action="store_true",
                    help="bundle: include files that may not be redistributed (for your own machines only)")
     s.set_defaults(fn=cmd_mods)
+
+    s = sub.add_parser("host", help="Linux: what this machine needs to run a Windows game (Proton, a headless display)")
+    s.add_argument("action", choices=("status", "setup", "prefix", "stop"))
+    s.add_argument("game", nargs="?", help="prefix, stop: the game")
+    s.set_defaults(fn=cmd_host)
 
     s = sub.add_parser("worker", help="capture queued jobs")
     s.add_argument("--game", default="rdr2", choices=adapters_registry.names())

@@ -6,7 +6,8 @@ inside the game folder. The ReShade add-on and the adapter use the same folder b
 """
 import os
 
-from capture import config
+from capture import config, host
+from capture import paths as capture_paths
 
 GAME = "cyberpunk"
 EXE_NAME = "Cyberpunk2077.exe"
@@ -17,7 +18,13 @@ WINDOW_CLASS = "W2ViewportClass"                    # REDengine's window class (
 CET_DIR = os.path.join("bin", "x64", "plugins", "cyber_engine_tweaks")
 MOD_NAME = "capture_mod"
 MOD_DIR = os.path.join(CET_DIR, "mods", MOD_NAME)
-DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077"
+# Windows: Steam's default library. Linux (the game under Proton, capture/host): where a download
+# of the game's Windows depot is kept, since there is no Steam client there.
+DEFAULT_GAME_DIR = (os.path.join(capture_paths.OUT, "games", "cyberpunk2077") if host.LINUX
+                    else r"C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077")
+# Under Proton, Wine must load the game folder's own winmm.dll (RED4ext's loader) and version.dll
+# (Cyber Engine Tweaks' ASI loader) instead of its built-in ones (RED modding wiki; checked 2026-11-23)
+DLL_OVERRIDES = "winmm,version=n,b"
 
 
 def game_dir():

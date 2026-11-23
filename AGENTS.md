@@ -94,7 +94,10 @@ existing CLI (`.\capture.ps1 <command>`, which is `python -m capture` through uv
   read the answer, edit a script and reload it without restarting the game where possible, and run
   probes that print numbers. See section 5.
 - **Decoupled.** Game-specific code lives in `adapters/<game>/` only; `capture/`, `rigs/`,
-  `addons/` and `capture/install/components/` stay game-agnostic. When two games need the same
+  `addons/` and `capture/install/components/` stay game-agnostic. So does what differs between
+  Windows and Linux: it goes through `capture/host` and the two-sided modules in
+  `adapters/common/`, never an `if` on the system in an adapter's capture code (a game adds only
+  its own facts: its DLL overrides for Wine, where its files are). When two games need the same
   thing, it moves into `adapters/common/` or a shared component with the game's choices passed in
   (examples: `reshade.steps(..., asi_dir=)`, `clock.steps(asi_dir, control, status, modules)`,
   `redlua.Session(..., staged=True)`, the adapter attributes `min_fps` and `prepare_take`).
@@ -111,10 +114,14 @@ capture/install/         installer framework: steps with status/apply/record, lo
                          sources by sha256, verify, docs; install/__init__.py registers games
 capture/install/components/   shared install pieces: reshade, addon (our ReShade add-on), clock
                          (our clock plug-in), optiscaler (DLSS 5), pack (multi-GB overhauls)
+capture/host/            the machine a game runs on: Windows as it is, or Linux with the game under
+                         Proton on a headless display (proton.py; `capture host`, linux.lock.json).
+                         Processes, start/stop, the game user's folders, paths as the game sees them
 addons/capture/          our ReShade add-on: saves the frame after ReShade's effects on request
 addons/clock/            our clock plug-in (ASI): slows the real-time clock of named modules
 adapters/common/         shared by adapters: window (focus, keys, grabs, client size), mem (process
-                         memory), redlua (loader script + session client for RedLua games)
+                         memory), each with a Windows and a Linux implementation behind one
+                         interface, redlua (loader script + session client for RedLua games)
 adapters/<game>/         adapter.py, install.py, mods.lock.json, launch.py, lua/ (loader, session
                          job), visual/ (presets), probes/ (how the method was found), settings
 rigs/                    rig providers (file, ring, camrigs) and their contract

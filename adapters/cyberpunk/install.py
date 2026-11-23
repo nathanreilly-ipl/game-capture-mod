@@ -36,7 +36,7 @@ them (Direct3D 12, ReShade as an .asi plug-in) and adds what only Cyberpunk need
 import os
 import re
 
-from capture import config
+from capture import config, host
 from capture.install.components import addon, clock, optiscaler, reshade
 from capture.install.plan import Call, CopyFile, IniSet, JsonSet, MakeDir, RemoveFile, WriteText
 
@@ -73,6 +73,8 @@ def find_game_dir():
     known = config.game(GAME).get("game_dir") or os.environ.get("CYBERPUNK_DIR")
     if known and os.path.exists(os.path.join(known, EXE_PATH)):
         return known
+    if host.LINUX:   # no Steam client: the game's Windows depot, downloaded to the default place
+        return paths.DEFAULT_GAME_DIR if os.path.exists(os.path.join(paths.DEFAULT_GAME_DIR, EXE_PATH)) else None
     libs = []
     try:
         import winreg
@@ -184,5 +186,8 @@ def steps(ctx):
 
 def after_install(ctx):
     """What to tell the user once the files are in place."""
+    if host.LINUX:
+        return ["The game starts under Proton without Steam: %s verify cyberpunk --launch (adapters/cyberpunk/launch.py)." % host.CLI,
+                "Its saves and settings are in its prefix: %s" % host.user_dir(GAME, "saved_games")]
     return ["Start Cyberpunk 2077 through Steam (launch options --launcher-skip -skipStartScreen skip its launcher).",
             "Keys in game: ~ Cyber Engine Tweaks overlay, Home ReShade."]
