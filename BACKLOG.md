@@ -75,6 +75,11 @@ step above, and a 32-camera moving sample at Vinewood passed QC; no full take ye
   NVE build that runs on the current game version would bring its September features (third
   ray-traced bounce, heat haze, newer skin subsurface scattering). CoreFX and QuantV not tried
   (Nathan: NVE only).
+- **DLSS 5's white point** (GTA V Enhanced and RDR2, 2026-11-22): metered per view on automatic,
+  now held per take from the first shot (README). Left: a brightness lift of 0.4-0.6 levels 40
+  frames after any cut, the same whatever the view before and gone by 600 frames (the renderer's
+  temporal settle); whether a longer settle is worth its time per shot is not measured. Earlier
+  measurements with DLSS 5 on (preset_ab, upscaler_ab, the skin sweeps) ran without the hold.
 - **GTA V visual presets** (`--preset`, README; no longer the Enhanced default): grade + Clarity
   as their capture preset, the others on F14-F18. Left: the grade's values are a first guess. In
   the grade + Clarity run the first preset's shots caught nearby people slightly moved (Chrome had

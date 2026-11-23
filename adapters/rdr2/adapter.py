@@ -12,6 +12,12 @@ Settings (job settings "adapter"):
     park_height   metres to park the hidden player above the location during a take (10; 0 =
                   stay at the spot). Measured 2026-11-20: 200 m costs no render detail; in Rhodes
                   10, 30 and 200 m did not change the number of people near the spot
+    lock_white_point  with DLSS 5 installed (OptiScaler.asi in the game folder), hold its white point
+                  for the take at what its meter settled on for the first shot, after the exposure
+                  lock (True). Left on automatic it meters every view: in Saint Denis, 2026-11-22,
+                  the logged paper white went 1-232x over one frozen run, and a view shot 40 ticks
+                  after the sky came out 1.4 levels brighter (mean change 5.2, p99 40) than settled
+                  (tools/exposure_check.py), though the game's exposure was locked
 """
 import math
 import os
@@ -25,6 +31,7 @@ from capture import config
 from capture import obstacles as obstacles_geom
 from capture.adapter import Adapter, AdapterError
 
+from ..common.optiscaler_live import OptiScalerLive
 from . import render_camera as rc
 from . import window, zones
 from .mem import Process, find_pid
@@ -39,7 +46,8 @@ def game_dir():
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
-DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 10.0}
+DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
+            "lock_white_point": True}
 
 
 def _rz(deg):
@@ -85,6 +93,8 @@ class RDR2Adapter(Adapter):
         self.frozen = False
         self.last_size = None
         self._parked_from = None
+        self.dlss5 = OptiScalerLive(game_dir())   # DLSS 5, if installed there
+        self.white_point = None    # DLSS 5's white point held for the take, if any
 
     # --- lifecycle -------------------------------------------------------------------------
     def _running(self):
@@ -134,9 +144,12 @@ class RDR2Adapter(Adapter):
         self.frame = None
 
     def render_settings(self):
-        return {"window_client_size": window.client_size(self.hwnd), "frame_size": self.last_size,
-                "reshade_preset": _reshade_preset(), "settle_ticks": self.settings["settle"],
-                "park_height_m": float(self.settings.get("park_height") or 0)}
+        out = {"window_client_size": window.client_size(self.hwnd), "frame_size": self.last_size,
+               "reshade_preset": _reshade_preset(), "settle_ticks": self.settings["settle"],
+               "park_height_m": float(self.settings.get("park_height") or 0)}
+        if self.white_point is not None:
+            out["dlss5"] = {"white_point_held": self.white_point, "by": "OptiScaler DLSS 5 fork, WhitePointSource=0"}
+        return out
 
     # --- conventions -----------------------------------------------------------------------
     def rig_rotation(self, facing_deg):
@@ -265,6 +278,10 @@ class RDR2Adapter(Adapter):
         self.set_camera(first_shot)
         self.sess.cmd("wait", self.settings["first_settle"])
         self.sess.cmd("exposure", "lock")
+        if self.settings.get("lock_white_point") and os.path.exists(os.path.join(self.dlss5.folder, "OptiScaler.asi")):
+            # DLSS 5's automatic white point follows each view like an auto-exposure: hold what it
+            # settled on for this first shot (adapters/common/optiscaler_live.py)
+            self.white_point = self.dlss5.lock_white_point()
 
     def set_camera(self, shot):
         rc.write_pose(self.proc, self.frame, shot["pos"], shot["right"], shot["fwd"], shot["up"], shot["vfov_deg"])
@@ -376,3 +393,6 @@ class RDR2Adapter(Adapter):
         finally:
             self.sess.cmd("unfreeze")
             self.frozen = False
+            if self.white_point is not None:
+                self.white_point = None
+                self.dlss5.unlock_white_point()

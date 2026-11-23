@@ -61,6 +61,7 @@ def main():
         u.clear_traffic(adapter, st["position"], 30.0, log)
         st = adapter.subject_state()
         adapter.begin_frozen(u.views(adapter, st)["portrait"])
+        report["render"] = adapter.render_settings()   # what the take held, e.g. DLSS 5's white point
         st = adapter.subject_state()
         boxes = u.people(adapter, st["position"])
         vs = u.views(adapter, st, boxes)

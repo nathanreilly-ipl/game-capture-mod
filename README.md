@@ -106,6 +106,13 @@ of them stops it from loading (its loader file goes, backed up).
   rate stays at the game's usual cap of about 60 frames/s. `--dlss-mode quality` goes back.
   **Skin structure 2** (DLSS 5's skin control, as in GTA V Enhanced; Nathan, 2026-11-22, after the
   sweep below), written to OptiScaler.ini.
+  **The white point held per take** (adapter setting `lock_white_point`, on; 2026-11-22, as in GTA
+  V Enhanced): with the game's exposure locked, DLSS 5's automatic white point still metered each
+  view (logged paper white 1-232x over one frozen run in Saint Denis), and a view shot 40 ticks
+  after the sky came out 1.4 levels brighter than settled (mean change 5.2, p99 40), after a dark
+  view 0.05 (`tools/exposure_check.py`). Held from the first shot (`adapters/common/optiscaler_live.py`),
+  the same view came out 0.4 brighter 40 ticks after the sky and after the dark view alike (the
+  settle), and within 0.01 settled; no white point change was logged during the take.
   `tools/upscaler_ab.py [--location <id>] [--npcs N]` compares DLSS 5 off and on at the same
   frozen instant (views of the player, the street and close-ups of nearby people, as off/on
   sheets) and measures how long the picture takes to settle after a cut. Measured in RDR2 on
@@ -511,6 +518,17 @@ a 32-camera moving sample at Vinewood (960 shots, 30 steps) passed QC. What diff
   with DLSS 5 on or off); eyelids, lashes and window frames lose their stair-steps and skin pores
   are sharper; mean FLIP Quality to DLAA 0.047 with DLSS 5, 0.036 without. Frame rate is about the
   same (88-98 frames/s against 76-97 at three views; DLSS 5 dominates the frame time).
+- **DLSS 5's white point held per take** (adapter setting `lock_white_point`, on; 2026-11-22). The
+  install leaves the fork's white point on automatic (`WhitePointSource=3`), which meters every
+  frame like an auto-exposure: over one frozen run at Vinewood the logged paper white went
+  0.29-1.41x (261 changes in two minutes), and one view shot six times at one instant came out at
+  102.3-104.7 mean luma, unrelated to the view before (`tools/exposure_check.py`). The adapter now
+  holds the value the meter settled on for a take's first shot (`adapters/common/optiscaler_live.py`,
+  from the Cyberpunk adapter: `WhitePointSource=0` and `WhitePointScale` written live through
+  `dlssnr-set.txt`, which works despite Enhanced's folder lock) and releases it when the take ends;
+  take.json records it under `render.dlss5`. With it the same check gave 102.01-102.06 settled and
+  102.59-102.66 40 frames after a cut from the brightest or the darkest view alike (the settle,
+  not the white point), and no white point change was logged between the first and the last shot.
 - **DLSS 5's skin controls** (`tools/dlss5_skin_sweep.py`): Skin structure (-1, the default, follows
   local structure; 0 and above set skin on its own) and Auto skin mask (the model finds skin
   itself). OptiScaler's live settings file does not take them (only Passes, Style, PreSr), so the
