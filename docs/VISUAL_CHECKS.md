@@ -201,7 +201,15 @@ rise on all eight cameras, so the exposure: its eye adapts on game time, which a
 `exposure_check.py` in a held world saw nothing) and each step runs, towards whatever view is
 rendered during the step, from the player's view it had adapted to before the hold. Now the camera
 is at the take's first pose while the world still runs, and every step renders that pose
-(`step_view`): the retaken ring stays within 0.4% over its 30 clip frames.
+(`step_view`): the retaken ring stays within 0.4% over its 30 clip frames. Not everywhere: at Sasau
+bridge (CoreWeave node, noon, 2026-11-24) the fixed cameras still rose 2.75% and 1.8% almost evenly
+over the whole clip, the eye too slow to arrive in the 2 s run before the hold (Talmberg, the same
+day: within 0.2%; the node's Rattay retake 1.006 and 1.012, from 1.062 and 1.048 before the fix).
+So the adapter now also holds the eye from the hold to the end of the take (`eye_lock`,
+`r_HDREyeAdaptationSpeed 0`) and lets it adapt ten times faster in the run before
+(`eye_run_speed 30`). At Sasau (`adapters/kcd/probes/eye_run_probe.py`): 2 s at the game's speed
+left a frame 15-25 levels from adapted, 2 s at 30 arrived; at 0 a view stayed within 0.1 levels
+through 30 steps and did not re-adapt after bright or dark views.
 
 **B3. An exposure lock with a floor.** Cyberpunk's forced exposure stops at about 61-64 whatever
 the value, so places that auto-exposure makes darker come out 9-14 levels too bright (Kabuki,

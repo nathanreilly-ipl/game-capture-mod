@@ -63,7 +63,21 @@ alternate between two sub-pixel offsets (0.2-0.75 against the average of four), 
 Exposure. Does not re-adapt between views in a held world (tools/exposure_check.py, Rattay pillory,
 noon): one view reads 80.21 of 255 after itself, 80.33 just after the sky (242) and 80.01 after the
 darkest view. The eye adapts on game time, though (r_HDREyeAdaptationSpeed 3), so a time step lets
-it move, towards the view rendered during the step.
+it move, towards the view rendered during the step, and slowly: at Sasau bridge (CoreWeave node,
+noon, 2026-11-24, after the Arrival fix) the two fixed cameras of a 30-clip-frame take still grew
+2.75% and 1.8% brighter, almost evenly over the whole second (+0.3% per 0.1 s at the start, +0.2%
+at the end), where Talmberg's stayed within 0.2%. So the eye is held at the hold too (eye_lock,
+r_HDREyeAdaptationSpeed 0) and let go with the world (back to the speed the world runs at): a take's
+exposure is the one the eye reached at the take's first pose in the ghost run, like RDR2's
+photo-mode lock, and the ghost run adapts it fast (eye_run_speed 30). Measured at Sasau bridge
+(node, noon, 2026-11-24, probes/eye_run_probe.py: 10 s at the player's own view, then the first pose
+run N s at speed S, held, one frame, mean of 255):
+- how far the run takes the eye: 2 s at the game's 3 left the frame at 96.6 and 104.8 (two tries),
+  15 s at 3 at 79.8, 2 s at 30 at 79.5: 2 s at 3 is 15-25 levels from adapted, 2 s at 30 arrives;
+- 0 holds the eye where it is (no jump to a default): through 30 steps of 1/30 s at one view the
+  frame went 81.0 to 81.1 after a run at 3, 80.5 to 80.4 after a run at 30;
+- held at 0, a view does not re-adapt to others (tools/exposure_check.py): 118.11 after itself,
+  118.17 after the sky (177), 118.00 after the darkest view (72).
 
 Arrival. Grass bends under people and the eye adapts, both on game time only, so a hold keeps
 whatever state they are in. In the first takes (Rattay pillory, 2026-11-23; tools/temporal_flicker.py
@@ -118,7 +132,11 @@ Settings (job settings "adapter"):
     step_view       "first": every time step renders the take's first pose, so the eye adapts to
                     one view; anything else leaves the last shot's pose (see Arrival)
     cvars           more console variables set when a session opens, {name: value} ({}; for probes:
-                    tools/hold_step_check.py --set 'cvars={"r_HDREyeAdaptationSpeed": 0}')
+                    tools/hold_step_check.py --set 'cvars={"r_HDREyeAdaptationSpeed": 0}'); a value
+                    for r_HDREyeAdaptationSpeed here is the eye's speed while the world runs
+    eye_lock        hold the eye from the hold until the world is let go (True; see Exposure)
+    eye_run_speed   r_HDREyeAdaptationSpeed during the ghost run (30, so the eye arrives in 2 s; None:
+                    the speed while the world runs, the game's own 3 unless cvars sets one)
 """
 import math
 import os
@@ -139,7 +157,10 @@ A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 20, "first_settle": 60, "clock_settle": 60, "populate_s": 10, "render_size": [2560, 1440],
             "pose_tolerance_m": 0.005, "weather": "free", "accumulate": 2, "accumulate_gap": 1, "step_frames": 8,
-            "visual": True, "ghost_run_s": 2.0, "step_view": "first", "cvars": {}}
+            "visual": True, "ghost_run_s": 2.0, "step_view": "first", "cvars": {}, "eye_lock": True,
+            "eye_run_speed": 30.0}
+EYE = "r_HDREyeAdaptationSpeed"   # how fast the eye adapts, per second of game time; 0 holds it
+EYE_GAME = 3.0                    # the game's own value (read on the PC, 2026-11-24)
 # The capture look: the game's own top settings (Ultra High, the menu's maximum, on every category),
 # SMAA 2TX, object detail and view distances at their menu maximum, no VSync (it capped the game at
 # 60 frames/s). attributes.xml, which the game writes, sets these at start over user.cfg, so the
@@ -239,6 +260,14 @@ class KcdAdapter(Adapter):
             raise AdapterError("our script's long inputs are not read (%s); close the game and run "
                                "capture install kcd --only scripts, then --only settings" % e)
         self.sess.cmd("savelock", 1)   # a session moves the player about: nothing of it into the saves
+        # the eye's speed while the world runs: cvars' if it sets one, else the game's (a session that
+        # ended without letting the world go may have left it held at 0)
+        cvars = self.settings.get("cvars") or {}
+        try:
+            self._eye_speed = float(cvars[EYE]) if EYE in cvars else (
+                float((self.sess.cmd("cvar", EYE).data or ["0"])[0]) or EYE_GAME)
+        except ValueError:
+            self._eye_speed = EYE_GAME
         self.applied = {}
         if self.settings.get("visual"):
             for k, v in VISUAL.items():
@@ -269,6 +298,8 @@ class KcdAdapter(Adapter):
                 "freeze": "t_Scale 0",
                 "time_step": "t_FixedStep, %d even frames, t_Smoothing 0" % int(self.settings["step_frames"]),
                 "frames_per_shot": int(self.settings.get("accumulate") or 1),
+                "exposure": ("eye held from the hold to the end of the take (%s 0)" % EYE if self.settings.get("eye_lock")
+                             else "eye adapting on game time (%s %g)" % (EYE, self._eye_running())),
                 "game_settings": dict(getattr(self, "applied", {}) or {})}
 
     # --- conventions -------------------------------------------------------------------------
@@ -340,14 +371,18 @@ class KcdAdapter(Adapter):
         if hidden:
             self.sess.cmd("hud", 0)
             self.sess.cmd("ghost", 1)          # hidden, perceived by nobody, no physics (see Player)
+            self.sess.cmd("cvar", EYE, self._eye_running())
             # the world runs on a little before it is held: the grass his body pressed down stands up
             # again, his invisibility takes hold, the eye adapts to the camera (see Arrival)
             time.sleep(float(self.settings.get("ghost_run_s") or 0))
             self.sess.cmd("freeze")
+            if self.settings.get("eye_lock"):
+                self.sess.cmd("cvar", EYE, 0)  # the eye stays as it is until the world is let go (see Exposure)
             frames.wait(self.exchange, 5)
             self.frozen = True
         else:
             self.sess.cmd("unfreeze")
+            self.sess.cmd("cvar", EYE, getattr(self, "_eye_speed", EYE_GAME))
             self.sess.cmd("release")
             self.sess.cmd("ghost", 0)
             self.sess.cmd("hide", 0)
@@ -417,6 +452,18 @@ class KcdAdapter(Adapter):
         self._step_debt = 0.0
         if st.get("held") != "1":
             raise AdapterError("the world is not held (t_Scale %s)" % st.get("t_scale"))
+        if self.settings.get("eye_lock"):
+            eye = (self.sess.cmd("cvar", EYE).data or ["?"])[0]
+            try:
+                held = float(eye) == 0.0
+            except ValueError:
+                held = False
+            if not held:
+                raise AdapterError("the eye is not held (%s %s)" % (EYE, eye))
+
+    def _eye_running(self):
+        """The eye's speed while the world runs before a hold: eye_run_speed, or the game's own."""
+        return float(self.settings.get("eye_run_speed") or getattr(self, "_eye_speed", EYE_GAME))
 
     def set_camera(self, shot):
         self._pose(shot["pos"], shot["fwd"], shot["up"], shot["vfov_deg"])

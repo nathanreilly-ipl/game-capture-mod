@@ -1347,6 +1347,15 @@ check does not separate there either (34.1 against 35.9). What it took, each in 
   - The ring retaken at the same clock has the grass up in clip frame 1. Its first step changes
     0.79-1.27 times as much as the later ones (was up to 4.8). Its brightness stays within 0.4% over
     the 30 clip frames.
+  - Not everywhere: at Sasau bridge (a CoreWeave node, noon) the fixed cameras still rose 2.75% and
+    1.8%, almost evenly over the whole clip, while Talmberg's stayed within 0.2%. The eye adapts
+    slowly, and 2 s were not enough there.
+  - So the eye is now held from the hold to the end of the take (`r_HDREyeAdaptationSpeed 0`, setting
+    `eye_lock`), as RDR2's photo-mode lock holds its exposure, and adapts at 10 times the game's speed
+    in the 2 s before it (`eye_run_speed 30`). Measured at Sasau (2026-11-24): 2 s at the game's
+    speed left the frame 15-25 levels of 255 from adapted, 2 s at 30 arrived (79.5 against 79.8 after
+    15 s). Held at 0 through 30 steps, a view stayed within 0.1 levels, and a view still read the same
+    after the sky and after the darkest view (118.17, 118.00 against 118.11).
 - **Clock.** The game does not move its clock back: `Calendar.SetWorldTime` to an earlier time leaves
   it where it was. So the first takes asking for 12:00 ran in the afternoon (14:33 to 15:21). An hour
   already past is now that hour the next day.
