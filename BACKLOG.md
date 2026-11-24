@@ -232,8 +232,10 @@ the numbers). What that took per game is in the adapters; what is left:
 - **GTA V Enhanced:** the settings menu navigated by screenshots (`settings_menu.py`: live ray
   tracing and DLSS mode switches) was not run on Linux; NaturalVision Enhanced loads (Script
   Hook's log) and its picture was not compared with the PC's; the protection crash was not seen
-  in the first hour. `adapters/gtav/launch.py` was rewritten onto `adapters/common/window` and
-  `capture/host` and has not been run on Windows since.
+  in the first hour. `adapters/gtav/launch.py`, rewritten onto `adapters/common/window` and
+  `capture/host`, runs on Windows (the PC, 2026-11-24): story mode in 71 s and 66 s, and
+  `capture verify gtave --launch` passes but the machine step (120 frames/s, a frozen 8-camera
+  take, both steps 0.00 ms off).
 - **RedLua gives a shape test's handle back as another object** of the same number (the
   session's camera: "ScrHandle expected, got Cam"): every RDR2 take after the first failed in
   its scene raycast on Linux until the ray was simply tried again (both games' session jobs,
@@ -386,8 +388,18 @@ Left:
    approval) unregisters ReShade's machine-wide Vulkan layer; without it a second ReShade loads
    into the game and runs it out of memory. Until then Steam has to be started with
    `DISABLE_VK_LAYER_reshade_1=1`. After it: start Steam normally, `capture verify rdr2 --launch`
-   (the full verify, with its small take), and expect no "1 to do".
-2. **A fresh machine.** Never tried: a PC with no ReShade, no mods and nothing in out/mods, where
+   (the full verify, with its small take), and expect no "1 to do". On 2026-11-24 the second copy
+   stopped itself at once ("Another ReShade instance was already loaded ... Aborting", ReShade
+   6.8.0), and that day's out-of-memory stops had another cause (3).
+3. **The display on the processor's GPU.** With the monitor showing the motherboard's input, the
+   PC's AMD Radeon drives the display and RDR2 on the 5090 stops at its legal screen with
+   ERR_GFX_D3D_DEFERRED_MEM (twice on 2026-11-24); with `adapterIndex` 1 it ran on the AMD instead.
+   Kingdom Come ran on the 5090 that day (its 3D engine there, the AMD only showing the frames);
+   GTA V Enhanced passed verify that morning at 120 frames/s, its GPU not checked. The launcher now warns
+   (`launch.display_gpu_note`). Left: whether the 5090 can be made to work for RDR2 with the
+   display elsewhere (Windows' per-app GPU preference, OptiScaler or Reality Redemption 2 off one at
+   a time), or the monitor shows the 5090's output for RDR2 runs.
+4. **A fresh machine.** Never tried: a PC with no ReShade, no mods and nothing in out/mods, where
    `capture mods fetch rdr2` downloads every file (ReShade, the shader repositories, OptiScaler,
    Reality Redemption 2's Google Drive archive) and the C++ build tools build the capture add-on.
    Script Hook RDR2 and nvngx_dlssnr.dll still come from the person installing (never

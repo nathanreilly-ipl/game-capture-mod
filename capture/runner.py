@@ -238,8 +238,10 @@ def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instan
         else:
             kept = dst
         rec = {"id": shot["id"], "name": shot["name"], "frame": frame, "file": os.path.relpath(kept, take_dir),
-               "attempt": attempt, "accepted": not problems, "problems": problems, "picture": stats,
-               **{k: v for k, v in info.items() if k != "health"}}
+               "attempt": attempt, "accepted": not problems, "problems": problems, "picture": stats}
+        for k, v in info.items():  # the adapter's fields never replace the take's own ("frame" is the clip frame)
+            if k != "health":
+                rec["adapter_" + k if k in rec else k] = v
         if obstructed:
             rec["camera_inside"] = obstructed["kind"]  # captured anyway: the take was past retake_before
         cap_log.write(json.dumps(rec) + "\n")

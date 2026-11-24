@@ -249,6 +249,20 @@ held at 0.0002)
   pass, and `capture install cyberpunk --dry-run` reports the game's settings as already right.
   `capture verify` was not run on Windows after the pull, and `capture/host/windows.py` has not
   started a game yet.
+- RDR2 and GTA V Enhanced after `123211a`, on the PC (2026-11-24): GTA V Enhanced's launcher on
+  `adapters/common/window` and `capture/host` reaches story mode in 66-71 s and
+  `capture verify gtave --launch` passes but the machine step. RDR2's Windows start is the
+  PowerShell script as before; `ensure_ready` reached story mode in 130 s, but only with the game
+  on the wrong GPU, so verify was not run to the end. The monitor showed the motherboard's input,
+  so the processor's AMD Radeon drove the display: RDR2 on the 5090 (its `adapterIndex` 0) stopped
+  at the legal screen with ERR_GFX_D3D_DEFERRED_MEM twice, with one ReShade loaded (Steam started
+  with `DISABLE_VK_LAYER_reshade_1=1`; without it the second copy stopped itself at once, "Another
+  ReShade instance was already loaded"), and with `adapterIndex` 1 it ran on the AMD (its 3D engine
+  86% busy, the 5090 idle). The launcher now warns when the display is on a weaker GPU
+  (`launch.display_gpu_note`, `host.gpu_adapters`). Earlier the PC's Steam ignored starts while the
+  node ran RDR2 and GTA V Enhanced on the same account. The game's loader script and the capture
+  add-on there were older than master's; `capture install rdr2 --only scripts` and `--only addon`
+  replaced them (the same add-on for GTA V Enhanced).
 - Found there: the game stores its resolution with a list index that depends on the display (14
   on the headless display, 12 on the PC), so the settings check now accepts the right value with
   the game's own index.

@@ -43,15 +43,18 @@ SIZE = (480, 270)
 
 def cameras(take):
     """{camera name: [(clip frame, path)]} for the accepted shots of a take, cameras with 3 or more
-    clip frames only. A shot's name is t<frame>_<camera>_<index>."""
+    clip frames only. A shot's name is t<frame>_<camera>_<index>; the clip frame is read from the
+    name, since takes of The Witcher 3 and Kingdom Come before 2026-11-24 logged the game's own frame
+    counter as "frame"."""
     by = defaultdict(list)
     with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
         for line in f:
             e = json.loads(line)
             if not e.get("accepted"):
                 continue
-            cam = e["name"].split("_", 1)[1].rsplit("_", 1)[0]
-            by[cam].append((int(e["frame"]), os.path.join(take, e["file"])))
+            head, rest = e["name"].split("_", 1)
+            cam = rest.rsplit("_", 1)[0]
+            by[cam].append((int(head[1:]), os.path.join(take, e["file"])))
     return {c: sorted(v) for c, v in by.items() if len({fr for fr, _ in v}) >= 3}
 
 

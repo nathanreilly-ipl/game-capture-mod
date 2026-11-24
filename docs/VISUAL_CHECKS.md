@@ -64,8 +64,16 @@ Numbers measured so far (fixed cameras of 30-clip-frame takes, `temporal_flicker
 CoreWeave, 2026-11-23/24): roughness 0.2-0.6 where nothing is wrong (GTA V Legion Square
 0.21-0.28, RDR2 after its fixes 0.23-0.63, Cyberpunk after its fix 0.40-0.47, GTA V Vinewood 0.39-0.53
 with walkers); 1.1-1.6 with Cyberpunk's real-time clock time-lapsing (Badlands 1.33-1.59, 2.2-2.9%
-of pixels over 12). Compare a place only with itself, and only with the same people about (see
-Pitfalls).
+of pixels over 12). On the PC (2026-11-24, 8-camera rings over 30 clip frames of 2026-11-23): The
+Witcher 3 at Hierarch Square 0.54-0.75 (path tracing's noise and a crowd; exposure within 0.2%, no
+pops); Kingdom Come: Deliverance at Rattay pillory 0.42-0.97, the cameras with a grass patch in
+view at the top (see E6, B2). Compare a place only with itself, and only with the same people
+about (see Pitfalls).
+
+Before 2026-11-24 the take loop let an adapter's fields replace its own in `capture_log.jsonl`:
+The Witcher 3's and Kingdom Come's logs have the game's frame counter as `frame` instead of the clip
+frame. `temporal_flicker.py` and `clip_strip.py` read the clip frame from the shot's name
+(`t<frame>_...`), which is right for every take.
 
 ## Pitfalls when measuring
 
@@ -187,7 +195,13 @@ Games: RDR2: the lakeshore's "white flash" (-11%) was the clock (A5). Left, with
 time: a smooth 2-4% over the first 10 clip frames in takes at Saint Denis and Rhodes, up or down,
 not seen in `hold_step_check.py` at the same place; ruled out: the obstacle checks, the order of
 the cameras, the view showing during a step, an eye not yet adapted at the lock, a clock jump;
-a pre-roll turned it around (open).
+a pre-roll turned it around (open). Kingdom Come: Deliverance (Rattay pillory ring, measured
+2026-11-24): every camera 1.1-2.8% brighter from clip frame 2 to 11, then flat to 0.1%; the same
+rise on all eight cameras, so the exposure: its eye adapts on game time, which a hold stops (so
+`exposure_check.py` in a held world saw nothing) and each step runs, towards whatever view is
+rendered during the step, from the player's view it had adapted to before the hold. Now the camera
+is at the take's first pose while the world still runs, and every step renders that pose
+(`step_view`): the retaken ring stays within 0.4% over its 30 clip frames.
 
 **B3. An exposure lock with a floor.** Cyberpunk's forced exposure stops at about 61-64 whatever
 the value, so places that auto-exposure makes darker come out 9-14 levels too bright (Kabuki,
@@ -305,7 +319,14 @@ Games: GTA V Vinewood: the pops found were palm shadows (D3) rather than detail 
 Check: watch the sweep's start against its end; `sweep_flicker.py` worst poses.
 Games: The Witcher 3 at Mulbrydale had no grass in poses 0-71: a stray Enter opened the map (a
 menu that pauses the world) before the teleport; the adapter now closes menus before teleports
-and freezes (PC session, 2026-11-23). All games: people stream in for tens of seconds after a
+and freezes (PC session, 2026-11-23). Kingdom Come: Deliverance at Rattay pillory (the ring and
+near sweep of 2026-11-23, measured 2026-11-24): the grass patch where the player stood is short and
+flat in clip frame 1 and through the whole near sweep, and stands at full height from clip frame 2
+(`clip_strip.py` on ring_01; `first_step_ratio` 3.5-4.8 on the five ring cameras that see it,
+1.4-2.3 on the three that do not): his body pressed it down until the ghost command took his
+physics away, five frames before the hold, and grass moves on game time only. The world now runs 2 s
+after he becomes a ghost before it is held (`ghost_run_s`): the retaken ring has the grass up in clip
+frame 1 and first steps of 0.79-1.27. All games: people stream in for tens of seconds after a
 teleport (`populate_s`).
 
 **E7. People inside cameras, or deleted when a script owns them.** The obstacle policy deletes

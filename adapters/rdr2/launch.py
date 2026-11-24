@@ -37,6 +37,20 @@ def close_game(log=print):
     host.stop(GAME, CLOSE)
 
 
+def display_gpu_note():
+    """A warning when the main display is on another GPU than the strongest one, else None. On the
+    development PC (an RTX 5090 beside the processor's AMD Radeon), with the monitor showing the
+    motherboard's input, RDR2 on the 5090 (its adapterIndex 0, system.xml) stopped at the legal
+    screen with ERR_GFX_D3D_DEFERRED_MEM, twice, and with adapterIndex 1 it ran on the AMD
+    (2026-11-24). Not seen under Proton, where no GPU drives a display (host.gpu_adapters is empty)."""
+    gpus = [a for a in host.gpu_adapters() if not a["software"]]
+    if len(gpus) > 1 and gpus[0]["dedicated_mb"] < max(a["dedicated_mb"] for a in gpus):
+        best = max(gpus, key=lambda a: a["dedicated_mb"])
+        return ("the main display is on the %s, not the %s: RDR2 then stops at its legal screen with "
+                "ERR_GFX_D3D_DEFERRED_MEM; show the monitor the %s's output" % (gpus[0]["name"], best["name"], best["name"]))
+    return None
+
+
 def _game_window():
     try:
         return window.find_game_window(find_pid())
@@ -46,6 +60,9 @@ def _game_window():
 
 def start(game_dir, timeout=900, key_interval=5.0, log=print):
     """Restarts the game into story mode; returns once the loader's heartbeat is up."""
+    note = display_gpu_note()
+    if note:
+        log("warning: " + note)
     if host.WINDOWS:
         script = os.path.join(HERE, "scripts", "restart_game.ps1")
         r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,

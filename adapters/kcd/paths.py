@@ -48,6 +48,11 @@ def saves_dir():
     return os.path.join(host.user_dir(GAME, "saved_games"), "kingdomcome", "saves")
 
 
+def attributes_xml():
+    """The options the game saves from its menu and applies at start, over user.cfg."""
+    return os.path.join(host.user_dir(GAME, "saved_games"), "kingdomcome", "profiles", "default", "attributes.xml")
+
+
 def exchange():
     """Frames pass through here: the capture add-on's folder (request, ack, pictures)."""
     return os.path.join(capture_paths.OUT, "exchange", GAME)

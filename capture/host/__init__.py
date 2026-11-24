@@ -16,6 +16,7 @@ neither `capture/` nor an adapter asks which system it is on:
     use_prefix(game, name)            the game shares the prefix `name` with others (one launcher, one sign-in)
     steam_launch(game, app_id)        asks the Steam client to start a game (under Proton: the client in the game's prefix)
     gpu_name()                        the GPU's name as the driver gives it (Linux)
+    gpu_adapters()                    the GPUs in the order Direct3D games number them (Windows; [] on Linux)
     user_dir(game, kind)              the game user's folders (settings, saves)
     program_data(game)                the machine-wide data folder
     CLI                               how the command line is called here, for messages
@@ -50,6 +51,7 @@ steam_launch = _impl.steam_launch
 app_overrides = getattr(_impl, "app_overrides", None)
 prefix = getattr(_impl, "prefix", None)
 gpu_name = _impl.gpu_name
+gpu_adapters = _impl.gpu_adapters
 user_dir = _impl.user_dir
 program_data = _impl.program_data
 

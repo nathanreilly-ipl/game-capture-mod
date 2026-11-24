@@ -60,12 +60,34 @@ alternate between two sub-pixel offsets (0.2-0.75 against the average of four), 
 1 to 35 frames after a cut; so 20 frames per shot and two frames in a row averaged
 (probes/settle_probe.py, Rattay pillory).
 
-Exposure. Does not re-adapt between views (tools/exposure_check.py, Rattay pillory, noon): one view
-reads 80.21 of 255 after itself, 80.33 just after the sky (242) and 80.01 after the darkest view.
+Exposure. Does not re-adapt between views in a held world (tools/exposure_check.py, Rattay pillory,
+noon): one view reads 80.21 of 255 after itself, 80.33 just after the sky (242) and 80.01 after the
+darkest view. The eye adapts on game time, though (r_HDREyeAdaptationSpeed 3), so a time step lets
+it move, towards the view rendered during the step.
+
+Arrival. Grass bends under people and the eye adapts, both on game time only, so a hold keeps
+whatever state they are in. In the first takes (Rattay pillory, 2026-11-23; tools/temporal_flicker.py
+and clip_strip.py, 2026-11-24) the grass where the player had stood was pressed flat in clip frame 1
+and in the whole near sweep (the ghost command takes his physics away, and the world was held five
+frames later) and stood at full height from clip frame 2, the first step changing 3.5-4.8 times as
+much as later ones on the cameras that see it; and every camera grew 1.1-2.8% brighter over clip
+frames 2-11, the eye moving from the player's view to the rig's. Now the camera goes to the take's
+first pose while the world runs (prepare_take), the world runs ghost_run_s after the player becomes a
+ghost before it is held, and every time step renders that first pose (step_view). The same ring
+retaken (2026-11-24, same clock): the grass stands in clip frame 1, the first step changes 0.79-1.27
+times as much as later ones, the brightness stays within 0.4% over the 30 clip frames (exposure
+drift 0.9965-0.9986), brightness jitter 0.02-0.06 (was up to 0.41), pixels changing by more than 12
+0.03-0.49% (was 0.13-1.23%).
+
+Clock. Calendar.SetWorldTime does not move the clock back (it leaves it where it was; forward
+works), so a take asking for an hour already past ran at the game's own time (12:00 asked, 14:33
+given); `cm clock` now goes to that hour the next day.
 
 The look. The game's own top settings: Ultra High (4) on every category, SMAA 2TX, object detail and
-view distances at the menu's maximum, no VSync; applied through the console when a session opens
-(the game's attributes.xml sets them at start over user.cfg) and read back. Against the game's High
+view distances at the menu's maximum, no VSync. The game's attributes.xml (the options its menu
+saves) sets them at start over user.cfg, so the install writes them there with the game closed
+(install.ATTRS; since 2026-11-24, after a node crashed switching the specs at run time), and the
+session still applies them through the console when it opens and reads them back. Against the game's High
 at one held instant in Rattay: softer, fuller shading, more grass and rocks, a mean change of
 2.5-7.0 levels of 255 per view, the same frame rate (probes/visual_probe.py). No upscaler exists in
 the game, so OptiScaler (DLSS 5) has nothing to hook; the free HD texture pack (a Steam DLC) is not
@@ -91,6 +113,10 @@ Settings (job settings "adapter"):
                     between two sub-pixel offsets, so two frames in a row average it out
     step_frames     frames each time step is spread over, each the same game time (8)
     visual          set the capture look (VISUAL) through the console when a session opens (True)
+    ghost_run_s     seconds the world runs after the player becomes a ghost, before it is held (2;
+                    see Arrival)
+    step_view       "first": every time step renders the take's first pose, so the eye adapts to
+                    one view; anything else leaves the last shot's pose (see Arrival)
 """
 import math
 import os
@@ -111,7 +137,7 @@ A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 20, "first_settle": 60, "clock_settle": 60, "populate_s": 10, "render_size": [2560, 1440],
             "pose_tolerance_m": 0.005, "weather": "free", "accumulate": 2, "accumulate_gap": 1, "step_frames": 8,
-            "visual": True}
+            "visual": True, "ghost_run_s": 2.0, "step_view": "first"}
 # The capture look: the game's own top settings (Ultra High, the menu's maximum, on every category),
 # SMAA 2TX, object detail and view distances at their menu maximum, no VSync (it capped the game at
 # 60 frames/s). attributes.xml, which the game writes, sets these at start over user.cfg, so the
@@ -208,8 +234,8 @@ class KcdAdapter(Adapter):
         try:      # the route of long inputs (rays, poses): a file our script reads (sys_PakPriority 0 for it)
             self.sess.send_numbers("check", [1, 2, 3])
         except AdapterError as e:
-            raise AdapterError("our script's long inputs are not read (%s); close the game and run: "
-                               "capture install kcd --only scripts,settings" % e)
+            raise AdapterError("our script's long inputs are not read (%s); close the game and run "
+                               "capture install kcd --only scripts, then --only settings" % e)
         self.sess.cmd("savelock", 1)   # a session moves the player about: nothing of it into the saves
         self.applied = {}
         if self.settings.get("visual"):
@@ -309,6 +335,9 @@ class KcdAdapter(Adapter):
         if hidden:
             self.sess.cmd("hud", 0)
             self.sess.cmd("ghost", 1)          # hidden, perceived by nobody, no physics (see Player)
+            # the world runs on a little before it is held: the grass his body pressed down stands up
+            # again, his invisibility takes hold, the eye adapts to the camera (see Arrival)
+            time.sleep(float(self.settings.get("ghost_run_s") or 0))
             self.sess.cmd("freeze")
             frames.wait(self.exchange, 5)
             self.frozen = True
@@ -363,6 +392,15 @@ class KcdAdapter(Adapter):
                 self.hide_subject(False)
 
     # --- frozen capture ----------------------------------------------------------------------
+    def prepare_take(self, shots):
+        """Called by the take loop while the world still runs, before the subject is hidden: the
+        camera goes to the take's first pose, so the eye adapts to the rig's view before the hold,
+        and that pose is the one rendered through every time step (step_view; see Arrival)."""
+        first = shots["steps"][0]["shots"][0]
+        if all(k in first for k in ("pos", "fwd", "up", "vfov_deg")):
+            self._step_pose = (first["pos"], first["fwd"], first["up"], float(first["vfov_deg"]))
+            self._pose(*self._step_pose)
+
     def begin_frozen(self, first_shot):
         if not self.subject_hidden:
             self.hide_subject(True)
@@ -385,7 +423,7 @@ class KcdAdapter(Adapter):
         return {"width": a["width"], "height": a["height"], "health": {"problems": self._problems(st)},
                 "rendered_pos": st.get("cam"), "rendered_fwd": st.get("fwd"), "rendered_up": st.get("up"),
                 "rendered_fov": st.get("fov"), "sim_time": st.get("world"), "player": st.get("player"),
-                "frame": a["frame"]}
+                "render_frame": a["frame"]}
 
     def advance(self, seconds):
         """`seconds` of world time with everything in it moving: cm step runs the world over
@@ -394,6 +432,8 @@ class KcdAdapter(Adapter):
         want = float(seconds) + self._step_debt
         if want <= 0:
             want = float(seconds)
+        if self.settings.get("step_view") == "first" and getattr(self, "_step_pose", None):
+            self._pose(*self._step_pose)     # the eye adapts during a step: always to the same view
         mark = self.sess.log_size()
         r = self.sess.cmd("step", want, int(self.settings["step_frames"]))
         done = self.sess.wait_line("t", r.seq, mark, timeout=30.0)

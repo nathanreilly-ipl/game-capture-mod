@@ -299,6 +299,33 @@ def xml_set(text, name, value):
     return new
 
 
+def xml_attr_value(text, name, element="Attr"):
+    """The value of <element name="name" value="..."/> in a list-style settings XML (CryEngine's
+    attributes.xml), or None."""
+    m = re.search(r'<%s\s+name="%s"\s+value="([^"]*)"\s*/>' % (re.escape(element), re.escape(name)), text)
+    return m.group(1) if m else None
+
+
+def xml_attr_set(text, name, value, element="Attr"):
+    """Sets <element name="name" value="value" />, adding it before the root's closing tag when it is
+    not there; value None removes it."""
+    pat = r'<%s\s+name="%s"\s+value="[^"]*"\s*/>' % (re.escape(element), re.escape(name))
+    if value is None:
+        return re.sub(r"[ \t]*" + pat + r"[ \t]*(\r?\n)?", "", text, count=1)
+    line = '<%s name="%s" value="%s" />' % (element, name, value)
+    new, n = re.subn(pat, lambda m: line, text, count=1)
+    if n:
+        return new
+    close = text.rfind("</")
+    if close < 0:
+        raise InstallError('no root element to add <%s name="%s"> to' % (element, name))
+    nl = "\r\n" if "\r\n" in text else "\n"
+    start = text.rfind("\n", 0, close) + 1
+    if text[start:close].strip():      # the closing tag shares its line: put ours on a line before it
+        return text[:close] + nl + "  " + line + nl + text[close:]
+    return text[:start] + "  " + line + nl + text[start:]
+
+
 # --- steps ---------------------------------------------------------------------------------------
 class Step:
     tag = "mods"
@@ -563,6 +590,46 @@ class XmlSet(Step):
             f.write(xml_set(text, self.name, self.value))
 
 
+class XmlAttrSet(Step):
+    """Sets <Attr name="..." value="..." /> in a list-style settings XML (CryEngine's attributes.xml),
+    adding the element when it is missing. empty: the file's text to start from when it does not
+    exist or has no root element yet (a game that never saved its options); with None the step is
+    skipped then. A file the step creates is removed by uninstall."""
+
+    def __init__(self, path, name, value, element="Attr", empty=None, tag="settings", closed=True, why=""):
+        self.path, self.name, self.value, self.element, self.empty = path, name, value, element, empty
+        self.tag, self.needs_game_closed, self.why = tag, closed, why
+
+    def describe(self):
+        return "%s %s=%s%s" % (os.path.basename(self.path), self.name, self.value, "  (%s)" % self.why if self.why else "")
+
+    def _text(self):
+        if not os.path.exists(self.path):
+            return None
+        text = open(self.path, encoding="utf-8", errors="replace", newline="").read()
+        return text if "</" in text else None
+
+    def status(self, ctx):
+        text = self._text()
+        if text is None:
+            return ("todo", "create the file") if self.empty is not None else ("ok", "skipped: no settings file yet")
+        cur = xml_attr_value(text, self.name, self.element)
+        return ("ok", "set") if cur == self.value else ("todo", "was %s" % ("missing" if cur is None else cur))
+
+    def apply(self, ctx):
+        text = self._text()
+        if text is None:
+            if self.empty is None:
+                return
+            ctx.record.makedirs(os.path.dirname(self.path))
+            ctx.record.file(self.path, sha256_bytes(self.empty.encode("utf-8")), config=True)
+            text = self.empty
+        key = "%s|%s" % (self.element, self.name)
+        ctx.record.setting("xmlattr", self.path, key, xml_attr_value(text, self.name, self.element), self.value)
+        with open(self.path, "w", encoding="utf-8", newline="") as f:
+            f.write(xml_attr_set(text, self.name, self.value, self.element))
+
+
 class Call(Step):
     """A step given as functions: status_fn(ctx) -> (state, note), apply_fn(ctx)."""
 
@@ -668,6 +735,13 @@ def uninstall(record, log=print):
                 with open(path, "w", encoding="utf-8", newline="") as f:
                     f.write(xml_set(text, e["key"], e["old"]))
                 log("  reset   %s <%s>" % (os.path.basename(path), e["key"]))
+        elif kind == "xmlattr" and os.path.exists(path):
+            element, _, name = e["key"].partition("|")
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            if xml_attr_value(text, name, element) == e["new"]:
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    f.write(xml_attr_set(text, name, e["old"], element))
+                log("  reset   %s %s" % (os.path.basename(path), name))
         elif kind == "dir":
             if os.path.isdir(path) and not os.listdir(path):
                 os.rmdir(path)

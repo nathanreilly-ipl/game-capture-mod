@@ -362,7 +362,8 @@ out/queue/{pending,claimed,done,failed}/<job>.json, out/queue/rigs/<rig id>.json
 out/takes/<location>/<rig id>/<time>_<job>/
     take.json          job, location, rig, placement, settings, world state id, render settings, timing
     shots.json         the shot list as captured (world coordinates)
-    capture_log.jsonl  per shot: file, health, picture stats, rendered camera, game timer, attempts
+    capture_log.jsonl  per shot: clip frame, file, health, picture stats, rendered camera, game timer, attempts
+                       (the adapter's own fields beside them; one with a name the take uses gets "adapter_")
     steps.jsonl        per time step: seconds advanced, ticks, game timer
     raw/               one full frame per shot
     package/           delivery layout: <label>/rgb.mp4, <label>/NNNN.camera.json, render_metadata.json
@@ -1189,7 +1190,9 @@ python -m adapters.witcher3.probes.scout_fast_travel poppystone=mulbrydale      
   Mulbrydale had none in its first 72 poses and grass from pose 72 on (about 200 s into the held
   world; `probes/menu_grass_probe.py`, `arrival_probe.py`). The adapter now closes any menu
   before a teleport and before the freeze and lets the world run again if one turned up since;
-  opened and closed in a held world a menu takes nothing away.
+  opened and closed in a held world a menu takes nothing away. The rerun at Mulbrydale with this
+  (2026-11-23 13:04, 345 poses in 13.7 min) has grass from the first pose: brightness jitter 0.14
+  against 0.87, its worst poses 251-255 at 19.1 against 22.4 at poses 71-72 (`tools/sweep_flicker.py`).
 - **Scene and moving things.** Ray probes against the static scene (`StaticTrace`), people and
   animals as boxes from their capsules; quest characters (any with tags) are never removed.
 
@@ -1288,15 +1291,32 @@ python -m adapters.kcd.probes.repl --reload "=state" "+return player:GetWorldPos
 - **Settle.** Without temporal anti-aliasing a settled frame matches to 0.003 levels of 255, and the
   first frame after a cut to 0.18. With SMAA 2TX, frames alternate between two sub-pixel offsets by
   0.2 to 0.75 with no trend after a cut. So: 20 frames per shot, and two frames in a row averaged.
-- **Exposure** does not re-adapt between views. A view reads 80.21 of 255 after itself, 80.33 just
-  after the sky (242) and 80.01 after the darkest view.
+- **Exposure** does not re-adapt between views in a held world. A view reads 80.21 of 255 after
+  itself, 80.33 just after the sky (242) and 80.01 after the darkest view. The eye does adapt during
+  time steps, which run on game time (below).
+- **Arrival, before the hold** (2026-11-24). Grass bent by people and the eye's adaptation move on
+  game time only, so a hold keeps their state.
+  - In the first takes the grass where the player had stood was pressed flat in clip frame 1 and in
+    the whole near sweep, and stood up in the first step. Every ring camera also grew 1.1-2.8%
+    brighter over clip frames 2-11, the eye moving from the player's view to the rig's
+    (`tools/temporal_flicker.py`, `tools/clip_strip.py`).
+  - Now the camera goes to the take's first pose while the world runs. The world runs 2 s after the
+    player becomes a ghost before the hold, and every time step renders the first pose.
+  - The ring retaken at the same clock has the grass up in clip frame 1. Its first step changes
+    0.79-1.27 times as much as the later ones (was up to 4.8). Its brightness stays within 0.4% over
+    the 30 clip frames.
+- **Clock.** The game does not move its clock back: `Calendar.SetWorldTime` to an earlier time leaves
+  it where it was. So the first takes asking for 12:00 ran in the afternoon (14:33 to 15:21). An hour
+  already past is now that hour the next day.
 - **The look.** The game's top settings:
   - Ultra High on every category, SMAA 2TX, object detail and view distances at the menu's
     maximum, no VSync (it capped the game at 60 frames/s);
   - lens effects, depth of field and motion blur off.
 
-  The game's `attributes.xml` overrides `user.cfg` at start, so the session sets these through the
-  console and reads them back. Against the game's High at one held instant: softer, fuller shading
+  The game's `attributes.xml` (the options its menu saves) overrides `user.cfg` at start, so the
+  install writes them there with the game closed. The session still sets them through the console
+  and reads them back: switching the specs at run time crashed the game once on a CoreWeave node,
+  whose file had no saved options. Against the game's High at one held instant: softer, fuller shading
   and more grass and rocks, with a mean change of 2.5 to 7.0 levels of 255 per view
   (`probes/visual_probe.py`).
 - **No DLSS 5.** The game has no upscaler for OptiScaler to hook. The free HD texture pack (a Steam

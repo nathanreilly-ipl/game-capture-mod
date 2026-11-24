@@ -21,7 +21,7 @@ import zipfile
 from capture import config, host
 from capture import paths as capture_paths
 from capture.install.components import addon, reshade, wine
-from capture.install.plan import CopyFile, IniSet, MakeDir, WriteText
+from capture.install.plan import CopyFile, IniSet, MakeDir, WriteText, XmlAttrSet
 
 from . import paths
 
@@ -78,6 +78,27 @@ CVARS = [
     ("r_Fullscreen", "0", "a window: frames are read from it and keys sent to it"),
     ("r_FullscreenWindow", "0", "a plain window, not borderless full screen"),
 ]
+
+
+# The options the game saves from its menu (profiles\default\attributes.xml), applied at start over
+# user.cfg: the capture look (adapter.VISUAL) written there with the game closed, so the game starts
+# with it and the session's switch at run time changes nothing. Switching the specs at run time
+# crashed the game once on a CoreWeave node (0xC0000005 right after sys_spec_Shading 4, whose file
+# had no saved options; 2026-11-24); the PC's file had them all at 3 (High), with r_MotionBlur 2
+# and vsync 1 over user.cfg's 0. Names as the game writes them (LodRatio and the other ratios are
+# its e_* variables, on the same scale).
+SPECS = ["sys_spec_GameEffects", "sys_spec_ObjectDetail", "sys_spec_Particles", "sys_spec_Physics", "sys_spec_PostProcessing",
+         "sys_spec_Shading", "sys_spec_Shadows", "sys_spec_Texture", "sys_spec_Vegetation", "sys_spec_VolumetricEffects",
+         "sys_spec_Water", "sys_spec_light"]
+ATTRS = [(k, "4", "Ultra High") for k in SPECS] + [
+    ("r_AntialiasingMode", "3", "SMAA 2TX"),
+    ("LodRatio", "100", "object detail at the menu's maximum (e_LodRatio)"),
+    ("ViewDistRatio", "100", "view distance at the menu's maximum (e_ViewDistRatio)"),
+    ("MergedMeshesRatio", "100", "grass and small plants at the menu's maximum (e_MergedMeshesViewDistRatio)"),
+    ("r_MotionBlur", "0", "a lens effect, not part of the scene"),
+    ("vsync", "0", "frame rate sets the shot time"),
+]
+ATTRIBUTES_EMPTY = '<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n</Attributes>\r\n'
 
 
 def build_pak():
@@ -162,6 +183,11 @@ def steps(ctx):
     cfg = opt.get("user_cfg") or paths.user_cfg(g)
     for key, value, why in CVARS:
         out.append(IniSet(cfg, "", key, value, tag="settings", why=why))
+
+    # the options the game saves and applies at start, over user.cfg (see ATTRS)
+    attrs = opt.get("attributes_xml") or paths.attributes_xml()
+    for key, value, why in ATTRS:
+        out.append(XmlAttrSet(attrs, key, value, empty=ATTRIBUTES_EMPTY, tag="settings", why=why))
     return out
 
 

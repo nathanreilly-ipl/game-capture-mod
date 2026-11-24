@@ -17,12 +17,16 @@ from PIL import Image, ImageDraw
 
 
 def shots(take, camera):
+    """[(clip frame, path)] of a camera's accepted shots. The clip frame comes from the shot's name
+    (t<frame>_<camera>_<index>): older takes of The Witcher 3 and Kingdom Come logged the game's own
+    frame counter as "frame"."""
     out = []
     with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
         for line in f:
             e = json.loads(line)
-            if e.get("accepted") and e["name"].split("_", 1)[1].rsplit("_", 1)[0] == camera:
-                out.append((int(e["frame"]), os.path.join(take, e["file"])))
+            head, rest = e["name"].split("_", 1)
+            if e.get("accepted") and rest.rsplit("_", 1)[0] == camera:
+                out.append((int(head[1:]), os.path.join(take, e["file"])))
     return sorted(out)
 
 

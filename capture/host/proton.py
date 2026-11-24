@@ -125,6 +125,12 @@ def gpu_name():
     return names[0] if r.returncode == 0 and names else None
 
 
+def gpu_adapters():
+    """Not listed here: under Proton a game sees only the GPUs it is given (check_start), so its
+    adapter settings are left as they are."""
+    return []
+
+
 def gpus():
     """How many GPUs this process can see (0 when nvidia-smi does not say)."""
     try:

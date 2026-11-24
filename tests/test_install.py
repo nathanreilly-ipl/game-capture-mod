@@ -5,6 +5,7 @@
 A. The framework on made-up files: steps, dry run, backups, the install record, uninstall,
    files found by hash inside archives, missing files stop the install before any change.
 P. A pack (a large mod installed from its archive) and nested JSON settings, on made-up files.
+Q. Our add-on in two bundles, one built from older sources: the install takes the matching copy.
 B. The RDR2 plan in a sandbox (a fake game folder, a fake ProgramData and registry), when the
    real mod files are available (--mods, or out/mods): install, install again (nothing to do),
    uninstall (everything back), then a bundle made from the sandbox installs into a second one
@@ -208,7 +209,7 @@ def sandbox(tmp, name, mods, monkey_no_tools=False):
     open(os.path.join(game, "RDR2.exe"), "wb").write(b"not the real game")
     xml = os.path.join(root, "system.xml")
     open(xml, "wb").write(b'<Settings>\r\n  <vSync value="1" />\r\n  <pauseOnFocusLoss value="true" />\r\n  <dlssIndex value="0" />\r\n  <dlssQuality value="5" />\r\n'
-                          b'  <API>kSettingAPI_Vulkan</API>\r\n</Settings>\r\n')
+                          b'  <motionBlur value="true" />\r\n  <API>kSettingAPI_Vulkan</API>\r\n</Settings>\r\n')
     options = {"exchange_dir": os.path.join(root, "exchange"), "settings_xml": xml, "api": "vulkan",
                "optiscaler": False, "ray_tracing": False, "resolution": ""}  # the Vulkan setup, not the defaults
     system = FakeSystem(root)
@@ -316,7 +317,7 @@ def part_c(tmp, mods):
     os.makedirs(game)
     open(os.path.join(game, "RDR2.exe"), "wb").write(b"not the real game")
     xml = os.path.join(root, "system.xml")
-    open(xml, "wb").write(b'<Settings>\r\n  <vSync value="1" />\r\n  <pauseOnFocusLoss value="true" />\r\n'
+    open(xml, "wb").write(b'<Settings>\r\n  <vSync value="1" />\r\n  <pauseOnFocusLoss value="true" />\r\n  <motionBlur value="true" />\r\n'
                           b'  <dlssIndex value="0" />\r\n  <dlssQuality value="5" />\r\n  <windowed value="0" />\r\n'
                           b'  <screenWidthWindowed value="3840" />\r\n  <screenHeightWindowed value="2160" />\r\n'
                           b'  <API>kSettingAPI_Vulkan</API>\r\n</Settings>\r\n')
@@ -627,10 +628,16 @@ def part_h(tmp, mods, system_class, label):
     os.makedirs(os.path.join(game, "Data"))
     open(os.path.join(game, kp.EXE), "wb").write(b"not the real game")
     exchange = os.path.join(root, "user", "capture_mod")
-    opts = {"exchange_dir": exchange}
+    attrs = os.path.join(root, "user", "profiles", "default", "attributes.xml")   # never the real profile
+    opts = {"exchange_dir": exchange, "attributes_xml": attrs}
     system, work = system_class(root), os.path.join(root, "work")
     before = tree(game)
     n = inst.install("kcd", game, opts, mods, system=system, work=work, log=lines.append)
+    text = open(attrs, encoding="utf-8", newline="").read()
+    assert text.startswith('<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n') and \
+        text.endswith("</Attributes>\r\n"), "attributes.xml created in the game's own form where it had none"
+    assert plan.xml_attr_value(text, "sys_spec_Shading") == "4" and plan.xml_attr_value(text, "vsync") == "0" and \
+        plan.xml_attr_value(text, "MergedMeshesRatio") == "100"
     b = kp.bin_dir(game)
     for rel in ("dxgi.dll", "ReShade.ini", addon.NAME):
         assert os.path.exists(os.path.join(b, rel)), rel
@@ -650,6 +657,13 @@ def part_h(tmp, mods, system_class, label):
     inst.uninstall("kcd", work=work, log=lines.append)
     after = tree(game)
     assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert not os.path.exists(attrs), "the attributes.xml the install created is removed"
+    # the game's own attributes.xml: our options set, the rest kept, all of it back after an uninstall
+    own_attrs = ('<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n'
+                 '  <Attr name="LodRatio" value="25" />\r\n  <Attr name="controller_sensitivity" value="45" />\r\n'
+                 '  <Attr name="sys_spec_Shading" value="3" />\r\n  <Attr name="vsync" value="1" />\r\n</Attributes>\r\n')
+    os.makedirs(os.path.dirname(attrs), exist_ok=True)
+    open(attrs, "w", encoding="utf-8", newline="").write(own_attrs)
     # the game's own mod_status.xml is never written over, and an uninstall leaves it
     game2 = os.path.join(root, "game2")
     os.makedirs(os.path.join(game2, os.path.dirname(kp.EXE)))
@@ -660,10 +674,48 @@ def part_h(tmp, mods, system_class, label):
     work2 = os.path.join(root, "work2")
     inst.install("kcd", game2, opts, mods, system=system, work=work2, log=lines.append)
     assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "the game's own mod_status.xml kept"
+    text = open(attrs, encoding="utf-8", newline="").read()
+    assert plan.xml_attr_value(text, "LodRatio") == "100" and plan.xml_attr_value(text, "sys_spec_Shading") == "4" \
+        and plan.xml_attr_value(text, "sys_spec_Water") == "4" and plan.xml_attr_value(text, "controller_sensitivity") == "45" \
+        and text.endswith("</Attributes>\r\n") and "\n" not in text.replace("\r\n", ""), "ours set, the rest kept, CRLF"
     inst.uninstall("kcd", work=work2, log=lines.append)
     assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "and left by an uninstall"
+    assert open(attrs, encoding="utf-8", newline="").read() == own_attrs, "the game's own attributes.xml back as it was"
     print("H ok (%s): the Kingdom Come: Deliverance plan in a sandbox: %d steps, then nothing to do; uninstall put "
-          "it all back; the game's own mod_status.xml kept" % (label, n))
+          "it all back; the game's own mod_status.xml kept, its attributes.xml set and put back" % (label, n))
+
+
+def ours_ready(probe, part):
+    """Our built file (part: addon or clock) built here from these sources, or a copy in the mods
+    folders whose stamp beside it says so: what the install itself takes (addon.find_prebuilt). A
+    copy found by name alone may be an older build, which the install refuses."""
+    return part.is_built() or addon.find_prebuilt(probe, part.NAME, part.STAMP, part.source_digest()) is not None
+
+
+def part_q(tmp):
+    """Two bundles each carrying our add-on: the install takes the copy whose stamp matches the
+    sources, wherever it was found first, and never pairs a file with another bundle's stamp."""
+    os.makedirs(tmp)
+    digest = addon.source_digest()
+    old, new, mixed = (os.path.join(tmp, n) for n in ("a_old.zip", "b_new.zip", "c_mixed.zip"))
+    for path, body, stamp in ((old, b"old build", "0" * 64), (new, b"new build", digest)):
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("capture_addon/" + addon.NAME, body)
+            z.writestr("capture_addon/" + addon.STAMP, stamp)
+    with zipfile.ZipFile(mixed, "w") as z:     # a matching stamp, but in another folder than the file
+        z.writestr("capture_addon/" + addon.NAME, b"mixed build")
+        z.writestr("other/" + addon.STAMP, digest)
+    found = lambda roots: addon.find_prebuilt(
+        sources.Files({}, roots=roots, extra_names=addon.EXTRA_NAMES), addon.NAME, addon.STAMP, digest)
+    real = sources.MODS_DIR
+    sources.MODS_DIR = os.path.join(tmp, "empty")
+    try:
+        a = found([old, new])
+        assert a is not None and a.read() == b"new build", a and a.where
+        assert found([old]) is None and found([mixed]) is None
+    finally:
+        sources.MODS_DIR = real
+    print("Q ok: of two bundles with our add-on the install takes the one built from these sources")
 
 
 def main():
@@ -674,6 +726,8 @@ def main():
         part_a(os.path.join(tmp, "a"))
     with tempfile.TemporaryDirectory() as tmp:
         part_p(os.path.join(tmp, "p"))
+    with tempfile.TemporaryDirectory() as tmp:
+        part_q(os.path.join(tmp, "q"))
     with tempfile.TemporaryDirectory() as tmp:
         probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("rdr2").LOCK), roots=a.mods)
         need = [("scripthook_rdr2", "ScriptHookRDR2.dll"), ("redlua", "RedLua.asi"), ("reshade", "ReShade64.dll"),
@@ -703,7 +757,7 @@ def main():
         probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("cyberpunk").LOCK), roots=a.mods,
                               extra_names=addon.EXTRA_NAMES + clock.EXTRA_NAMES)
         need = [("cyber_engine_tweaks", "bin/x64/version.dll"), ("red4ext", "bin/x64/winmm.dll"), ("reshade", "ReShade64.dll")]
-        ours = all(part.is_built() or (probe.named(part.NAME) and probe.named(part.STAMP)) for part in (addon, clock))
+        ours = all(ours_ready(probe, part) for part in (addon, clock))
         if all(probe.ref(m, f).found for m, f in need) and ours:
             part_f(tmp, a.mods, FakeSystem, "paths as they are")
             part_f(tmp, a.mods, FakeProton, "paths as under Proton")
@@ -713,7 +767,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("witcher3").LOCK), roots=a.mods,
                               extra_names=addon.EXTRA_NAMES)
-        ours = addon.is_built() or (probe.named(addon.NAME) and probe.named(addon.STAMP))
+        ours = ours_ready(probe, addon)
         if probe.ref("reshade", "ReShade64.dll").found and probe.ref("optiscaler_dlss5", "OptiScaler.dll").found and ours:
             part_g(tmp, a.mods, FakeSystem, "paths as they are")
             part_g(tmp, a.mods, FakeProton, "paths as under Proton")
@@ -722,7 +776,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("kcd").LOCK), roots=a.mods,
                               extra_names=addon.EXTRA_NAMES)
-        ours = addon.is_built() or (probe.named(addon.NAME) and probe.named(addon.STAMP))
+        ours = ours_ready(probe, addon)
         if probe.ref("reshade", "ReShade64.dll").found and ours:
             part_h(tmp, a.mods, FakeSystem, "paths as they are")
             part_h(tmp, a.mods, FakeProton, "paths as under Proton")

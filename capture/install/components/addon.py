@@ -83,11 +83,31 @@ def build(log=print):
     log("  built %s" % BUILT)
 
 
+def _beside(a, b):
+    """Two found files in the same place: the same folder on disk, or the same folder of one archive."""
+    if a.member or b.member:
+        return (a.path == b.path and bool(a.member) == bool(b.member)
+                and os.path.dirname(a.member or "") == os.path.dirname(b.member or ""))
+    return os.path.dirname(os.path.abspath(a.path)) == os.path.dirname(os.path.abspath(b.path))
+
+
+def find_prebuilt(files, name, stamp, digest):
+    """The found copy (sources.Located) of one of our own built files whose stamp beside it says it
+    was built from the sources with this digest, or None. Several bundles in the mods folders may
+    each carry a copy built from other sources (the node had The Witcher 3's and Kingdom Come's
+    beside Cyberpunk's, 2026-11-24): the first copy found by name is not necessarily this one."""
+    stamps = [s for s in files.named_all(stamp) if s.read().decode("ascii", "replace").strip() == digest]
+    for a in files.named_all(name):
+        if any(_beside(a, s) for s in stamps):
+            return a
+    return None
+
+
 def prebuilt(ctx, name, stamp, digest):
     """(path of a copy, where it was found) of one of our own built files from the mods folders or
     a bundle, if its stamp says it was built from the sources with this digest; else (None, None)."""
-    a, s = ctx.files.named(name), ctx.files.named(stamp)
-    if a and s and s.read().decode("ascii", "replace").strip() == digest:
+    a = find_prebuilt(ctx.files, name, stamp, digest)
+    if a:
         cache = os.path.join(ctx.record.dir, "prebuilt", name)
         os.makedirs(os.path.dirname(cache), exist_ok=True)
         with open(cache, "wb") as f:

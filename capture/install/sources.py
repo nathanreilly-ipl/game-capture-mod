@@ -127,7 +127,7 @@ class Files:
         self.mods = mods
         self.roots = [r for r in list(roots) + [MODS_DIR] if r and os.path.exists(r)]
         self.installed = [d for d in installed if d and os.path.isdir(d)]
-        self._by_hash, self._by_name, self._scanned = {}, {}, False
+        self._by_hash, self._by_name, self._all_by_name, self._scanned = {}, {}, {}, False
         self._sizes, self._hashes, self._names = set(), set(), {n.lower() for n in extra_names}
         for mod in mods.values():
             if mod.get("pack"):     # gigabytes in a folder tree: found by components/pack.py instead
@@ -146,6 +146,7 @@ class Files:
                 self._by_hash.setdefault(h, located)
         if os.path.basename(name).lower() in self._names:
             self._by_name.setdefault(os.path.basename(name).lower(), located)
+            self._all_by_name.setdefault(os.path.basename(name).lower(), []).append(located)
 
     def _scan_file(self, p):
         try:
@@ -190,7 +191,7 @@ class Files:
 
     def rescan(self):
         """Look again (after files were added, e.g. downloaded)."""
-        self._by_hash, self._by_name, self._scanned = {}, {}, False
+        self._by_hash, self._by_name, self._all_by_name, self._scanned = {}, {}, {}, False
 
     def ref(self, mod_id, name):
         self._scan()
@@ -205,6 +206,12 @@ class Files:
         """A file found by name alone (one of extra_names), or None."""
         self._scan()
         return self._by_name.get(name.lower())
+
+    def named_all(self, name):
+        """Every file found by name alone (one of extra_names), in the order found: several bundles
+        can each carry a copy (our own built files, from different sources)."""
+        self._scan()
+        return list(self._all_by_name.get(name.lower(), []))
 
     def refs(self, mod_id):
         return [self.ref(mod_id, f["name"]) for f in self.mods[mod_id].get("files", [])]

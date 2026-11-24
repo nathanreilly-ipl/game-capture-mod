@@ -427,10 +427,14 @@ CaptureMod.ops.ground = function(seq, x, y, z)
 end
 
 -- the world clock (seconds of game time; 86400 a day) set to h:m of the current day
+-- The world's clock to h:m. The game does not move its clock back (Calendar.SetWorldTime to an
+-- earlier time leaves it where it was; forward works: measured 2026-11-24, when takes asking for
+-- 12:00 in the afternoon kept the afternoon), so an hour already past today is that hour tomorrow.
 CaptureMod.ops.clock = function(seq, h, m)
     local t = Calendar.GetWorldTime()
-    local day = math.floor(t / 86400) * 86400
-    Calendar.SetWorldTime(day + h * 3600 + (m or 0) * 60)
+    local target = math.floor(t / 86400) * 86400 + h * 3600 + (m or 0) * 60
+    if target < t then target = target + 86400 end
+    Calendar.SetWorldTime(target)
     ok(seq)
 end
 

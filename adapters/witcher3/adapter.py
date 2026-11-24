@@ -565,7 +565,7 @@ class Witcher3Adapter(Adapter):
         info = {"width": a["width"], "height": a["height"], "health": {"problems": self._problems(st)},
                 "rendered_pos": st.get("cam"), "rendered_fwd": st.get("fwd"), "rendered_up": st.get("up"),
                 "rendered_fov": st.get("fov"), "sim_time": "%.6f" % self._engine(st), "player": st.get("player"),
-                "frame": a["frame"]}
+                "render_frame": a["frame"]}
         return info
 
     def advance(self, seconds):
