@@ -117,6 +117,8 @@ Settings (job settings "adapter"):
                     see Arrival)
     step_view       "first": every time step renders the take's first pose, so the eye adapts to
                     one view; anything else leaves the last shot's pose (see Arrival)
+    cvars           more console variables set when a session opens, {name: value} ({}; for probes:
+                    tools/hold_step_check.py --set 'cvars={"r_HDREyeAdaptationSpeed": 0}')
 """
 import math
 import os
@@ -137,7 +139,7 @@ A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 20, "first_settle": 60, "clock_settle": 60, "populate_s": 10, "render_size": [2560, 1440],
             "pose_tolerance_m": 0.005, "weather": "free", "accumulate": 2, "accumulate_gap": 1, "step_frames": 8,
-            "visual": True, "ghost_run_s": 2.0, "step_view": "first"}
+            "visual": True, "ghost_run_s": 2.0, "step_view": "first", "cvars": {}}
 # The capture look: the game's own top settings (Ultra High, the menu's maximum, on every category),
 # SMAA 2TX, object detail and view distances at their menu maximum, no VSync (it capped the game at
 # 60 frames/s). attributes.xml, which the game writes, sets these at start over user.cfg, so the
@@ -246,6 +248,9 @@ class KcdAdapter(Adapter):
             wrong = {k: v for k, v in self.applied.items() if float(v) != float(VISUAL[k])}
             if wrong:
                 raise AdapterError("the game did not take the capture settings: %s" % wrong)
+        for k, v in (self.settings.get("cvars") or {}).items():
+            self.sess.cmd("cvar", k, v)
+            self.applied[k] = (self.sess.cmd("cvar", k).data or ["?"])[0]
 
     def close(self):
         if self.sess is not None:

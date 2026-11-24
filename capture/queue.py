@@ -130,12 +130,15 @@ class Queue:
         write_json(self._path("pending", job_id), job)
         os.remove(self._path("failed", job_id))
 
-    def requeue_stale(self, stale_s=900):
+    def requeue_stale(self, stale_s=900, only=None):
+        """Claims whose lease is older than stale_s back to pending; only: just these job ids."""
         moved = []
         for name in os.listdir(os.path.join(self.root, "claimed")):
             if not name.endswith(".json"):
                 continue
             job_id = name[:-5]
+            if only and job_id not in only:
+                continue
             lease = self._path("claimed", job_id, ".lease")
             age = time.time() - os.path.getmtime(lease) if os.path.exists(lease) else float("inf")
             if age > stale_s:

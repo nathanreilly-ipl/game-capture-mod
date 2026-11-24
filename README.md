@@ -377,8 +377,8 @@ a hash of the settings, so submitting the same job twice queues it once.
 
 The queue is a folder. Put `out/` (or `--queue`, `--takes`) on a shared drive and run one
 worker per machine; a worker claims a job by renaming it into `claimed/` and keeps a lease
-file fresh. A claim whose lease is 15 minutes old is requeued (`capture queue requeue`, and
-every worker on start). If the game goes away mid-take (a script fault closes it, a graphics
+file fresh. A claim whose lease is 15 minutes old is requeued (`capture queue requeue <job>`, or
+`--all` for every such claim, and every worker on start). If the game goes away mid-take (a script fault closes it, a graphics
 error stops it), the worker restarts it and takes again, up to twice per job. Failed jobs stay
 in `failed/` with the error until `capture queue retry <job>`.
 
@@ -1121,6 +1121,23 @@ python -m adapters.witcher3.probes.scout_fast_travel poppystone=mulbrydale      
   `capture mods bundle witcher3 --with-supplied` holds ReShade, OptiScaler with NVIDIA's model and
   our add-on (207 MB; never in git or anywhere shared).
 
+### The Witcher 3 on Linux (CoreWeave, measured 2026-11-24)
+
+The game under Proton (`capture host`; see "On Linux" above), installed from the PC's bundle with
+`capture install witcher3 --no-optiscaler` (the cluster's driver cannot run DLSS 5; the game's own
+DLAA with Ray Reconstruction and path tracing remain). `capture verify witcher3 --launch`: 55 frames/s,
+a frozen take of 8 cameras over 3 clip frames (24 shots in 205 s, none recaptured, steps within
+0.31 ms of 1/30 s), packaging; the install check counts OptiScaler's steps and the colour check does
+not separate there (BACKLOG). What it took:
+
+- **`[Hidden] HasSetup=true`** in `dx12user.settings` (`settings.py`): without it the game ran its
+  first-start setup at every start and put path tracing and the detail settings back.
+- **The console paste** needs `xclip` (the conda environment, `capture/host/linux.lock.json`), and
+  Ctrl+V as four key events a key's hold apart (`adapters/common/window_x11.py`): sent at once, the
+  console often got a plain "v", about every second 400-ray command missed its first try and one in
+  about 50 missed all four, so every take failed in its scene raycast. Since: 40 such commands in
+  51 s, none missed (60 took 263 s with 33 misses before). Keys are held at least 60 ms there.
+
 ### How a take is captured in The Witcher 3 (measured 2026-11-23)
 
 - **Freeze.** A pause of our own: engine time 0.0000000 s over 480 held frames (9 real seconds),
@@ -1263,6 +1280,31 @@ python -m adapters.kcd.probes.repl --reload "=state" "+return player:GetWorldPos
   `Scripts.pak`: 40 squares, pubs, castles, mills, camps). Locations get the nearest within 400 m as
   their title. Tried at the Rattay pillory, Talmberg, the Sasau bridge and Ledetchko.
   `capture scout --game kcd --at x,y,z` works as for every game. No in-game overlay (BACKLOG).
+
+### Kingdom Come: Deliverance on Linux (CoreWeave, measured 2026-11-24)
+
+The game under Proton in the RDR2/GTA V prefix, beside that prefix's Windows Steam client: its
+licence check needs a running client that lists the game as installed (`capture host steam kcd`
+links the downloaded folder into the client's library and writes the app manifest from
+`install.STEAM`). `capture verify kcd --launch` passed every check: 103 s to the menu (most of it
+the runtime container), a save loaded 22 s later, 54 frames/s, a frozen take of 8 cameras over 3
+clip frames (24 shots in 136 s, none recaptured, steps exact to 0.00 ms), packaging; the colour
+check does not separate there either (34.1 against 35.9). What it took, each in the code:
+
+- **Only the job's processors shown** (`WINE_CPU_TOPOLOGY`, `host.start_beside_steam(limit_cpus=True)`):
+  with all 128 of the node visible CryEngine's processor survey crashed at start.
+- **`mod_status.xml`** in the game folder (`install.py`): without it the first start moved `Mods`
+  away to `mods_old`.
+- **`sys_PakPriority` 2** (Bulk input, above): with loose files looked up the menu's level did not
+  load in 5 minutes from the network folder; now in seconds.
+- **The app id for ProtonFixes**: a run without a game got `SteamAppId` 0, or ProtonFixes failed.
+- **By hand, once:** the publisher's EULA accepted with E (as on the PC, on Nathan's word for this
+  copy). Steam Cloud brought the account's own KCD saves into the prefix when the game first ran
+  beside the client; Continue loads the newest (BACKLOG: keep closing the game by its window).
+- One session crashed the game (0xC0000005) right after setting `sys_spec_Shading` 4 at run time,
+  while the profile's `attributes.xml` was still empty (the same settings went through in verify
+  and the next job). Since the install writes the capture values into `attributes.xml`, the game
+  starts at them and the session's switch changes nothing (2026-11-24).
 
 ### How a take is captured in Kingdom Come: Deliverance (measured 2026-11-23)
 

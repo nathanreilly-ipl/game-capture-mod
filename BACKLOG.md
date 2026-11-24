@@ -46,8 +46,11 @@ Market, 1.33-1.59 Badlands; pixels over 12: 0.2-0.5%, 0.7-1.0%, 2.2-2.9%):
 - [ ] **Exposure 9 and 14 levels of 255 too bright at Kabuki and Badlands**: the forced exposure
   has a floor the lock cannot go under (README, Cyberpunk on Linux). Not a flicker, but wrong.
   `Rendering/ForcedPreExposure` does not help (70-82 for 0.001 to 10, Kabuki 2026-11-23,
-  `probes/exposure_range.py --option ForcedPreExposure`). Left to try: the option dump's
-  `Developer/FeatureToggles/EyeAdaptation`, `DLSS/ExposureScale`, `Rendering/ACES/*`.
+  `probes/exposure_range.py --option ForcedPreExposure`). Tried 2026-11-24 at Kabuki at noon
+  (`exposure_range.py --category ... --hold 1000`): `DLSS/ExposureScale` moves the held frame only
+  62.1 to 58.6 for 0.25 to 4; `Developer/FeatureToggles/EyeAdaptation` false drops it to 4.3 (a fixed
+  default exposure), so neither helps. That day the floor (63-69) was below auto-exposure (69-77):
+  the failing case depends on the light and was not reproduced. Left: `Rendering/ACES/*`.
 - [x] **Steps 34.2-34.7 ms instead of 33.3** in 2-3 of 29 steps at Kabuki and Badlands (the
   advance overshot on a slow frame). With `step`: 33.3314-33.3327 ms over the 29 steps of the
   Badlands retake.
@@ -83,19 +86,19 @@ RDR2 (fixed cameras before: roughness 0.33-0.64, pixels over 12 at most 0.35%):
   exposure itself held). Not the game's HDR setting (`hdr` false: the same 0.45-0.73 on the
   landscape view, 2026-11-24). Next: ambient occlusion (`ssao`, `ssdo...`), volumetrics,
   screen-space shadows in system.xml, one at a time, game closed, with this test.
-- [ ] **Motion blur is on in RDR2** (`<motionBlur value="true" />` in system.xml, from the PC's
-  profile; the install does not set it). A per-camera effect AGENTS.md wants off: moving people
-  are blurred along their 1/30 s motion. Add an XmlSet step (motionBlur false) to the install.
+- [x] **Motion blur is on in RDR2** (`<motionBlur value="true" />` in system.xml, from the PC's
+  profile). A per-camera effect AGENTS.md wants off: moving people were blurred along their 1/30 s
+  motion. The install now writes `motionBlur` false (XmlSet, 2026-11-24; in the retakes).
 
 GTA V Enhanced (fixed cameras before: roughness 0.21-0.90, Vinewood 0.8-1.1% of pixels over 12):
 
-- [ ] **NPCs disappear in the background between clip frames** (Vinewood, both multi-frame
+- [x] **NPCs disappear in the background between clip frames** (Vinewood, both multi-frame
   videos). Measured: with the multipliers at 0 the game removed 5 people and 2 cars within 150 m
   over 30 steps (`tools/hold_step_check.py` census, 50-130 m out). Fixed in the check: the session
   makes everyone within `keep_radius` (150 m) its own for the take (command `keep`): 0 people gone,
   1 car at the 150 m edge. Vinewood retake: fixed cameras roughness 0.74/0.72 to 0.53/0.39, no
   pop but palm shadows at clip frame 9 (below). Takes record the people and cars kept and the
-  wind.
+  wind. The 2026-11-24 retakes: nobody vanishes at Vinewood; 20 people kept at the Alamo Sea.
 - [ ] **Shapes flicker in and out on trees and a background billboard; bad geometry in far
   trees** (Vinewood): `temporal_flicker.py --size 960x540` finds pops at clip frame 20 (old take)
   and 9 (retake) on palm fronds' shadows on a wall: different for one clip frame, then back.
@@ -267,9 +270,10 @@ the numbers). What that took per game is in the adapters; what is left:
   against 41.8) separate well. Not a Linux matter, found there.
 - **The Witcher 3 and Kingdom Come: Deliverance** run on Linux since 2026-11-24 (their own
   sections below say what it took and what is left).
-- **`capture verify`'s colour check in The Witcher 3** compares the frame with a screen grab taken
-  after `view()` gave the camera back (51.9 against 54.1 with the channels swapped, Linux,
-  2026-11-24): the same fault as Cyberpunk's above.
+- **`capture verify`'s colour check in The Witcher 3 and Kingdom Come: Deliverance** does not
+  separate either (51.9 against 54.1 with the channels swapped; KCD 34.1 against 35.9; Linux,
+  2026-11-24): the screen grab is taken after `view()` gave the camera back, the same fault as
+  Cyberpunk's above.
 
 ## The Witcher 3: what is left
 
@@ -300,6 +304,10 @@ Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
   raycast until `window_x11.paste` sent Ctrl and V a key's hold apart (40 ray commands, none
   missed; 2026-11-24). A ray command that still gets no answer is split in two and sent again.
   Not compared: the picture against the PC's.
+  - **A crash** 1 h 45 min into a session, mid near sweep (Mulbrydale, 21:30 on 2026-11-24; the
+    game's CrashInfo.json: not out of memory; the step's peak 7.5 GB). The minidump is in the
+    prefix (`AppData\Local\REDEngine\ReportQueue`), not read. Run the worker in a job step with
+    one GPU of its own, so it can restart the game: from a step that sees two it cannot.
 - **A floating spear** (Nathan, 2026-11-23, Hierarch Square): a spear or bolt in mid-air beside a
   stall, during a probe that had just parked the player 80 m away and back, which emptied the
   crowd around the spot (22 to 1 people within 15 m) and let it come back. Not reproduced. Ruled

@@ -11,7 +11,7 @@ Windows, ./capture.sh <command> on Linux).
     providers  list the rig providers (rig formats) this machine can use
     solve      a provider's rig at a location, with a plan image, without a take
     submit     queue a rig for one or more locations
-    queue      show the queue; retry a failed job; requeue stale claims
+    queue      show the queue; retry a failed job; requeue stale claims (named, or --all)
     worker     take jobs from the queue and capture them
     package    package a captured take (the worker does this itself)
     sheets     render sheets for a captured take
@@ -178,8 +178,15 @@ def cmd_queue(a):
             print("pending", job_id)
         return
     if a.action == "requeue":
-        for job_id in q.requeue_stale(a.stale_s):
+        # only the ids given, or every claim with --all: a requeue that named none pulled a running
+        # job back to pending (--stale-s 0, 2026-11-24)
+        if not a.ids and not a.all:
+            raise SystemExit("queue requeue: name the job ids, or give --all for every claim older than --stale-s")
+        moved = q.requeue_stale(a.stale_s, only=None if a.all else a.ids)
+        for job_id in moved:
             print("requeued", job_id)
+        for job_id in sorted(set(a.ids) - set(moved)):
+            print("not requeued (not claimed, or its lease is newer than --stale-s %g s):" % a.stale_s, job_id)
         return
     for state, ids in q.status().items():
         print("%-8s %d" % (state, len(ids)))
@@ -361,6 +368,7 @@ def main(argv=None):
     s.add_argument("action", nargs="?", default="status", choices=("status", "retry", "requeue"))
     s.add_argument("ids", nargs="*")
     s.add_argument("--stale-s", type=float, default=900)
+    s.add_argument("--all", action="store_true", help="requeue: every claim older than --stale-s (otherwise only the ids given)")
     s.set_defaults(fn=cmd_queue)
 
     def game_args(s, mods=True):
