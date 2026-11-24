@@ -363,6 +363,12 @@ def _env(game, app_id=None, dll_overrides=None):
         env["ALSA_CONFIG_PATH"] = "/usr/share/alsa/alsa.conf:" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "alsa_null.conf")
     if app_id:
         env.update(SteamAppId=str(app_id), SteamGameId=str(app_id), STEAM_COMPAT_APP_ID=str(app_id))
+    else:
+        # no game (making a prefix, writing its registry): GE-Proton's ProtonFixes then takes the
+        # last number in the prefix's path as the game's id and stops with an IndexError where it has
+        # none (out/proton/kcd, 2026-11-24); app 0 gets its default fixes only. A game started later
+        # with its id gets its own fixes then.
+        env.setdefault("SteamAppId", "0")
     if dll_overrides:
         env["WINEDLLOVERRIDES"] = dll_overrides + (";" + env["WINEDLLOVERRIDES"] if env.get("WINEDLLOVERRIDES") else "")
     if os.environ.get("CAPTURE_PROTON_LOG"):      # Proton's own log (large): out/host/logs/steam-<app>.log
@@ -422,13 +428,17 @@ def _wine_cmd(t, *args):
             os.path.join(t["proton"], "files")] + list(args)
 
 
-def wine_direct(game, *args, dll_overrides=None, cwd=None, wait=True, timeout=600):
+def wine_direct(game, *args, dll_overrides=None, cwd=None, wait=True, timeout=600, env=None):
     """Runs a Windows program in the game's prefix through Wine itself (see above). wait: returns the
-    finished process (its output captured); otherwise starts it detached, its output in the game's log."""
+    finished process (its output captured); otherwise starts it detached, its output in the game's log.
+    env: more environment for the program (start_beside_steam)."""
     t = _require()
     ensure_display()
     ensure_prefix(game)
+    extra = env
     env = _wine_env(game, dll_overrides, cwd)
+    if extra:
+        env.update(extra)
     if not wait:
         _one_gpu()      # what it starts may be a game, or a Steam client that starts one
     if wait:
@@ -439,6 +449,41 @@ def wine_direct(game, *args, dll_overrides=None, cwd=None, wait=True, timeout=60
         log.flush()
         return subprocess.Popen(_wine_cmd(t, *args), env=env, cwd=_scratch(), stdin=subprocess.DEVNULL, stdout=log,
                                 stderr=subprocess.STDOUT, start_new_session=True)
+
+
+def cpu_topology():
+    """WINE_CPU_TOPOLOGY for the CPUs this process may run on ("7:47,48,...,53"), or None where it may
+    use all of the machine's. A game that reads every processor's details (CryEngine, Kingdom Come:
+    Deliverance) crashed at start on a 128-thread node where it might use 7: its list of processors
+    came back empty (2026-11-24); with Wine showing only the 7 it starts."""
+    try:
+        cpus = sorted(os.sched_getaffinity(0))
+    except AttributeError:
+        return None
+    if not cpus or len(cpus) >= (os.cpu_count() or 0):
+        return None
+    return "%d:%s" % (len(cpus), ",".join(str(c) for c in cpus))
+
+
+def start_beside_steam(game, exe, args=(), cwd=None, dll_overrides=None, app_id=None, limit_cpus=False, wait_s=900):
+    """Starts a game's exe in the prefix whose Steam client runs (`capture host steam`), the way a game
+    started from its exe on Windows finds the Steam that runs there: through Wine like the client, with
+    the game's Steam app id, once the client has logged on. For a game that checks its licence with
+    Steam at start (Kingdom Come: Deliverance: "License not verified - SteamAPI init failed" without
+    a client). limit_cpus: Wine shows only the CPUs this process may run on (cpu_topology)."""
+    deadline = time.time() + wait_s
+    while not (steam_running(game) and steam_logged_on(game)):
+        if time.time() > deadline:
+            raise HostError("the Steam client in %s is not up and logged on (run: %s host steam %s --keep, in a job step "
+                            "with one GPU)" % (prefix(game), CLI, game))
+        if not steam_running(game) and gpus() <= 1:
+            start_steam(game)
+        time.sleep(5)
+    extra = {"SteamAppId": str(app_id), "SteamGameId": str(app_id)} if app_id else {}
+    topo = cpu_topology() if limit_cpus else None
+    if topo:
+        extra["WINE_CPU_TOPOLOGY"] = topo
+    return wine_direct(game, game_path(exe, game), *args, dll_overrides=dll_overrides, cwd=cwd, wait=False, env=extra)
 
 
 def app_overrides(game, exe_name, overrides):

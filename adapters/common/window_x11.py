@@ -139,9 +139,10 @@ def press_vk(win, vk, scan=0, hold_s=0.08):
 
 def paste(win, text, hold_s=0.03):
     """Puts text on the X clipboard (Wine hands it to the game as the Windows clipboard) and
-    sends Ctrl+V, only while the game window has the keyboard. Written for The Witcher 3 on
-    Windows (window_win32.paste) and NOT RUN on Linux yet (2026-11-23): it needs xclip or xsel
-    among the host's tools, and whether Wine picks the selection up in time is unmeasured."""
+    sends Ctrl+V, only while the game window has the keyboard: Ctrl down, V down, V up, Ctrl up,
+    hold_s apart as window_win32.paste does. Sent at once (xdotool's ctrl+v), the game often saw
+    a plain "v" (The Witcher 3's console filled with lines of "v": about every second long
+    command missed its first try, 2026-11-24)."""
     if not is_foreground(win):
         return False
     exe = proton.tool("xclip") or proton.tool("xsel")
@@ -149,7 +150,8 @@ def paste(win, text, hold_s=0.03):
         raise RuntimeError("no xclip or xsel on this machine: pasting into the game needs one (%s host setup)" % proton.CLI)
     args = [exe, "-selection", "clipboard", "-i"] if exe.rstrip("/").endswith("xclip") else [exe, "--clipboard", "--input"]
     subprocess.run(args, input=text.encode("utf-8"), env=proton.x_env(), timeout=15, check=True)
-    _xdo("key", "--clearmodifiers", "ctrl+v")
+    h = "%.3f" % max(0.0, hold_s)
+    _xdo("keydown", "Control_L", "sleep", h, "keydown", "v", "sleep", h, "keyup", "v", "sleep", h, "keyup", "Control_L")
     time.sleep(hold_s)
     return True
 

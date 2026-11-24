@@ -263,10 +263,11 @@ the numbers). What that took per game is in the adapters; what is left:
   compares two different pictures in Cyberpunk (51.5 against 51.8 with the channels swapped,
   where one held instant gives 0.19 against 11.22). RDR2 (0.6 against 11.9) and GTA V (3.0
   against 41.8) separate well. Not a Linux matter, found there.
-- **The Witcher 3 and Kingdom Come: Deliverance** are being brought up on Windows first. The
-  Witcher 3's depots are on the cluster (69,954,964,012 bytes, default branch; to be checked
-  against the PC's build) and its exe starts under Proton to a 2560x1440 window; its console
-  input needs the X clipboard (xclip and xsel are installed).
+- **The Witcher 3 and Kingdom Come: Deliverance** run on Linux since 2026-11-24 (their own
+  sections below say what it took and what is left).
+- **`capture verify`'s colour check in The Witcher 3** compares the frame with a screen grab taken
+  after `view()` gave the camera back (51.9 against 54.1 with the channels swapped, Linux,
+  2026-11-24): the same fault as Cyberpunk's above.
 
 ## The Witcher 3: what is left
 
@@ -286,9 +287,17 @@ Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
   the 2026 Remastered update and its path tracer, and its "2026" edition was announced, not seen.
 - **Ray Reconstruction or the game's own denoiser.** The game's denoiser varies less from frame to
   frame (6.4% of pixels against 16%); near sweeps with each at one place were not compared.
-- **Linux.** `paths.DLL_OVERRIDES` (`dxgi,winmm=n,b`), the paths through `capture/host` and the
-  clipboard paste through xclip or xsel (`adapters/common/window_x11.py`, written, NOT RUN) are in
-  place; nothing has run under Proton yet.
+- **Linux (CoreWeave, 2026-11-24).** Installed from the PC's bundle with `--no-optiscaler` (no
+  DLSS 5 on the cluster's driver), `verify --launch` passed but the install-steps check (which
+  counts OptiScaler's steps): 55 frames/s, 24 shots in 205 s, steps within 0.31 ms. Found on the
+  way, each now in the code: the game reverted path tracing and detail settings at every start
+  until `[Hidden] HasSetup=true` was written (`settings.py` DETAIL); the console paste needs xclip
+  (in the conda environment, `linux.lock.json`); keys held at least 60 ms; and Ctrl+V sent by
+  xdotool at once often reached the console as a plain "v", so about every second long command
+  missed its first try and one in about 50 missed all four: every take failed in its scene
+  raycast until `window_x11.paste` sent Ctrl and V a key's hold apart (40 ray commands, none
+  missed; 2026-11-24). A ray command that still gets no answer is split in two and sent again.
+  Not compared: the picture against the PC's.
 - **A floating spear** (Nathan, 2026-11-23, Hierarch Square): a spear or bolt in mid-air beside a
   stall, during a probe that had just parked the player 80 m away and back, which emptied the
   crowd around the spot (22 to 1 people within 15 m) and let it come back. Not reproduced. Ruled
@@ -314,9 +323,22 @@ Set up on 2026-11-23 (README: Kingdom Come: Deliverance adapter). Left:
   shrinking frames is expected; a kick from resuming after a hold was not looked for.
 - **A photorealism mod.** Only the game's own top settings are used. Community overhauls (lighting,
   ReShade looks) were not tried, and no ReShade grade either.
-- **Linux.** The paths go through `capture/host`, and the console paste through xclip or xsel
-  (written for The Witcher 3, not run). The game folder's `Data\capture_mod_in` and
-  `sys_PakPriority` carry over. Nothing has run under Proton yet.
+- **Linux (CoreWeave, 2026-11-24).** Runs under Proton in the RDR2/GTA V prefix beside its
+  Windows Steam client (the game's licence check wants a running client that lists it installed:
+  `capture host steam kcd` writes the app manifest from `install.STEAM`). Found on the way, each
+  now in the code: CryEngine crashed at start with 128 processors visible (Wine shows only the
+  job's: `WINE_CPU_TOPOLOGY`, `host.start_beside_steam(limit_cpus=True)`); the game moved `Mods`
+  away at a first start without `mod_status.xml`; ProtonFixes failed without an app id; with loose
+  files looked up (`sys_PakPriority` 0 or 1) the menu's level did not load in 5 minutes from the
+  network folder (now 2, our script switching to 0 for its own reads). By hand, once: the
+  publisher's EULA accepted with E (on Nathan's earlier word for this copy). Left:
+  - **Steam Cloud** brought the account's own KCD saves (a playthrough from May) into the prefix
+    when the game first ran beside the client; the PC's two saves were copied in by hand. A
+    session locks saving, but a game closed from its menu writes `exit.whs`, which the client
+    would upload. Turn the cloud off for this app in the node's client, or keep closing the game
+    by its window (as `launch.quit_game` does).
+  - The start takes about 2 minutes to the menu (most of it the runtime container and the
+    network folder); not measured further.
 
 ## Every game: cloth through time steps
 

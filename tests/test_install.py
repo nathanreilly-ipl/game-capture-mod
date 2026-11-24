@@ -636,19 +636,34 @@ def part_h(tmp, mods, system_class, label):
         assert os.path.exists(os.path.join(b, rel)), rel
     m = kp.mod_dir(game)
     assert os.path.exists(os.path.join(m, "mod.manifest"))
+    status = os.path.join(game, "mod_status.xml")
+    assert open(status, encoding="utf-8").read() == inst.installer("kcd").MOD_STATUS, \
+        "mod_status.xml written where the game had none (it moves Mods away at a first start otherwise)"
     with zipfile.ZipFile(os.path.join(m, "Data", "capture_mod.pak")) as z:
         src = os.path.join(os.path.dirname(os.path.abspath(inst.installer("kcd").__file__)), "lua", "capture_mod.lua")
         assert z.read("Scripts/Startup/capture_mod.lua") == open(src, "rb").read(), "the pak holds our script"
     cfg = plan.Ini(kp.user_cfg(game))
-    assert cfg.get("", "sys_PakPriority") == "0" and cfg.get("", "r_Width") == "2560"
+    assert cfg.get("", "sys_PakPriority") == "2" and cfg.get("", "r_Width") == "2560"
     assert os.path.isdir(kp.inbox(game)) and os.path.isdir(exchange)
     assert plan.Ini(os.path.join(b, "ReShade.ini")).get("CAPTURE_MOD", "OutputDir") == system.game_path(exchange)
     assert inst.install("kcd", game, opts, mods, system=system, work=work, log=lines.append) == 0
     inst.uninstall("kcd", work=work, log=lines.append)
     after = tree(game)
     assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    # the game's own mod_status.xml is never written over, and an uninstall leaves it
+    game2 = os.path.join(root, "game2")
+    os.makedirs(os.path.join(game2, os.path.dirname(kp.EXE)))
+    os.makedirs(os.path.join(game2, "Data"))
+    open(os.path.join(game2, kp.EXE), "wb").write(b"not the real game")
+    own = "<ModStatus><modFolderWasMoved>false</modFolderWasMoved></ModStatus>\n"
+    open(os.path.join(game2, "mod_status.xml"), "w", encoding="utf-8").write(own)
+    work2 = os.path.join(root, "work2")
+    inst.install("kcd", game2, opts, mods, system=system, work=work2, log=lines.append)
+    assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "the game's own mod_status.xml kept"
+    inst.uninstall("kcd", work=work2, log=lines.append)
+    assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "and left by an uninstall"
     print("H ok (%s): the Kingdom Come: Deliverance plan in a sandbox: %d steps, then nothing to do; uninstall put "
-          "it all back" % (label, n))
+          "it all back; the game's own mod_status.xml kept" % (label, n))
 
 
 def main():

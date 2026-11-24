@@ -31,6 +31,14 @@ TITLE = "Kingdom Come: Deliverance (Steam)"
 EXE = paths.EXE_NAME
 EXE_PATH = paths.EXE
 STEAM_APP = paths.STEAM_APP
+# On Linux the game checks its licence through a running Steam client (the rockstar prefix's,
+# capture/host/steam.py), which must list it as installed: `capture host steam kcd` links the
+# downloaded folder into that client's library and writes this manifest (values from the PC's
+# appmanifest_379430.acf, 2026-11-24, without the DLC depot 836900 the node did not download).
+STEAM = {"app": STEAM_APP, "name": "Kingdom Come: Deliverance", "installdir": "KingdomComeDeliverance", "buildid": "22623230",
+         "size": 64209572471,
+         "depots": {"379432": ("5694983311934705492", 64160333425), "379433": ("717100730472011277", 49239046)},
+         "shared": {"228986": "228980", "228990": "228980"}}
 FOLDER = paths.FOLDER
 LOCK = os.path.join(HERE, "mods.lock.json")
 OPTIONS = {"api": "d3d11", "resolution": "2560x1440"}
@@ -61,7 +69,10 @@ CVARS = [
     ("r_VSync", "0", "frame rate sets the shot time"),
     ("sys_MaxFPS", "0", "no frame rate cap"),
     ("wh_sys_HideIntroVideo", "1", "no intro films at start"),
-    ("sys_PakPriority", "0", "loose files in Data are read: our script's long inputs (Data\\capture_mod_in)"),
+    ("sys_PakPriority", "2", "the game's own files from its paks only: with loose files first (0) or after the paks (1), "
+     "every file the engine looks for and lacks (level of detail models, ...) is looked up on disk, which under Wine on a "
+     "network folder took minutes per level (the menu's did not load in 5 min on CoreWeave, 2026-11-24); our script "
+     "switches to 0 for each read of its long inputs (Data\\capture_mod_in)"),
     ("r_Width", "2560", "the capture size"),
     ("r_Height", "1440", "the capture size"),
     ("r_Fullscreen", "0", "a window: frames are read from it and keys sent to it"),
@@ -115,6 +126,10 @@ def installed_dirs(game_dir, system):
     return [paths.bin_dir(game_dir), os.path.join(system.program_data(), "ReShade")]
 
 
+MOD_STATUS = ("<ModStatus>\n  <modFolderWasMoved>true</modFolderWasMoved>\n"
+              "  <playerWasNotified>true</playerWasNotified>\n</ModStatus>\n")
+
+
 def steps(ctx):
     g, opt = ctx.game_dir, ctx.options
     b = paths.bin_dir(g)
@@ -127,11 +142,16 @@ def steps(ctx):
 
     # our session script as a mod, run by the game at start
     m = paths.mod_dir(g)
+    # Without this file the game takes its first start for an update from an older version and
+    # moves the whole mods folder, ours included, to mods_old (a CoreWeave node, 2026-11-24: then
+    # "0 mods loaded"). The game's own copy, as it wrote it on the PC, never written over.
+    out.append(WriteText(os.path.join(g, "mod_status.xml"), MOD_STATUS, tag="scripts", only_if_missing=True,
+                         what="the game's mod status: mods were set up (it moves Mods\\ away at a first start otherwise)"))
     out.append(WriteText(os.path.join(m, "mod.manifest"), MANIFEST, tag="scripts", what="the mod's manifest"))
     out.append(CopyFile(build_pak, os.path.join(m, "Data", "capture_mod.pak"), tag="scripts", closed=True,
                         what="capture_mod.pak (adapters/kcd/lua/capture_mod.lua)"))
     out.append(MakeDir(exchange, tag="scripts"))
-    out.append(MakeDir(paths.inbox(g), tag="scripts"))     # our script's long inputs (sys_PakPriority 0)
+    out.append(MakeDir(paths.inbox(g), tag="scripts"))     # our script's long inputs (read with sys_PakPriority 0)
 
     # ReShade (dxgi.dll beside the exe, no effects) and our add-on
     out += reshade.steps(ctx, exe, api)

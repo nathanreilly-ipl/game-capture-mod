@@ -10,6 +10,7 @@ neither `capture/` nor an adapter asks which system it is on:
     stop(game, exe_names)             end them (and, under Proton, everything else in its prefix)
     start(game, exe, args, ...)       start the game's exe
     check_start(game)                 raise if this process could not start the game (before closing one)
+    start_beside_steam(game, exe, ...)  start the exe where the prefix's Steam client runs (a game that checks its licence with Steam)
     game_path(path, game)             a path of this machine as code inside the game sees it
     host_path(path, game)             a path the game gave, on this machine
     use_prefix(game, name)            the game shares the prefix `name` with others (one launcher, one sign-in)
@@ -41,6 +42,7 @@ pids = _impl.pids
 stop = _impl.stop
 start = _impl.start
 check_start = _impl.check_start
+start_beside_steam = _impl.start_beside_steam
 game_path = _impl.game_path
 host_path = _impl.host_path
 use_prefix = _impl.use_prefix

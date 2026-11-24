@@ -98,7 +98,7 @@ class Session(ConsoleSession):
         r = self.cmd("raw", wrapped, timeout=timeout, check=False)
         return r.data[0] if r.data else None
 
-    # --- long inputs as files (sys_PakPriority 0: Script.LoadScript reads loose files in Data) ----
+    # --- long inputs as files (Script.LoadScript reads loose files in Data while sys_PakPriority is 0) --
     def put(self, name, lua_text):
         """Writes <game>\\Data\\capture_mod_in\\<name>.lua for our script to run (cm load)."""
         d = paths.inbox()
@@ -126,7 +126,9 @@ class Session(ConsoleSession):
     def reload_script(self, text):
         """Our script into the running game through a file (fast); falls back to console pieces."""
         self.put("capture_mod", text)
-        r = self.cmd("raw", 'Script.LoadScript("capture_mod_in/capture_mod.lua",true,true) '
+        # loose files are read at sys_PakPriority 0 only; the game runs at 2 (install.py)
+        r = self.cmd("raw", 'local w=System.GetCVar("sys_PakPriority") System.SetCVar("sys_PakPriority",0) '
+                     'Script.LoadScript("capture_mod_in/capture_mod.lua",true,true) System.SetCVar("sys_PakPriority",w) '
                      'System.LogAlways("[CaptureMod] e|{seq}|ok|")', check=False)
         if r.ok and self.hello():
             return r

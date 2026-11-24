@@ -39,8 +39,8 @@ def user_cfg(game=None):
 
 
 def inbox(game=None):
-    """Long inputs for our script, as Lua files it runs (Script.ReloadScript reads loose files in
-    Data once sys_PakPriority is 0): <game>\\Data\\capture_mod_in."""
+    """Long inputs for our script, as Lua files it runs (Script.LoadScript reads loose files in
+    Data while sys_PakPriority is 0, which our script sets for each read): <game>\\Data\\capture_mod_in."""
     return os.path.join(game or game_dir(), "Data", "capture_mod_in")
 
 

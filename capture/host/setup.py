@@ -91,6 +91,8 @@ def status(log=print):
     row("32-bit Windows programs (wow64/tls32.c, for a Steam client in a prefix)", proton.tls32(),
         proton.tls32() or "not built (host setup builds it where there is a C compiler)", needed=False)
     row("ffmpeg (packaging takes into videos)", _ffmpeg(), _ffmpeg() or "none installed, none in the conda environment %s" % proton.env_dir())
+    row("xclip (the console paste of The Witcher 3 and Kingdom Come: Deliverance)", proton.tool("xclip"),
+        proton.tool("xclip") or "none installed, none in the conda environment %s" % proton.env_dir(), needed=False)
     alive = proton.display_alive() if proton.tool("xdotool") else False
     row("headless display %s (%s)" % (t["display"], t["screen"]), alive, "up" if alive else "not running; started with the game", needed=False)
     log("%s  (%s)" % ("ready: games can be started here" if ok else "not ready: run `%s host setup`" % proton.CLI, proton.host_dir()))
@@ -170,7 +172,7 @@ def _setup_ngx(part, log):
 
 
 def _setup_conda(part, log):
-    """Ordinary programs (ffmpeg) go from conda-forge into one conda environment (proton.env_dir),
+    """Ordinary programs (ffmpeg, xclip) go from conda-forge into one conda environment (proton.env_dir),
     made here if it is not there. Nothing is done when the programs are already found."""
     if all(_ffmpeg() if prog == "ffmpeg" else proton.tool(prog) for prog in part["programs"]):
         return

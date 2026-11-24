@@ -355,15 +355,26 @@ CaptureMod.ops.remove = function(seq, points)
 end
 
 -- Long inputs come as Lua files: Python writes <game>\Data\capture_mod_in\<name>.lua, which sets
--- CaptureMod.inbox, and cm load runs it (Script.LoadScript reads loose files once sys_PakPriority
--- is 0, user.cfg; 2026-11-23). Log lines are cut at about 3,900 characters, so long answers are
--- split into lines of at most CaptureMod.LINE characters.
+-- CaptureMod.inbox, and cm load runs it. Script.LoadScript reads loose files only while
+-- sys_PakPriority is 0 (2026-11-23); the game runs at 2 (paks only, user.cfg: with loose files
+-- looked up, a level took minutes to load from a network folder under Wine, 2026-11-24), so the
+-- priority is 0 for the one read and goes back (at 2 the same load gave nothing, at 0 the file).
+-- Log lines are cut at about 3,900 characters, so long answers are split into lines of at most
+-- CaptureMod.LINE characters.
 CaptureMod.LINE = 3500
+
+function CaptureMod.load_loose(path)
+    local was = System.GetCVar("sys_PakPriority")
+    if was ~= 0 then System.SetCVar("sys_PakPriority", 0) end
+    local done, err = pcall(Script.LoadScript, path, true, true)    -- forced: ReloadScript skipped a file it had run
+    if was ~= 0 then System.SetCVar("sys_PakPriority", was) end
+    if not done then error(err) end
+end
 
 CaptureMod.ops.load = function(seq, name)
     CaptureMod.inbox = nil
-    Script.LoadScript("capture_mod_in/" .. name .. ".lua", true, true)    -- forced: ReloadScript skipped a file it had run
-    if CaptureMod.inbox == nil then error("capture_mod_in/" .. name .. ".lua did not load (sys_PakPriority 0?)") end
+    CaptureMod.load_loose("capture_mod_in/" .. name .. ".lua")
+    if CaptureMod.inbox == nil then error("capture_mod_in/" .. name .. ".lua did not load") end
     ok(seq, "loaded " .. name)
 end
 

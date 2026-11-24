@@ -46,6 +46,26 @@ QUALITY = [
     ("PostProcess", "SharpenAmount", "0", "no sharpening"),
 ]
 
+# Until HasSetup is set the game runs its first-start hardware setup at every start, and that
+# setup turned ray tracing and Ray Reconstruction off and lowered the detail below, over the
+# values the install had written (a CoreWeave node, 2026-11-24: reverted at two starts in a row,
+# LaunchCounter stayed 0). The values are the PC's after its own setup (the game's highest), so
+# every machine renders the same detail.
+DETAIL = [
+    ("Hidden", "HasSetup", "true", "the game's first-start setup is done (it reverts ray tracing and detail otherwise)"),
+    ("Rendering", "CascadeShadowmapSize", "4096", "sun shadows at the highest resolution"),
+    ("Rendering", "CascadeShadowDistanceScale0", "1.8", "sun shadows' near range, the highest"),
+    ("Rendering", "CascadeShadowDistanceScale1", "1.5", "sun shadows' far range, the highest"),
+    ("Rendering", "GrassDensity", "6000", "grass density, the highest"),
+    ("Rendering", "MeshLODDistanceScale", "1.5", "detail distance, the highest"),
+    ("Rendering", "TextureMipBias", "-2", "texture detail, the highest"),
+    ("Rendering", "GlobalOceanTesselationFactor", "52", "water detail, the highest"),
+    ("Rendering", "HairWorksAALevel", "8", "hair edges, the highest"),
+    ("Rendering/SpeedTree", "FoliageShadowDistanceScale", "54", "foliage shadows' range, the highest"),
+    ("LevelOfDetail", "DecalsHideDistance", "90", "decals' range, the highest"),
+    ("Gameplay/EntityPool", "SpawnedLimit", "160", "people about, the highest"),
+]
+
 # no hints or welcome panels over the picture, and none that pause the world after a load
 QUIET = [
     ("Gameplay", "HudTutorialEnabled", "false", "no tutorial hints on screen"),
@@ -61,6 +81,10 @@ QUIET = [
 def ray_tracing(path_tracing):
     return [
         ("Rendering/RT", "EnableRT", "true", "ray-traced lighting, shadows and reflections"),
+        ("Rendering/RT", "EnableRtRadiance", "true", "ray-traced reflections (as on the PC)"),
+        ("Rendering/RT", "RTAOEnabled", "true", "ray-traced ambient occlusion (as on the PC)"),
+        ("Rendering/RT", "RTGIPreset", "true", "ray-traced global illumination (as on the PC)"),
+        ("Rendering/RT", "Shadows", "2", "ray-traced shadows (as on the PC)"),
         ("Rendering/RT/PathTracer", "PTEnable", "true" if path_tracing else "false",
          "path tracing" if path_tracing else "path tracing off (ray tracing only)"),
     ]
@@ -68,7 +92,7 @@ def ray_tracing(path_tracing):
 
 def profile(size=(2560, 1440), path_tracing=True):
     """[(section, key, value, why)] for a capture install."""
-    return window(size) + QUALITY + QUIET + ray_tracing(path_tracing)
+    return window(size) + QUALITY + DETAIL + QUIET + ray_tracing(path_tracing)
 
 
 def differences(path, wanted):

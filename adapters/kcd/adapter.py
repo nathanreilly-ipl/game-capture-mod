@@ -11,8 +11,9 @@ through the console (-devmode; the key left of 1; Ctrl+V pastes; a line of `#` r
 `#CaptureMod.cmd(seq, op, args...)`; answers come out through kcd.log in the game folder
 (System.LogAlways, there at once). A console line takes at most about 250 characters (a 252-character
 line ran, 332 did not), so longer commands go over in pieces, and long inputs (rays) go as Lua files
-written into <game>\\Data\\capture_mod_in that our script runs: Script.ReloadScript reads loose files
-there once sys_PakPriority is 0 (user.cfg). Log lines are cut at about 3,900 characters, so long
+written into <game>\\Data\\capture_mod_in that our script runs: Script.LoadScript reads loose files
+there while sys_PakPriority is 0, which our script sets for each read (the game runs at 2, paks only:
+install.py). Log lines are cut at about 3,900 characters, so long
 answers come in several. Lua has no io here. There is an eval (cm eval; probes/repl.py "+<lua>") and a
 reload without a restart (repl.py --reload: the script through the file route in 1.5 s). 2,000 rays
 in 0.68 s.
@@ -204,10 +205,11 @@ class KcdAdapter(Adapter):
         st = self.sess.state()
         if st.get("ingame") != "1":
             raise AdapterError("no save is loaded in the game")
-        pak = self.sess.cmd("cvar", "sys_PakPriority").data
-        if not pak or pak[0] not in ("0", "0.0"):
-            raise AdapterError("sys_PakPriority is %s, not 0 (our script's long inputs would not be read); "
-                               "close the game and run: capture install kcd --only settings" % (pak[0] if pak else "?"))
+        try:      # the route of long inputs (rays, poses): a file our script reads (sys_PakPriority 0 for it)
+            self.sess.send_numbers("check", [1, 2, 3])
+        except AdapterError as e:
+            raise AdapterError("our script's long inputs are not read (%s); close the game and run: "
+                               "capture install kcd --only scripts,settings" % e)
         self.sess.cmd("savelock", 1)   # a session moves the player about: nothing of it into the saves
         self.applied = {}
         if self.settings.get("visual"):

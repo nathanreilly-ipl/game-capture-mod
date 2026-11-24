@@ -678,11 +678,7 @@ class Witcher3Adapter(Adapter):
         pts, nrm = np.zeros((n, 3)), np.zeros((n, 3))
         for i0 in range(0, n, RAYS_PER_COMMAND):
             i1 = min(n, i0 + RAYS_PER_COMMAND)
-            r = self.sess.cmd("rays", pack(np.hstack([starts[i0:i1], ends[i0:i1]]).ravel()), timeout=30)
-            count, _, body = r.data[0].partition("|")
-            answers = body.split("/")
-            if int(count) != i1 - i0 or len(answers) != i1 - i0:
-                raise AdapterError("the game answered %s of %d rays" % (count, i1 - i0))
+            answers = self._rays(np.hstack([starts[i0:i1], ends[i0:i1]]))
             for k, a in enumerate(answers):
                 v = a.split("_")
                 if v[0] == "1":
@@ -690,6 +686,25 @@ class Witcher3Adapter(Adapter):
                     pts[i0 + k] = [float(x) for x in v[1:4]]
                     nrm[i0 + k] = [float(x) for x in v[4:7]]
         return hit, pts, nrm
+
+    def _rays(self, seg):
+        """The game's answers for rays seg (N x 6: start, end), one command; a command the game does
+        not run in four tries is split in two and sent again (on Linux about one 400-ray command in
+        50 got no answer in four tries, 2026-11-24, before Ctrl+V was fixed in window_x11.paste;
+        a take's 165 such commands then failed it)."""
+        try:
+            r = self.sess.cmd("rays", pack(seg.ravel()), timeout=30)
+        except AdapterError as e:
+            if len(seg) < 50 or "no answer" not in str(e):
+                raise
+            half = len(seg) // 2
+            self.sess.log("%d rays got no answer (%s); sent again as %d and %d" % (len(seg), str(e)[:160], half, len(seg) - half))
+            return self._rays(seg[:half]) + self._rays(seg[half:])
+        count, _, body = r.data[0].partition("|")
+        answers = body.split("/")
+        if int(count) != len(seg) or len(answers) != len(seg):
+            raise AdapterError("the game answered %s of %d rays" % (count, len(seg)))
+        return answers
 
     # --- moving things near the rig ------------------------------------------------------------
     def obstacles(self, center, radius):

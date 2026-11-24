@@ -46,7 +46,11 @@ def to_menu(timeout=300, log=print):
     window.keep_awake()
     close_game(log)
     b = paths.bin_dir()
-    host.start(paths.GAME, os.path.join(b, paths.EXE_NAME), ARGS, cwd=b, dll_overrides="dxgi=n,b", app_id=paths.STEAM_APP)
+    # The game checks its licence with a running Steam client at start; under Proton it runs in the
+    # prefix that has one (adapters/kcd/__init__.py), and Wine shows it only the CPUs it may use:
+    # CryEngine's processor survey crashed on a 128-thread node (2026-11-24)
+    host.start_beside_steam(paths.GAME, os.path.join(b, paths.EXE_NAME), ARGS, cwd=b, dll_overrides="dxgi=n,b",
+                            app_id=paths.STEAM_APP, limit_cpus=True)
     log("starting Kingdom Come: Deliverance (its exe, -devmode)")
     s = Session(log)
     t0 = time.time()

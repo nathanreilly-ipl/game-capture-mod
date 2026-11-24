@@ -1239,8 +1239,13 @@ python -m adapters.kcd.probes.repl --reload "=state" "+return player:GetWorldPos
   folder (`System.LogAlways`, there at once).
 - **Long commands.** A console line takes about 250 characters, so longer commands go in pieces.
 - **Bulk input.** Rays and other bulk data go as Lua files written into `<game>\Data\capture_mod_in`.
-  Our script runs them with `Script.LoadScript`, which reads loose files once `sys_PakPriority` is
-  0 (`user.cfg`). `ReloadScript` skipped a file it had run before. Lua has no `io` here.
+  Our script runs them with `Script.LoadScript`, which reads loose files only while
+  `sys_PakPriority` is 0. The game runs at 2 (paks only, `user.cfg`) and our script sets 0 for each
+  such read and back (at 2 the same load gave nothing, with the switch the file; 2026-11-24). At 0
+  or 1 every file the engine looks for and lacks (level-of-detail models and the like) is looked up
+  on disk: free on the PC, but under Wine on CoreWeave's network folders each miss cost several
+  round trips and the main menu's level did not load in 5 minutes. `ReloadScript` skipped a file
+  it had run before. Lua has no `io` here.
 - **Long answers.** Log lines are cut at about 3,900 characters, so long answers come in several
   lines.
 - **Iterating.** There is a real eval (`+<lua>`) and a reload without a restart: `--reload` sends the

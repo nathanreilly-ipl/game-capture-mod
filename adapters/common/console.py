@@ -25,6 +25,7 @@ it with Esc, which is only pressed while the state says a menu is open.
 import os
 import time
 
+from capture import host
 from capture.adapter import AdapterError
 
 from . import frames, mem, window
@@ -85,7 +86,11 @@ class ConsoleSession:
         self.log_path, self.exchange = log_path, exchange
         self.log = log
         # seconds a key is held and between keys; lengthened after a miss, and to 1.5 frames at the
-        # game's frame rate when the session starts (_pace_keys)
+        # game's frame rate when the session starts (_pace_keys). Under X and Wine at least 60 ms
+        # (The Witcher 3 on CoreWeave, 2026-11-24; the misses that led to it were mostly Ctrl+V
+        # arriving as a plain "v", fixed in window_x11.paste); Windows keeps its timing.
+        if host.LINUX:
+            key_hold, key_gap = max(key_hold, 0.06), max(key_gap, 0.06)
         self.key_hold, self.key_gap = key_hold, key_gap
         self._hwnd = None
         self._closing = False
@@ -253,7 +258,17 @@ class ConsoleSession:
             if open_now is None or open_now or attempt % 2 == 1:
                 window.press(h, self.CONSOLE_KEY, hold_s=0.05)
             time.sleep(0.5)
-        raise AdapterError("no answer from the game's script to %s (%s%s)" % (text[:60], self.missing_hint(), self.log_path()))
+        # kept for a look at what did not run (how The Witcher 3's Linux misses were found,
+        # 2026-11-24: the console history then showed what the game had received)
+        kept = ""
+        try:
+            kept = os.path.join(self.exchange(), "unanswered_%d.txt" % seq)
+            with open(kept, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+        except (OSError, TypeError):
+            kept = ""
+        raise AdapterError("no answer from the game's script to %s (%d characters%s; %s%s)" % (
+            text[:60], len(text), ", kept in " + kept if kept else "", self.missing_hint(), self.log_path()))
 
     def wait_line(self, kind, seq, mark, timeout=30.0):
         """The body of the first log line "<kind>|<seq>|..." after mark (for a command that

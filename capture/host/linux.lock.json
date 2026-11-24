@@ -44,11 +44,11 @@
    "licence": "NVIDIA software licence: not redistributable"
   },
   "conda": {
-   "title": "ffmpeg (packaging takes into videos), from conda-forge into the machine's conda environment (CAPTURE_ENV, config host.env, else ~/.conda/envs/game-capture); only installed when no ffmpeg is found",
+   "title": "ffmpeg (packaging takes into videos) and xclip (the console paste of The Witcher 3 and Kingdom Come: Deliverance), from conda-forge into the machine's conda environment (CAPTURE_ENV, config host.env, else ~/.conda/envs/game-capture); only installed when not found",
    "page": "https://anaconda.org/conda-forge/ffmpeg",
    "channel": "conda-forge",
-   "packages": ["ffmpeg"],
-   "programs": ["ffmpeg"],
+   "packages": ["ffmpeg", "xclip"],
+   "programs": ["ffmpeg", "xclip"],
    "licence": "GPL (conda-forge's gpl build)"
   }
  }
