@@ -1187,6 +1187,126 @@ python -m adapters.witcher3.probes.scout_fast_travel poppystone=mulbrydale      
   the second difference falls to 5.4), not flicker. The solver declined a spot beside the market
   stalls of Hierarch Square (no clear 2.4 m orbit): pick open spots for this rig.
 
+## Kingdom Come: Deliverance adapter
+
+Kingdom Come: Deliverance (`kcd`: Warhorse, CryEngine, Direct3D 11; Steam app 379430, the exe
+1.9.7.0, the main menu 1.9.8-404). Set up and measured on 2026-11-23 on the Windows PC (RTX 5090);
+`adapters/kcd/adapter.py` has every number and `probes/` how each was found.
+
+### Setup
+
+```powershell
+.\capture.ps1 install kcd             # game closed: our mod, ReShade + add-on (dxgi.dll), user.cfg (every part but machine)
+.\capture.ps1 verify kcd --launch
+python -m adapters.kcd.probes.scout_places --list                                   # the developers' named places
+python -m adapters.kcd.probes.scout_places "Rataje - pillory=rattay-pillory"         # a location at one
+python -m adapters.kcd.probes.repl --reload "=state" "+return player:GetWorldPos().x"  # reload our script, any Lua
+.\capture.ps1 submit --game kcd --location kcd-rattay-pillory-001 --provider ring --set count=8 --set last=30
+.\capture.ps1 worker --game kcd --once
+```
+
+- **Script layer: the game's own Lua.** Our script (`adapters/kcd/lua/capture_mod.lua`) is a mod
+  (`<game>\Mods\capture_mod`: a manifest with no version limits, and a pak holding
+  `Scripts\Startup\capture_mod.lua`), which the game runs at the main menu. A manifest that named
+  1.9.7 got the mod disabled ("doesn't support game version '1.9.8'").
+- **In and out.** Commands go in through the console (`-devmode`; the key left of 1; Ctrl+V
+  pastes; a line starting with `#` runs as Lua). Answers come out through `kcd.log` in the game
+  folder (`System.LogAlways`, there at once).
+- **Long commands.** A console line takes about 250 characters, so longer commands go in pieces.
+- **Bulk input.** Rays and other bulk data go as Lua files written into `<game>\Data\capture_mod_in`.
+  Our script runs them with `Script.LoadScript`, which reads loose files once `sys_PakPriority` is
+  0 (`user.cfg`). `ReloadScript` skipped a file it had run before. Lua has no `io` here.
+- **Long answers.** Log lines are cut at about 3,900 characters, so long answers come in several
+  lines.
+- **Iterating.** There is a real eval (`+<lua>`) and a reload without a restart: `--reload` sends the
+  script through the file route in 1.5 s. 2,000 rays take 0.68 s.
+- **Unattended start** (`adapters/kcd/launch.py`): the exe with `-devmode`; Steam picks the game up
+  on its own. `user.cfg` turns the intro films off. Enter at the main menu is Continue: 51 s to a
+  loaded save (29 s to the menu). The first start on a machine shows the publisher's EULA, which E
+  accepts.
+- **A loaded save, not the menu.** The main menu is a view of the real Rattay level with a player in
+  it, so a loaded save is told by the player standing away from the menu's spot.
+- **Scouting** by name at the developers' named teleports (`places.py`, read from the game's
+  `Scripts.pak`: 40 squares, pubs, castles, mills, camps). Locations get the nearest within 400 m as
+  their title. Tried at the Rattay pillory, Talmberg, the Sasau bridge and Ledetchko.
+  `capture scout --game kcd --at x,y,z` works as for every game. No in-game overlay (BACKLOG).
+
+### How a take is captured in Kingdom Come: Deliverance (measured 2026-11-23)
+
+- **Freeze.** CryEngine's time scale at 0 (`t_Scale`). Over 6.6 s none of 11 people moved, the game's
+  timer and the world clock stood still, and frames kept rendering. The same view 20 and 300
+  frames into a hold differs by 0.003 levels of 255.
+- **Time steps.** `t_FixedStep` makes every frame advance exactly dt/n of game time. The world runs
+  for n frames, counted by a per-frame script timer (script timers follow game time, so none
+  fires while held), and is held again.
+  - CryEngine smooths frame times, so coming out of a hold the first frames ramped up from 0: steps
+    of 3.8 to 9.5 ms for 33.3 asked.
+  - With `t_Smoothing 0`, every step of 1/30 s in 8 frames advanced 33.3330 ms, each frame exactly
+    4.1666 ms. These are even frames by construction, which cloth needed in The Witcher 3.
+- **Camera.** `CryAction.SetViewCameraByAngles` takes degrees as CryEngine's Ang3: pitch, roll, yaw,
+  rotation Rz·Ry·Rx. The field of view is vertical. 20 random poses with roll read back within
+  0.004 degrees and to the millimetre. A 2 degree turn measures 39.85, 59.48 and 89.44 degrees for
+  40, 60 and 90, within 0.6%. A roll of 10 turns the picture 10.00 degrees.
+- **The player does not exist for the scene.** For a take he is a ghost where he stands: body
+  hidden, perceived by nobody, and without physics.
+  - The "perceived by nobody" part is the developers' invisibility command, run through the game's
+    own Haste, whose stale state is cleared first: a second command otherwise failed inside Haste.
+  - Followed by entity id, with the player put 3 m ahead (`probes/npc_watch_probe.py`): both walkers
+    went straight through his spot, 0.28 and 0.19 m from it.
+  - Hidden only, one walker of four strayed 2.3 m around him. Ten trials: a direction, not a fine
+    measurement.
+- **Settle.** Without temporal anti-aliasing a settled frame matches to 0.003 levels of 255, and the
+  first frame after a cut to 0.18. With SMAA 2TX, frames alternate between two sub-pixel offsets by
+  0.2 to 0.75 with no trend after a cut. So: 20 frames per shot, and two frames in a row averaged.
+- **Exposure** does not re-adapt between views. A view reads 80.21 of 255 after itself, 80.33 just
+  after the sky (242) and 80.01 after the darkest view.
+- **The look.** The game's top settings:
+  - Ultra High on every category, SMAA 2TX, object detail and view distances at the menu's
+    maximum, no VSync (it capped the game at 60 frames/s);
+  - lens effects, depth of field and motion blur off.
+
+  The game's `attributes.xml` overrides `user.cfg` at start, so the session sets these through the
+  console and reads them back. Against the game's High at one held instant: softer, fuller shading
+  and more grass and rocks, with a mean change of 2.5 to 7.0 levels of 255 per view
+  (`probes/visual_probe.py`).
+- **No DLSS 5.** The game has no upscaler for OptiScaler to hook. The free HD texture pack (a Steam
+  DLC) is not installed here.
+- **Scene and moving things.** Rays against terrain and static objects. People and animals come back
+  as boxes from their own bounding boxes; none counts as owned, since saving is locked during a
+  session and a removal never reaches a save.
+- **The game's timer is not the world's time.** Held, the game's own timer (`System.GetCurrTime`, a
+  float) creeps although nothing moves. One pose held 420 s gave the same frame at both ends (0.0038
+  levels of 255), and none of 17 people moved 0.1 mm, while the timer moved 5.9 ms
+  (`probes/creep_probe.py`).
+  - The first takes logged that timer and saw it change by one float step within a clip frame.
+  - The take log now carries the world's time as our script counts it: the exact sum of the steps,
+    and the timer only while the world runs free.
+- **Clean slate (2026-11-23, this PC).** Every file of ours was moved out of the game folder (kept in
+  `out\clean_slate_backup\<stamp>_kcd`): the mod, `Data\capture_mod_in`, `user.cfg`, ReShade, its
+  settings, the add-on and the install record.
+  - `capture install kcd --mods out\bundles\capture-mods-kcd.zip`, with every part but `machine`:
+    22 steps.
+  - `capture verify kcd --launch` then passed every check but that administrator step: 84 frames/s,
+    a frozen take of 8 cameras over 3 clip frames (24 shots in 64 s, none recaptured), steps exact
+    to 0.00 ms, and packaging.
+
+### Takes (2026-11-23, queued and run by `capture worker` with no one at the keyboard)
+
+- **Ring over time**, Rattay pillory: 8 cameras x 30 clip frames, 240 shots in 8.6 min (2.07 s per
+  shot), none recaptured, no health problems.
+  - The solver's 66,000 rays went through the file inbox, and the ring shrank to 2 m to clear the
+    stalls.
+  - Every step was 33.3330 to 33.3340 ms.
+  - One clip frame logged two values of the game's timer one float step apart: see above; the world
+    did not move.
+- **Near sweep** (`--solver yiming_stdm --cameras H_near_sweep_t000`), the same spot: 345 poses in
+  7.8 min (1.32 s per shot), none recaptured.
+  - `tools/sweep_flicker.py`: brightness jitter 0.055 levels of 255, roughness 9.86 (camera motion
+    past people near the lens). Compare it only with sweeps at the same spot.
+  - The first attempt failed after one shot: probes typed into the game while the worker ran and put
+    the console out of step. The session now looks at a frame to tell whether the console is open
+    (the solid black line at its bottom edge).
+
 ## Known gaps
 
 - The add-on reads the frame after ReShade's effects, so a game's visual set (RDR2's preset, ray

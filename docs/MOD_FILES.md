@@ -535,6 +535,8 @@ Installed straight from the archive (its `Main Package` folder onto the game fol
 | `onigiri/dlcpacks/NVE_3/dlc.rpf` | 535,879,168 |
 | `onigiri/dlcpacks/NVE_props_replace/dlc.rpf` | 405,273,600 |
 
+## Kingdom Come: Deliverance (Steam)
+
 ## Red Dead Redemption 2 (story mode, Steam)
 
 ### Script Hook RDR2 1.0.1491.17 (with its ASI loader and Native Trainer)

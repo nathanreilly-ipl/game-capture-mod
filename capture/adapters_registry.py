@@ -8,7 +8,8 @@ from .paths import REPO
 GAMES = {"rdr2": ("adapters.rdr2.adapter", "RDR2Adapter"), "gtav": ("adapters.gtav.adapter", "GTAVAdapter"),
          "gtave": ("adapters.gtav.adapter", "GTAVEnhancedAdapter"),
          "cyberpunk": ("adapters.cyberpunk.adapter", "CyberpunkAdapter"),
-         "witcher3": ("adapters.witcher3.adapter", "Witcher3Adapter")}
+         "witcher3": ("adapters.witcher3.adapter", "Witcher3Adapter"),
+         "kcd": ("adapters.kcd.adapter", "KcdAdapter")}
 
 
 def get(game):

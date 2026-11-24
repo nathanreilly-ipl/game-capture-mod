@@ -180,6 +180,23 @@ Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
   still gives cloth a little more than the step's own motion. Not found: whether the cloth solver
   sees the held frames as steps of zero length. Water through steps was not looked at either.
 
+## Kingdom Come: Deliverance: what is left
+
+Set up on 2026-11-23 (README: Kingdom Come: Deliverance adapter). Left:
+
+- **The HD texture pack**, a free Steam DLC, is not installed on this PC. Installing it is a Steam
+  action, for Nathan. The adapter's visual set would then turn on `wh_r_HDTextures`.
+- **A scouting overlay.** Our script could draw with the game's UI or debug text. Not started;
+  scouting is by agent (`probes/scout_places.py`, `capture scout`).
+- **Cloth through steps** against the world running unbroken (The Witcher 3's
+  `cloth_clip_probe.py`), at a place with banners. Steps are even by construction, so no kick from
+  shrinking frames is expected; a kick from resuming after a hold was not looked for.
+- **A photorealism mod.** Only the game's own top settings are used. Community overhauls (lighting,
+  ReShade looks) were not tried, and no ReShade grade either.
+- **Linux.** The paths go through `capture/host`, and the console paste through xclip or xsel
+  (written for The Witcher 3, not run). The game folder's `Data\capture_mod_in` and
+  `sys_PakPriority` carry over. Nothing has run under Proton yet.
+
 ## Every game: cloth through time steps
 
 Found in The Witcher 3 (2026-11-23): steps whose frames shrink towards the end (each frame covering
@@ -189,6 +206,26 @@ steps the same way (each frame a fifth of what is left, 36 frames per step) and 
 RDR2 (time scale 0.1) and GTA V (the minimum step) step at a constant rate. Check each with a clip of
 cloth through 30 steps beside the world running unbroken, as `adapters/witcher3/probes/
 cloth_clip_probe.py` does.
+
+## Games to buy, then add (Nathan, 2026-11-23)
+
+None of these is owned yet. Each one is to be bought, then brought in as a game adapter the usual way
+(AGENTS.md section 5). Engines and likely script layers below are first guesses from what is publicly
+known, not checked:
+
+- **Kingdom Come: Deliverance II** (Warhorse, CryEngine like the first). The first game's route is
+  likely to carry over: the console with `-devmode`, Lua through `#`, and `t_Scale` (`adapters/kcd`).
+- **Death Stranding 2: On the Beach** (Kojima Productions, Decima). Check first that a PC version
+  exists and how it is sold. No known script layer.
+- **S.T.A.L.K.E.R. 2: Heart of Chornobyl** (GSC, Unreal Engine 5). Likely UE4SS (Lua and the console
+  unlocked) or the official mod kit.
+- **Assassin's Creed Shadows** (Ubisoft, Anvil). Check for anti-tamper and the Ubisoft launcher
+  first. It has a photo mode; no known script layer.
+- **Green Hell** (Creepy Jar, Unity). Likely BepInEx or MelonLoader with C# plug-ins.
+- **The Vanishing of Ethan Carter** (The Astronauts; the Redux edition is Unreal Engine 4, the first
+  release Unreal Engine 3). Get the Redux edition; likely UE4SS.
+- **Max Payne 3** (Rockstar, RAGE like GTA IV). An ASI loader and community script hooks may exist;
+  check how the Rockstar launcher starts it.
 
 ## Next: finish the RDR2 install test (needs someone at the PC)
 

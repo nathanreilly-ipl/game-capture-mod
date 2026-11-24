@@ -616,6 +616,41 @@ def part_g(tmp, mods, system_class, label):
           "--no-optiscaler unloads it; uninstall put it all back" % (label, n))
 
 
+def part_h(tmp, mods, system_class, label):
+    """The Kingdom Come: Deliverance plan in a sandbox: install, again (nothing to do), uninstall."""
+    import zipfile
+    from adapters.kcd import paths as kp
+    lines = []
+    root = os.path.join(tmp, "kcd_" + label)
+    game = os.path.join(root, "game")
+    os.makedirs(os.path.join(game, os.path.dirname(kp.EXE)))
+    os.makedirs(os.path.join(game, "Data"))
+    open(os.path.join(game, kp.EXE), "wb").write(b"not the real game")
+    exchange = os.path.join(root, "user", "capture_mod")
+    opts = {"exchange_dir": exchange}
+    system, work = system_class(root), os.path.join(root, "work")
+    before = tree(game)
+    n = inst.install("kcd", game, opts, mods, system=system, work=work, log=lines.append)
+    b = kp.bin_dir(game)
+    for rel in ("dxgi.dll", "ReShade.ini", addon.NAME):
+        assert os.path.exists(os.path.join(b, rel)), rel
+    m = kp.mod_dir(game)
+    assert os.path.exists(os.path.join(m, "mod.manifest"))
+    with zipfile.ZipFile(os.path.join(m, "Data", "capture_mod.pak")) as z:
+        src = os.path.join(os.path.dirname(os.path.abspath(inst.installer("kcd").__file__)), "lua", "capture_mod.lua")
+        assert z.read("Scripts/Startup/capture_mod.lua") == open(src, "rb").read(), "the pak holds our script"
+    cfg = plan.Ini(kp.user_cfg(game))
+    assert cfg.get("", "sys_PakPriority") == "0" and cfg.get("", "r_Width") == "2560"
+    assert os.path.isdir(kp.inbox(game)) and os.path.isdir(exchange)
+    assert plan.Ini(os.path.join(b, "ReShade.ini")).get("CAPTURE_MOD", "OutputDir") == system.game_path(exchange)
+    assert inst.install("kcd", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    inst.uninstall("kcd", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    print("H ok (%s): the Kingdom Come: Deliverance plan in a sandbox: %d steps, then nothing to do; uninstall put "
+          "it all back" % (label, n))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mods", action="append", default=[])
@@ -669,6 +704,15 @@ def main():
             part_g(tmp, a.mods, FakeProton, "paths as under Proton")
         else:
             print("G skipped: ReShade or OptiScaler is not in out/mods, or our add-on is neither built nor in a bundle there")
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("kcd").LOCK), roots=a.mods,
+                              extra_names=addon.EXTRA_NAMES)
+        ours = addon.is_built() or (probe.named(addon.NAME) and probe.named(addon.STAMP))
+        if probe.ref("reshade", "ReShade64.dll").found and ours:
+            part_h(tmp, a.mods, FakeSystem, "paths as they are")
+            part_h(tmp, a.mods, FakeProton, "paths as under Proton")
+        else:
+            print("H skipped: ReShade is not in out/mods, or our add-on is neither built nor in a bundle there")
 
 
 if __name__ == "__main__":

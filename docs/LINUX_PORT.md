@@ -337,6 +337,7 @@ as they do on Windows; the Python side drives the game from outside.
 | RDR2 | Medium | Rockstar launcher; the camera pose is written into game memory for every shot; five PowerShell scripts and its own window and memory modules to replace; Reality Redemption 2 untested |
 | GTA V Enhanced | Hardest | Rockstar launcher and Steam's launch dialog; NaturalVision Enhanced; the protection crash; the minimum time step written into game memory; settings-menu navigation by screenshots |
 | The Witcher 3 (added 2026-11-23) | Easy, but untried | Starts from its exe with no launcher or Steam client; no script extender (its own script compiler); writes no game memory. Its commands are pasted into the debug console through the clipboard (`adapters/common/window_x11.py`: xclip or xsel and xdotool, written but not run) and answered in a log file; ReShade as `dxgi.dll` (override `dxgi,winmm=n,b`) |
+| Kingdom Come: Deliverance (added 2026-11-23) | Easy, but untried | Starts from its exe with `-devmode` (Steam picks it up); no script extender (the game's own Lua, our script a mod in `Mods\capture_mod`); writes no game memory. Commands are pasted into the CryEngine console through the clipboard (xclip/xsel, as for The Witcher 3) and answers read from `kcd.log` in the game folder; long inputs are Lua files in `<game>\Data\capture_mod_in` (`sys_PakPriority 0`). Direct3D 11: ReShade as `dxgi.dll` (override `dxgi=n,b`). No upscaler, so no DLSS 5 anywhere. The game's EULA shows at the first start (E accepts). |
 
 ## Our code
 

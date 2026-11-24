@@ -482,18 +482,18 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 
 ## 9. Where each game stands
 
-| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 | The Witcher 3 (`witcher3`) |
-|---|---|---|---|---|
-| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware | the game's own WitcherScript, a loose script mod compiled at start; no extender |
-| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` | none: commands pasted into the debug console, answers read from the scripts log (`adapters/witcher3/session.py`) |
-| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 | a pause of our own (exact); even time steps |
-| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under | the photo mode's camera without the photo mode, player invisible |
-| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot | does not re-adapt |
-| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged | 60 frames |
-| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried | the game's path tracing, DLSS 5 (skin 2, OptiScaler as `winmm.dll`) over the game's DLAA + ray reconstruction |
-| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part | yes (2026-11-23: every mod file moved out, 45 steps, again nothing to do, `verify --launch` passed but the machine step) |
-| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) | no (fast-travel scouting helper) |
-| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only | a ring over 30 clip frames and near sweeps (2026-11-23) |
+| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 | The Witcher 3 (`witcher3`) | Kingdom Come: Deliverance (`kcd`) |
+|---|---|---|---|---|---|
+| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware | the game's own WitcherScript, a loose script mod compiled at start; no extender | the game's own Lua: our script as a mod run at start; console lines in (about 250 characters; long inputs as Lua files in `Data\capture_mod_in`), `kcd.log` out |
+| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` | none: commands pasted into the debug console, answers read from the scripts log (`adapters/witcher3/session.py`) | none: `#CaptureMod.cmd(...)` typed into the console; an eval and a reload without restart (`probes/repl.py`) |
+| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 | a pause of our own (exact); even time steps | `t_Scale 0` (exact); steps by `t_FixedStep` in 8 even frames |
+| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under | the photo mode's camera without the photo mode, player invisible | `CryAction.SetViewCameraByAngles` (degrees), player a ghost (hidden, not perceived, no physics) |
+| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot | does not re-adapt | does not re-adapt |
+| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged | 60 frames | 20 frames, 2 frames averaged (SMAA 2TX) |
+| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried | the game's path tracing, DLSS 5 (skin 2, OptiScaler as `winmm.dll`) over the game's DLAA + ray reconstruction | the game's Ultra High, SMAA 2TX, distances at maximum; no upscaler, so no DLSS 5 |
+| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part | yes (2026-11-23: every mod file moved out, 45 steps, again nothing to do, `verify --launch` passed but the machine step) | yes (2026-11-23: every mod file moved out, 22 steps from the bundle, `verify --launch` passed but the machine step) |
+| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) | no (fast-travel scouting helper) | no (named-places scouting helper) |
+| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only | a ring over 30 clip frames and near sweeps (2026-11-23) | a ring over 30 clip frames and a near sweep (2026-11-23) |
 
 GTA V Legacy (`gtav`) still installs and runs but is dropped. Details and open items per game are
 in README and BACKLOG.
