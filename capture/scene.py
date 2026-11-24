@@ -69,6 +69,7 @@ def patches(points, normals, size):
 def capture(adapter, location, params=None, log=print):
     """Rays around the location; returns {"points", "normals"} (world) and the parameters."""
     prm = dict(DEFAULTS, **(params or {}))
+    adapter.enter_place(location.get("place"))
     adapter.go_to(location["position"], location.get("facing_deg", 0.0))
     ground = adapter.ground_point(location["position"])
     fwd, right, up = adapter.heading_basis(0.0)  # the game's axes

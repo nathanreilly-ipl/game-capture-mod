@@ -721,3 +721,5 @@ Installed straight from the archive (its `Main Package` folder onto the game fol
 | `RealityFX/passes/rt_uvs.cs.cso` | 7,204 | `cfa227c5abd111e8ea602f886a9eeabadde4d5824a774191d4a616d24ab3ff2d` |
 | `RealityRedemption2.ini` | 1,804 | `e51e65724a0dcfadc53fe5723c5a9371ea94e6ea27a77a8d9657ea8a58814b9b` |
 | `reshade-shaders/Shaders/RealityRedemption2.fx` | 33,285 | `5db765e61edf659ee9202036e3d30eb13c96f456fe27dba7245425484d8b8cda` |
+
+## The Witcher 3 (Steam)

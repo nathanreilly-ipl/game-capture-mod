@@ -336,6 +336,7 @@ as they do on Windows; the Python side drives the game from outside.
 | Cyberpunk 2077 | Easiest | Starts from its exe with no launcher; its mods have Linux instructions; the capture path writes no game memory (only finds the process and window, and grabs the window); DLSS 5 is optional there |
 | RDR2 | Medium | Rockstar launcher; the camera pose is written into game memory for every shot; five PowerShell scripts and its own window and memory modules to replace; Reality Redemption 2 untested |
 | GTA V Enhanced | Hardest | Rockstar launcher and Steam's launch dialog; NaturalVision Enhanced; the protection crash; the minimum time step written into game memory; settings-menu navigation by screenshots |
+| The Witcher 3 (added 2026-11-23) | Easy, but untried | Starts from its exe with no launcher or Steam client; no script extender (its own script compiler); writes no game memory. Its commands are pasted into the debug console through the clipboard (`adapters/common/window_x11.py`: xclip or xsel and xdotool, written but not run) and answered in a log file; ReShade as `dxgi.dll` (override `dxgi,winmm=n,b`) |
 
 ## Our code
 

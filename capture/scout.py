@@ -86,6 +86,8 @@ def scout(adapter, locations_path, name=None, at=None, facing=None, clock="12:00
     entry = {"id": loc_id, "game": adapter.name, "title": state.get("title"), "position": position,
              "facing_deg": facing, "clock": clock, "tags": list(tags), "note": note, "preview": preview,
              "scene": None, "scouted": now_iso()}
+    if state.get("place") is not None:
+        entry["place"] = state["place"]
     locs.add(locations_path, entry)
     adapter.publish_locations(locs.load(locations_path)["locations"])
     log("location %s (%s) at %s, facing %.1f; previews in %s" % (

@@ -16,10 +16,11 @@ from capture.host import proton
 
 # key names as window_win32.SCAN has them -> X key names
 KEYS = {"Enter": "Return", "Esc": "Escape", "Space": "space", "Back": "BackSpace", "Q": "q", "E": "e",
-        "Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right", "F3": "F3", "F4": "F4", "F5": "F5", "F6": "F6"}
+        "Up": "Up", "Down": "Down", "Left": "Left", "Right": "Right", "F3": "F3", "F4": "F4", "F5": "F5", "F6": "F6",
+        "Grave": "grave"}
 # a caller may pass a keyboard scan code where window_win32.SCAN has no name for the key
 SCAN_KEYS = {0x1C: "Return", 0x01: "Escape", 0x39: "space", 0x0E: "BackSpace", 0x10: "q", 0x12: "e", 0x48: "Up", 0x50: "Down",
-             0x4B: "Left", 0x4D: "Right", 0x3D: "F3", 0x3E: "F4", 0x3F: "F5", 0x40: "F6"}
+             0x4B: "Left", 0x4D: "Right", 0x3D: "F3", 0x3E: "F4", 0x3F: "F5", 0x40: "F6", 0x29: "grave"}
 # Windows virtual-key codes -> X key names, for press_vk (the function keys F1..F24 and letters, digits)
 VK = {0x0D: "Return", 0x1B: "Escape", 0x20: "space", 0x08: "BackSpace"}
 VK.update({0x70 + i: "F%d" % (i + 1) for i in range(24)})
@@ -134,6 +135,23 @@ def press_vk(win, vk, scan=0, hold_s=0.08):
     if vk not in VK:
         raise ValueError("no X key for virtual key 0x%02X" % vk)
     return _press(win, VK[vk], hold_s)
+
+
+def paste(win, text, hold_s=0.03):
+    """Puts text on the X clipboard (Wine hands it to the game as the Windows clipboard) and
+    sends Ctrl+V, only while the game window has the keyboard. Written for The Witcher 3 on
+    Windows (window_win32.paste) and NOT RUN on Linux yet (2026-11-23): it needs xclip or xsel
+    among the host's tools, and whether Wine picks the selection up in time is unmeasured."""
+    if not is_foreground(win):
+        return False
+    exe = proton.tool("xclip") or proton.tool("xsel")
+    if not exe:
+        raise RuntimeError("no xclip or xsel on this machine: pasting into the game needs one (%s host setup)" % proton.CLI)
+    args = [exe, "-selection", "clipboard", "-i"] if exe.rstrip("/").endswith("xclip") else [exe, "--clipboard", "--input"]
+    subprocess.run(args, input=text.encode("utf-8"), env=proton.x_env(), timeout=15, check=True)
+    _xdo("key", "--clearmodifiers", "ctrl+v")
+    time.sleep(hold_s)
+    return True
 
 
 class _XImage(ctypes.Structure):

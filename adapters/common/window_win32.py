@@ -127,7 +127,8 @@ class _INPUT(ctypes.Structure):
 
 
 SCAN = {"F3": 0x3D, "F4": 0x3E, "F5": 0x3F, "F6": 0x40, "Enter": 0x1C, "Esc": 0x01, "Space": 0x39, "Back": 0x0E,
-        "Q": 0x10, "E": 0x12, "Up": 0x48, "Down": 0x50, "Left": 0x4B, "Right": 0x4D}
+        "Q": 0x10, "E": 0x12, "Up": 0x48, "Down": 0x50, "Left": 0x4B, "Right": 0x4D,
+        "Grave": 0x29, "Ctrl": 0x1D, "V": 0x2F}   # Grave: the key left of 1 (` and ~)
 EXTENDED = {"Up", "Down", "Left", "Right"}   # the arrow keys, not the number pad's
 
 
@@ -153,6 +154,49 @@ def press_vk(hwnd, vk, scan=0, hold_s=0.08):
     for flags in (0, 0x0002):  # key down, then KEYEVENTF_KEYUP
         i = _INPUT(type=1)
         i.ki = _KEYBDINPUT(vk, scan, flags, 0, 0)
+        user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(_INPUT))
+        time.sleep(hold_s)
+    return True
+
+
+def set_clipboard(text):
+    """Puts text on the Windows clipboard (it replaces what the user had there)."""
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalAlloc.argtypes = [wt.UINT, ctypes.c_size_t]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    user32.SetClipboardData.argtypes = [wt.UINT, ctypes.c_void_p]
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    data = (text + "\0").encode("utf-16-le")
+    for _ in range(40):                 # another program may hold the clipboard for a moment
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.025)
+    else:
+        raise OSError("the clipboard is held by another program")
+    try:
+        user32.EmptyClipboard()
+        h = kernel32.GlobalAlloc(0x0002, len(data))      # GMEM_MOVEABLE; the clipboard owns it after SetClipboardData
+        p = kernel32.GlobalLock(h)
+        ctypes.memmove(p, data, len(data))
+        kernel32.GlobalUnlock(h)
+        if not user32.SetClipboardData(13, h):           # CF_UNICODETEXT
+            raise OSError("SetClipboardData failed")
+    finally:
+        user32.CloseClipboard()
+
+
+def paste(hwnd, text, hold_s=0.03):
+    """Puts text on the clipboard and sends Ctrl+V, only while the game window is in front. For a
+    game that takes long commands through a console of its own (The Witcher 3's debug console took
+    30,000 characters at once, 2026-11-23)."""
+    if not is_foreground(hwnd):
+        return False
+    set_clipboard(text)
+    for scan, flags in ((SCAN["Ctrl"], 0x0008), (SCAN["V"], 0x0008), (SCAN["V"], 0x000A), (SCAN["Ctrl"], 0x000A)):
+        i = _INPUT(type=1)
+        i.ki = _KEYBDINPUT(0, scan, flags, 0, 0)
         user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(_INPUT))
         time.sleep(hold_s)
     return True

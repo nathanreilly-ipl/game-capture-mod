@@ -88,6 +88,7 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     write_json(os.path.join(take_dir, "take.json"), take)
 
     log("going to %s" % location["id"])
+    adapter.enter_place(location.get("place"))
     adapter.go_to(location["position"], location.get("facing_deg", 0.0))
     if settings.get("clock"):
         take["clock"] = adapter.set_clock(settings["clock"])

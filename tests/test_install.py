@@ -16,6 +16,10 @@ F. The Cyberpunk 2077 plan in a sandbox, when its mod files and our two built pl
    available (built here, or prebuilt in a mods bundle): install, again (nothing to do), uninstall;
    once as on Windows and once with a machine that gives the game its paths differently (as under
    Proton: Z:\\...), where only the paths written for the game to read may differ.
+G. The Witcher 3 plan in a sandbox, the same two ways: our script as a loose script mod, the debug
+   console switched on in the game's own config file, ReShade as dxgi.dll with the add-on,
+   OptiScaler as winmm.dll (a stand-in for NVIDIA's model), the capture settings in the user
+   settings file; again (nothing to do), --no-optiscaler, uninstall.
 """
 import argparse
 import os
@@ -556,6 +560,62 @@ def part_f(tmp, mods, system_class, label):
     print("F ok (%s): the Cyberpunk 2077 plan in a sandbox: %d steps, then nothing to do; uninstall put it all back" % (label, n))
 
 
+def part_g(tmp, mods, system_class, label):
+    """The Witcher 3 plan in a sandbox: install, again (nothing to do), uninstall."""
+    from adapters.witcher3 import paths as wp, settings as ws
+    lines = []
+    root = os.path.join(tmp, "witcher3_" + label)
+    game = os.path.join(root, "game")
+    os.makedirs(os.path.join(game, os.path.dirname(wp.EXE)))
+    open(os.path.join(game, wp.EXE), "wb").write(b"not the real game")
+    base = os.path.join(game, "bin", "config", "base")
+    os.makedirs(base)
+    general = os.path.join(base, "general.ini")
+    open(general, "w", newline="\r\n").write("[General]\nConfigVersion=7\n")
+    # a settings file as the game writes it, on other settings than the capture profile
+    wanted = ws.profile((2560, 1440))
+    user = os.path.join(root, "user", "dx12user.settings")
+    os.makedirs(os.path.dirname(user))
+    ini = plan.Ini(user)
+    for section, key, value, _ in wanted:
+        ini.set(section, key, "false" if value == "true" else "true" if value == "false" else "1")
+    ini.save()
+    exchange = os.path.join(root, "user", "capture_mod")
+    opts = {"user_settings": user, "exchange_dir": exchange}     # everything else: the defaults (DLSS 5 on)
+    model = os.path.join(root, "model", "nvngx_dlssnr.dll")
+    os.makedirs(os.path.dirname(model))
+    open(model, "wb").write(b"stand-in for NVIDIA's model")
+    mods = list(mods) + [model]
+    system, work = system_class(root), os.path.join(root, "work")
+    before, user_before = tree(game), open(user, "rb").read()
+    assert ws.differences(user, wanted), "the sandbox starts on other settings"
+    n = inst.install("witcher3", game, opts, mods, system=system, work=work, log=lines.append)
+    b = wp.bin_dir(game)
+    for rel in ("dxgi.dll", "ReShade.ini", addon.NAME, "winmm.dll", "OptiScaler.ini", "nvngx.dll_dlssnr.dll", "nvngx_dlssnr.dll"):
+        assert os.path.exists(os.path.join(b, rel)), rel
+    oi = plan.Ini(os.path.join(b, "OptiScaler.ini"))
+    assert oi.get("DlssNr", "SkinStructure") == "2" and oi.get("Upscalers", "Dx12Upscaler") == "dlss"
+    script = os.path.join(wp.scripts_dir(game), "capture_mod.ws")
+    assert open(script, encoding="utf-8").read() == open(os.path.join(os.path.dirname(os.path.abspath(
+        inst.installer("witcher3").__file__)), "ws", "capture_mod.ws"), encoding="utf-8").read()
+    assert plan.Ini(general).get("General", "DBGConsoleOn") == "true"
+    assert plan.Ini(general).get("General", "ConfigVersion") == "7", "the rest of the game's file is kept"
+    assert os.path.isdir(exchange)
+    # what the game reads as a path is written as the game sees it
+    assert plan.Ini(os.path.join(b, "ReShade.ini")).get("CAPTURE_MOD", "OutputDir") == system.game_path(exchange)
+    assert not ws.differences(user, wanted), "the capture settings are in the game's settings file"
+    assert inst.install("witcher3", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    # --no-optiscaler: OptiScaler is no longer loaded (winmm.dll goes), the rest stays
+    assert inst.install("witcher3", game, dict(opts, optiscaler=False), mods, system=system, work=work, log=lines.append) == 1
+    assert not os.path.exists(os.path.join(b, "winmm.dll")) and os.path.exists(os.path.join(b, "dxgi.dll"))
+    inst.uninstall("witcher3", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert open(user, "rb").read() == user_before, "the game's settings are back"
+    print("G ok (%s): the Witcher 3 plan in a sandbox: %d steps (DLSS 5 as winmm.dll), then nothing to do; "
+          "--no-optiscaler unloads it; uninstall put it all back" % (label, n))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mods", action="append", default=[])
@@ -600,6 +660,15 @@ def main():
         else:
             print("F skipped: Cyber Engine Tweaks, RED4ext or ReShade is not in out/mods, or our add-on and clock plug-in "
                   "are neither built nor in a bundle there")
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, inst.installer("witcher3").LOCK), roots=a.mods,
+                              extra_names=addon.EXTRA_NAMES)
+        ours = addon.is_built() or (probe.named(addon.NAME) and probe.named(addon.STAMP))
+        if probe.ref("reshade", "ReShade64.dll").found and probe.ref("optiscaler_dlss5", "OptiScaler.dll").found and ours:
+            part_g(tmp, a.mods, FakeSystem, "paths as they are")
+            part_g(tmp, a.mods, FakeProton, "paths as under Proton")
+        else:
+            print("G skipped: ReShade or OptiScaler is not in out/mods, or our add-on is neither built nor in a bundle there")
 
 
 if __name__ == "__main__":

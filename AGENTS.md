@@ -47,6 +47,13 @@ practice this rules out, or requires fixing:
 Between clip frames (1/fps apart) motion must be plausible: nothing teleports, pops, or changes
 state in a way a real scene could not in 33 ms.
 
+**The player does not exist for the scene** (Nathan, 2026-11-23). Hidden from the pictures is not
+enough: over a multi-frame capture, people and animals must not react to the player (step aside,
+walk around, stop, look at, greet or flee from an empty spot). In RDR2 the player was suspended in
+the air and made ignored by everyone through several commands. Each game parks the player away from
+the rig and switches off whatever makes people notice him, and measures it: the same steps with the
+player at the rig and parked, people's paths and headings compared (section 5.4, item 8).
+
 **Photorealistic.** Install the best visual setup the game's community has, measured, with frame
 rate no concern (captures are offline): path tracing or the game's ray tracing, the best upscaler
 at native resolution (DLAA, Ray Reconstruction), DLSS 5 through OptiScaler where it works, and the
@@ -139,7 +146,9 @@ addons/clock/            our clock plug-in (ASI): slows the real-time clock of n
 adapters/common/         shared by adapters: window (focus, keys, grabs, client size), mem (process
                          memory), each with a Windows and a Linux implementation behind one
                          interface (clicks, window rectangles, hide and move too), redlua (loader
-                         script + session client for RedLua games)
+                         script + session client for RedLua games), console (a session typed
+                         into a game's debug console, answers read from its log: The Witcher 3),
+                         frames (asking the capture add-on for frames from Python)
 adapters/<game>/         adapter.py, install.py, mods.lock.json, launch.py, lua/ (loader, session
                          job), visual/ (presets), probes/ (how the method was found), settings
 rigs/                    rig providers (file, ring, camrigs) and their contract
@@ -286,11 +295,17 @@ and saves pictures under `out/probes/`. They are how the method was found, so ke
    and the video player): measure the share of pixels varying across repeated captures with the
    clock running and held, and find the slowest clock scale the game tolerates.
 7. **Time steps**: advance exactly 1/fps and freeze again; measure the game clock per step
-   (RDR2 within 2 ms, GTA V and Cyberpunk within 0.002 ms).
+   (RDR2 within 2 ms, GTA V and Cyberpunk within 0.002 ms, The Witcher 3 within 0.3 ms per step
+   with the remainder carried into the next). Then watch cloth and people through 30 steps beside
+   the world running unbroken (The Witcher 3: `probes/cloth_clip_probe.py`): steps whose frames
+   shrink towards the end kicked cloth at every step there (see section 7).
 8. **Subject and scene**: hide the player (invisible is often not enough: collision and AI still
    react; RDR2 "ghost" natives, parking the player 10 m up or 12 m underground), the HUD, other
    overlays; teleport and wait for streaming; ground height; raycasts against the static scene
    (collision groups); people/vehicles as oriented boxes; deleting them while frozen.
+   Then measure that people ignore the parked player over time steps (section 1, "The player does
+   not exist for the scene"): a few seconds of 1/30 s steps near people with the player at the rig
+   and with him parked, each person's path and heading logged per step and compared.
 
 ### 5.5 The adapter
 
@@ -400,6 +415,13 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 
 - **No true freeze**: time scale 0 still steps (RDR2, GTA V); a hold at exactly 0 crashes or quits
   (GTA V step, Cyberpunk clock). Find the minimum and hold just above it.
+- **Uneven time steps kick cloth**: a step whose frames shrink to microseconds at its end (to land
+  exactly) followed by one that starts at milliseconds gave The Witcher 3's cloth a kick at every
+  step, building up over a take (Nathan saw cloth reset and fall at each step). Spread a step evenly
+  over its frames and carry what it missed by into the next one. Cyberpunk steps the shrinking way
+  and was not checked (BACKLOG).
+- **Switching a photo mode in a held world** reset people's poses and cloth in The Witcher 3; use the
+  photo mode's camera without the photo mode, or keep the photo mode on for the whole take.
 - **Real time vs game time**: screens, ads, holograms, blinking lights, some shaders run on the
   real clock, which no freeze holds. Devices can sometimes be switched off; otherwise the clock
   plug-in.
@@ -460,18 +482,18 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 
 ## 9. Where each game stands
 
-| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 |
-|---|---|---|---|
-| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware |
-| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` |
-| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 |
-| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under |
-| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot |
-| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged |
-| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried |
-| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part |
-| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) |
-| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only |
+| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 | The Witcher 3 (`witcher3`) |
+|---|---|---|---|---|
+| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware | the game's own WitcherScript, a loose script mod compiled at start; no extender |
+| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` | none: commands pasted into the debug console, answers read from the scripts log (`adapters/witcher3/session.py`) |
+| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 | a pause of our own (exact); even time steps |
+| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under | the photo mode's camera without the photo mode, player invisible |
+| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot | does not re-adapt |
+| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged | 60 frames |
+| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried | the game's path tracing, DLSS 5 (skin 2, OptiScaler as `winmm.dll`) over the game's DLAA + ray reconstruction |
+| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part | yes (2026-11-23: every mod file moved out, 45 steps, again nothing to do, `verify --launch` passed but the machine step) |
+| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) | no (fast-travel scouting helper) |
+| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only | a ring over 30 clip frames and near sweeps (2026-11-23) |
 
 GTA V Legacy (`gtav`) still installs and runs but is dropped. Details and open items per game are
 in README and BACKLOG.

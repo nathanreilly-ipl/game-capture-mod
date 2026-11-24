@@ -147,6 +147,49 @@ the numbers). What that took per game is in the adapters; what is left:
   against the PC's build) and its exe starts under Proton to a 2560x1440 window; its console
   input needs the X clipboard (xclip and xsel are installed).
 
+## The Witcher 3: what is left
+
+Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
+
+- **A scouting overlay.** The script cannot read files, so `publish_locations` would have to paste
+  the saved locations into the console as a command the script keeps; the overlay itself (position,
+  place, nearest location, keys to cycle, view and teleport) is WitcherScript with the game's own
+  input bindings. Not started; scouting is by agent (`probes/scout_fast_travel.py`, `capture scout`).
+- **An eval.** WitcherScript compiles at start only. A command interpreter in the script (a few
+  getters and setters by name) would let an agent try more without a restart.
+- **The player's horse** is hidden with the player when ridden; a horse standing near the rig is
+  an ordinary animal (the obstacle check sees it).
+- **A texture overhaul.** The visual set is the game's own path tracing, DLAA with Ray
+  Reconstruction, and DLSS 5. The community's texture pack, HD Reworked Project NextGen Edition
+  (Nexus Mods, about 11 GB, made for the 2024 build 4.04), was not tried: nothing says it works with
+  the 2026 Remastered update and its path tracer, and its "2026" edition was announced, not seen.
+- **Ray Reconstruction or the game's own denoiser.** The game's denoiser varies less from frame to
+  frame (6.4% of pixels against 16%); near sweeps with each at one place were not compared.
+- **Linux.** `paths.DLL_OVERRIDES` (`dxgi,winmm=n,b`), the paths through `capture/host` and the
+  clipboard paste through xclip or xsel (`adapters/common/window_x11.py`, written, NOT RUN) are in
+  place; nothing has run under Proton yet.
+- **A floating spear** (Nathan, 2026-11-23, Hierarch Square): a spear or bolt in mid-air beside a
+  stall, during a probe that had just parked the player 80 m away and back, which emptied the
+  crowd around the spot (22 to 1 people within 15 m) and let it come back. Not reproduced. Ruled
+  out: the hidden player's own items (they go with his body: hiding his 11 item entities too
+  changed 0.002% of a close view, `probes/hide_probe.py`) and removing people (torches and all go
+  with them, `probes/remove_probe.py`). Likely a guard (they carry halberds through that square)
+  whose body had not streamed in yet. Takes do not move the player away; watch for it in takes.
+- **The kick left in each time step.** With even steps an awning moves 2.3 levels of 255 per 1/30 s
+  step against 1.5 for the world running unbroken (README: Time steps): resuming from the pause
+  still gives cloth a little more than the step's own motion. Not found: whether the cloth solver
+  sees the held frames as steps of zero length. Water through steps was not looked at either.
+
+## Every game: cloth through time steps
+
+Found in The Witcher 3 (2026-11-23): steps whose frames shrink towards the end (each frame covering
+a share of what is left) give cloth a kick at every step that builds up over a take; spreading the
+step evenly over its frames removed most of it (README, The Witcher 3: Time steps). Cyberpunk 2077
+steps the same way (each frame a fifth of what is left, 36 frames per step) and was not checked;
+RDR2 (time scale 0.1) and GTA V (the minimum step) step at a constant rate. Check each with a clip of
+cloth through 30 steps beside the world running unbroken, as `adapters/witcher3/probes/
+cloth_clip_probe.py` does.
+
 ## Next: finish the RDR2 install test (needs someone at the PC)
 
 **Done (2026-11-20), the clean-slate run on the development machine:** every mod file moved out

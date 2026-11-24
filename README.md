@@ -3,8 +3,8 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). Games: Red Dead Redemption 2, GTA V Enhanced and Cyberpunk 2077,
-all in story mode (GTA V Legacy still works but is dropped: see GTA V adapter).
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2, GTA V Enhanced, Cyberpunk 2077 and
+The Witcher 3, all in story mode (GTA V Legacy still works but is dropped: see GTA V adapter).
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -15,7 +15,9 @@ addons/capture/     our ReShade add-on that saves frames (game-agnostic)
 rigs/               rig providers, one file per rig format (rigs/README.md has the contract)
 third_party/        the camera-rig repository as an optional git submodule (for the camrigs provider)
 adapters/common/    what adapters share, tied to no game: the game window (focus, keys, grabs, size),
-                    process memory, and RedLua (the job loader script and the session client)
+                    process memory, RedLua (the job loader script and the session client), a
+                    session typed into a game's debug console (console.py), frames asked of the
+                    capture add-on (frames.py)
 adapters/rdr2/      everything RDR2: the adapter, its install plan and mod lockfile, visual set, ray
                     tracing, Lua jobs, launch and recovery scripts, the render camera writer, probes
 adapters/gtav/      everything GTA V, both editions: the adapter, the install plans (install.py,
@@ -23,6 +25,8 @@ adapters/gtav/      everything GTA V, both editions: the adapter, the install pl
                     (timestep.py), the session job, probes
 adapters/cyberpunk/ everything Cyberpunk 2077: the adapter, the loader mod for Cyber Engine Tweaks, the
                     session job, install plan and lockfile, game settings, launcher, probes
+adapters/witcher3/  everything The Witcher 3: the adapter, the session script (WitcherScript) and its
+                    console client, install plan, game settings, launcher, probes
 docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
 tools/              comparison tools (DLSS 5, ray tracing, sheets with FLIP maps), frame reports,
                     documentation media
@@ -46,8 +50,8 @@ On a fresh PC: install the game and start it once, clone this repository
 ```
 
 After that the machine can scout, run a worker, or be driven by an agent (see Workflow). The same
-commands take `gtave` for GTA V Enhanced and `cyberpunk` for Cyberpunk 2077 (see their adapter
-sections; `gtav`, Legacy, is dropped).
+commands take `gtave` for GTA V Enhanced, `cyberpunk` for Cyberpunk 2077 and `witcher3` for The
+Witcher 3 (see their adapter sections; `gtav`, Legacy, is dropped).
 
 The RDR2 default (since 2026-11-20) is the full capture setup: Direct3D 12, a 2560x1440 window,
 the visual set's ReShade preset, ray tracing (Reality Redemption 2) and DLSS 5 (OptiScaler, which
@@ -274,7 +278,9 @@ the same machine one after the other (the worker teleports to each location).
 .\capture.ps1 submit --rig <rig.json> --location <id> --park-height 0   # hidden player stays at the spot (default 10 m up)
 .\capture.ps1 queue
 
-# 3. worker: claim jobs until none are left (--once: one job)
+# 3. worker: claim jobs, and wait for more when there are none (it does not exit; --once: one
+#    job, then exit). One worker per game instance: two workers on one PC drive the same game
+#    at once and spoil each other's takes (2026-11-23).
 .\capture.ps1 worker
 ```
 
@@ -1029,6 +1035,158 @@ PC's bundle>` (50 steps, then nothing to do), the saves copied in, one start and
   Nathan's call. Its settle after a cut starts higher than without it (5.4 against 4.0 levels at 3
   frames) and meets it by 80 frames; a take waits 120.
 - No place titles, no scouting overlay, no visual set; `tests/test_install.py` has no Cyberpunk part.
+
+## The Witcher 3 adapter
+
+"The Witcher 3: Wild Hunt — Remastered" 5.01c (`witcher3`: Steam app 292030, Direct3D 12 only, exe
+5.0.0.1090142, build 26238013), the 2026 update with path tracing and DLSS 4.5 Ray Reconstruction.
+Everything below was set up and measured on 2026-11-23 on the Windows PC (RTX 5090);
+`adapters/witcher3/adapter.py` has every number and `probes/` how each was found.
+
+### Setup
+
+```powershell
+.\capture.ps1 install witcher3 --dlss-nr <nvngx_dlssnr.dll>   # game closed: script mod, debug console, ReShade + add-on, DLSS 5, settings
+.\capture.ps1 verify witcher3 --launch
+python -m adapters.witcher3.probes.scout_fast_travel --list                       # the loaded world's travel points
+python -m adapters.witcher3.probes.scout_fast_travel poppystone=mulbrydale        # a location beside one
+.\capture.ps1 submit --game witcher3 --location witcher3-mulbrydale-001 --provider ring --set count=8
+.\capture.ps1 worker --game witcher3
+```
+
+- **No script extender, no ASI loader.** Our session script (`adapters/witcher3/ws/capture_mod.ws`)
+  is a loose script mod (`<game>\mods\modCaptureMod\content\scripts\local`) that the game compiles
+  with its own scripts at every start; a changed script needs a restart (40 to 60 s to a loaded
+  save). WitcherScript cannot read or write files, so commands go in through the game's debug
+  console (switched on in `bin\config\base\general.ini`; the key left of 1; pasted, 30,000
+  characters at once) and answers come out through the scripts log
+  (`Documents\The Witcher 3\scriptslog.txt`, written when the game is started with
+  `-debugscripts`). 0.29 s per command. There is no eval: what an agent can try without a restart
+  is every `cm_` command (`python -m adapters.witcher3.probes.repl state "pose 944 596 36 -20 60 0 60"
+  "shot view1"`); a new one is a script change and a restart.
+- **Frames.** ReShade as `dxgi.dll` beside the exe, no effects, and our add-on; the adapter asks
+  the add-on for each frame itself (`adapters/common/frames.py`: the add-on now also counts frames
+  and can save the n-th frame after a request, for any game).
+- **Settings** written into `Documents\The Witcher 3\dx12user.settings` with the game closed and read
+  back when a session opens: a 2560x1440 window, path tracing, DLAA with Ray Reconstruction, no
+  frame generation, no motion blur, depth of field, chromatic aberration, vignette, lens effects or
+  sharpening, no tutorial hints or welcome panels, no telemetry.
+- **Unattended start** (`adapters/witcher3/launch.py`): the exe itself, no Steam client or launcher;
+  Space through the intro films, Esc past the account screen, our script loads the last save
+  (`theGame.LoadLastGameInit`) or, on a machine with no save, starts a Blood and Wine-only game
+  (a ready character in Velen) and saves it. 40 to 60 s to the world.
+- **Scouting** by name: `probes/scout_fast_travel.py --list` prints the road signs and harbours of
+  the loaded world (115 in Velen and Novigrad), `<point>=<name>` records a location a few metres
+  from one with the four previews; `capture scout --game witcher3 --at x,y,z` works as for every
+  game. Titles are the nearest travel point within 400 m and the region ("Mulbrydale · Velen and
+  Novigrad"). The game loads one world at a time; a location keeps its world and a take loads it
+  first (`--world skellige` for the helper). No in-game overlay (BACKLOG).
+
+- **Clean slate (2026-11-23, this PC).** Every file of ours moved out of the game folder (and the
+  hand-made exploration setup with it, kept in `out\clean_slate_backup\20261123_witcher3`), then
+  `capture install witcher3 --dlss-nr <file>` with every part but `machine`: 45 steps, the files
+  found in `out\mods`, `ProgramData\ReShade` and the given model; a second run had nothing to do.
+  `capture verify witcher3 --launch` then passed every check but that administrator step (the
+  machine-wide Vulkan layer, the same for every game here): start to a loaded save in 58 s, 54
+  frames/s with DLSS 5, a frozen take of 8 cameras over 3 clip frames (24 shots in 75 s, none
+  recaptured, both steps exact to 0.00 ms, DLSS 5's white point held at 2.32x), packaging. Again
+  after the method changed (17:50, Hierarch Square): every check but that step, 30 frames/s there,
+  24 shots in 108 s, none recaptured, steps within 0.16 ms of 1/30 s.
+  `capture mods bundle witcher3 --with-supplied` holds ReShade, OptiScaler with NVIDIA's model and
+  our add-on (207 MB; never in git or anywhere shared).
+
+### How a take is captured in The Witcher 3 (measured 2026-11-23)
+
+- **Freeze.** A pause of our own: engine time 0.0000000 s over 480 held frames (9 real seconds),
+  frames 30 to 480 later differing from the first by the renderer's noise only (1.45-1.63 levels of
+  255, flat), none of 60 people moving. The wind in trees, grass and clouds follows engine time, so
+  it holds too and moves with each step. Weather changes are paused and the game's keys taken away
+  while held; saving is locked while a session is open. The game's photo mode is not used any more:
+  switched off and on in a held world (as the first time steps did) it threw people into their
+  arms-out reference pose, dropped their torches and started cloth over
+  (`probes/cloth_step_probe.py`).
+- **Camera.** The photo mode's camera, made the rendered camera without the photo mode (position,
+  pitch and yaw, `SetTilt` for roll, vertical field of view): within 0.6% of a pinhole camera at
+  40, 60 and 90 degrees (`probes/geometry_probe.py`, the same as with the photo mode); the rendered
+  pose read back equals the pose asked to 0.1 mm, also 150 frames later and through steps. The
+  game's own camera is no use (it adds its 3.4 m offset from the player and drifts while held).
+- **Time steps.** Our pause off, the world run over 8 frames that each cover the same game time
+  (the game's per-frame `CR4Game.OnTick`, wrapped with `@wrapMethod`), the pause on again. An even
+  step lands within a share of a frame (32.77 to 33.59 ms for 33.33 asked) and the adapter adds the
+  difference to the next step, so clip frames stay on the 1/30 s grid (29 steps 0.028 ms short in
+  all). Dropped on the way, both 2026-11-23:
+  - the photo mode's own tick advanced the clock, wind and grass but held people in place (0 of 57
+    moved over 30 steps, against 10, up to 1.6 m, in a second of play);
+  - steps whose frames each covered a quarter of what was left landed exactly, but ended on
+    microsecond frames before the next step began at milliseconds, and the cloth solver turned that
+    jump in time step into a kick at every step: an awning moved 9-12 levels of 255 per 1/30 s step,
+    more with each step, the energy staying in the cloth (Nathan saw cloth "reset" and fall into a
+    new place at every step). The kick did not depend on how many frames a step took (1 to 181) and
+    grew with how long the world was held before it (`probes/cloth_rate_probe.py`).
+  With even steps the awning moves 1.5-3.7 per step (mean 2.3) over 30 steps without growing,
+  against 1.5 per frame for the world running unbroken at a tenth of its speed sampled every 45 ms
+  of game time (`probes/cloth_clip_probe.py`, `side_by_side.mp4`): a small kick per step is left.
+  People: 11 of 60 moved during 30 steps (up to 1.17 m), as 10 of 60 in a second of play, none
+  while held (`probes/people_step_probe.py`).
+- **Settle.** 60 frames after a cut (13 levels of 255 two frames after a 90 degree cut, 1.55 at 12,
+  flat at 1.1 from 67), 120 on the first shot; about 0.8 s at 75 frames/s.
+- **Exposure** does not re-adapt between views of the held world (under 0.5 of 255 after the
+  bright sky or the dark ground; `tools/exposure_check.py`). No lock.
+- **Player and HUD.** The player (and a horse it rides) made invisible, the HUD and hints hidden;
+  the debug console slides out of the picture within 0.24 s of a command and no shot is taken
+  sooner than 0.45 s after one (`probes/console_probe.py`).
+- **The player does not exist for the scene.** For a take he stays where he stands as a ghost: not
+  seen by people and without collisions, his horse the same (`cm_park`). He cannot be parked out of
+  reach: the game puts a teleported player on the ground, with all collisions off he fell through
+  the world, and 80 m away he took the crowd with him (59 people within 15 m of the spot became 7).
+  `probes/npc_watch_probe.py` (Hierarch Square, a walker followed by handle, the player put 3 m
+  ahead of them, then 3 s of steps): hidden but solid, as takes were before, no walker came within
+  1.05 m of him and two walked around him; as a ghost one walked straight through his spot
+  (0.13 m). Eight trials in a wandering market crowd: a direction, not a fine measurement.
+- **Noise.** The path tracer with Ray Reconstruction varies evenly from frame to frame in a held
+  world, most in grass (16% of pixels with a standard deviation over 4 across 16 frames); without
+  Ray Reconstruction 6.4%, with ray tracing instead of path tracing 12.9%
+  (`probes/settings_sweep.py`).
+- **DLSS 5** (the default; `--no-optiscaler` leaves it out, `--dlss-nr <nvngx_dlssnr.dll>`):
+  OptiScaler's DLSS 5 fork as `winmm.dll` beside the exe (the exe imports it; `dxgi.dll` is
+  ReShade's), hooked into the game's own Streamline 2.14 and DLSS 4.5 (DLAA with Ray
+  Reconstruction, which stays on), skin structure 2 as in the other games, its white point held per
+  take. `tools/upscaler_ab.py --game witcher3` at Electors' Square, noon, 8 views at one held
+  instant: more contrast, colour depth and material detail (metal, fabric weave, skin), mean
+  change 6.8 to 9.8 levels of 255 per view; the same pose captured twice after a cut differs by
+  2.2 with it and 1.8 without; settle curves alike (2.0 and 1.6 levels at 80 frames). The same
+  near sweep at Electors' Square with it (345 poses, 16.4 min, white point held at 8.41x
+  throughout): brightness jitter 0.18 against 0.10 without it, roughness 18.5 against 17.9
+  (`tools/sweep_flicker.py`; different instants of the same crowd), about the rise DLSS 5 gave
+  in Cyberpunk.
+- **The game's menus.** A key that misses the console can open the game's hub menu, which pauses
+  the world. A teleport made under it left the new spot without its grass: a near sweep at
+  Mulbrydale had none in its first 72 poses and grass from pose 72 on (about 200 s into the held
+  world; `probes/menu_grass_probe.py`, `arrival_probe.py`). The adapter now closes any menu
+  before a teleport and before the freeze and lets the world run again if one turned up since;
+  opened and closed in a held world a menu takes nothing away.
+- **Scene and moving things.** Ray probes against the static scene (`StaticTrace`), people and
+  animals as boxes from their capsules; quest characters (any with tags) are never removed.
+
+### Takes (2026-11-23, all queued and run by `capture worker` with no one at the keyboard)
+
+- **Ring over time, retaken with the method above** (held by our pause, no photo mode, even steps,
+  the player a ghost), Hierarch Square (Novigrad), 2026-11-23 17:28: 8 cameras x 30 clip frames,
+  240 shots in 12.8 min (3.02 s per shot), none recaptured, no health problems, one simulation
+  time per clip frame; steps of 32.79 to 33.94 ms that leave clip frame 30 0.024 ms off the 1/30 s
+  grid. Over the 30 clip frames people move and the shadows creep with the game's sun (1 s of world
+  time, about 15 s of the game's clock); `sheets/ring_8_cameras_10fps.mp4`.
+- **Ring over time, first take** (same place and rig, 11:01): 240 shots in 12.1 min, every step
+  0.0333328 to 0.0333333 s. Taken with the photo mode's tick, so people animated where they stood
+  instead of walking on (found afterwards; see Time steps): superseded by the retake.
+- **Near sweep** (`--solver yiming_stdm --cameras H_near_sweep_t000`), Electors' Square (Novigrad,
+  a crowd around the rig): 345 poses at one instant in 13.3 min (2.25 s per shot), one simulation
+  time throughout, one shot retaken (a menu had opened before the first). `tools/sweep_flicker.py`:
+  brightness jitter 0.10 levels of 255; roughness 17.9, which is camera motion past people a metre
+  from the lens (the path turns about 1 degree and moves 5.6 cm per pose; shrunk to 60x34 pixels
+  the second difference falls to 5.4), not flicker. The solver declined a spot beside the market
+  stalls of Hierarch Square (no clear 2.4 m orbit): pick open spots for this rig.
+
 ## Known gaps
 
 - The add-on reads the frame after ReShade's effects, so a game's visual set (RDR2's preset, ray

@@ -10,6 +10,8 @@ returned (an HWND, or an X window id); adapters only pass it back.
     focus(handle) -> bool, is_foreground(handle) -> bool
     client_size(handle) -> (w, h), set_client_size(handle, w, h) -> bool, desktop_size() -> (w, h)
     press(handle, key, hold_s), press_vk(handle, vk, scan, hold_s)      only while the window is in front
+    paste(handle, text) -> bool                     the text onto the clipboard, then Ctrl+V into the window
+                                                    (a game whose console takes commands that way)
     grab(handle) -> PIL image of the window as it is on screen
     close(handle) -> bool                           ask it to close, as its close button does
     hide(handle)                                    off the screen without closing it

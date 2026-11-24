@@ -10,6 +10,8 @@
          "preview": {"front": ..., "right": ..., "back": ..., "left": ..., "sheet": ...},
                                           paths relative to the locations file
          "scene": null,                   reserved: scene data for solved rigs (BACKLOG.md)
+         "place": {...},                  only for games that need it: what the adapter needs besides
+                                          the position to come back (The Witcher 3: which world)
          "scouted": "<iso time>"}]}
 """
 import os

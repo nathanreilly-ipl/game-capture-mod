@@ -52,7 +52,9 @@ class Adapter:
     # --- the world ---------------------------------------------------------------------------
     def subject_state(self):
         """{"position": [x, y, z] of the subject's feet, "facing_deg": f, "clock": "HH:MM",
-        "title": readable place name or None}"""
+        "title": readable place name or None}, and optionally "place": anything JSON the adapter
+        needs besides the position to come back here (saved with a scouted location and handed to
+        enter_place)."""
         raise NotImplementedError
 
     def publish_locations(self, locations):
@@ -61,6 +63,12 @@ class Adapter:
     def place_title(self, position):
         """Readable place name at a world point, or None. Optional."""
         return None
+
+    def enter_place(self, place):
+        """Before go_to for a saved location: `place` is what subject_state() gave under "place"
+        when the location was scouted (None when the game gave none). For games whose positions
+        need more than three numbers to find again, e.g. which of several separately loaded worlds
+        they are in (The Witcher 3). Optional; nothing to do by default."""
 
     def go_to(self, position, facing_deg):
         """Move the subject there and wait until the scene around it has loaded."""

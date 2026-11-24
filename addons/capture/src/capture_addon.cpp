@@ -4,8 +4,12 @@
 //
 // Files in the output directory (ReShade.ini [CAPTURE_MOD] OutputDir):
 //   request.txt   written by the script:  id=<id>  name=<relative image stem>
+//                 optional: after=<n>  save the n-th frame presented after the request is seen
+//                           (for a game whose script layer cannot count frames itself);
+//                           op=frame   save nothing, only answer (the frame counter, the size)
 //   <name>.bmp    written here
-//   ack.txt       written here:  id, status (ok|error), message, file, width, height
+//   ack.txt       written here:  id, status (ok|error), message, file, width, height,
+//                 frame (frames presented since the add-on loaded), time_ms (GetTickCount64)
 //
 // The frame is read in reshade_present, which runs after the ReShade overlay
 // is drawn, so keep the overlay closed while capturing.
@@ -17,6 +21,7 @@
 #include <reshade.hpp>
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -37,6 +42,10 @@ namespace
 
 	fs::path g_out_dir;
 	bool g_ready = false;
+	uint64_t g_frame = 0;                              // frames presented since the add-on loaded
+	bool g_pending = false;                            // a request waiting for its frame (after=<n>)
+	uint64_t g_pending_frame = 0;
+	std::map<std::string, std::string> g_pending_request;
 
 	void log_message(reshade::log::level level, const std::string &text)
 	{
@@ -197,7 +206,9 @@ namespace
 				<< "message=" << message << '\n'
 				<< "file=" << file << '\n'
 				<< "width=" << width << '\n'
-				<< "height=" << height << '\n';
+				<< "height=" << height << '\n'
+				<< "frame=" << g_frame << '\n'
+				<< "time_ms=" << GetTickCount64() << '\n';
 		}
 
 		// The script may have ack.txt open for reading; retry briefly.
@@ -210,15 +221,10 @@ namespace
 		log_message(reshade::log::level::error, "could not replace ack.txt");
 	}
 
-	void handle_request(reshade::api::effect_runtime *runtime, const fs::path &request_path)
+	// Saves the current frame as the request asks and answers it.
+	void save_frame(reshade::api::effect_runtime *runtime, std::map<std::string, std::string> &request)
 	{
-		std::map<std::string, std::string> request;
-		if (!read_key_values(request_path, request))
-			return; // still being written or locked; try again next frame
-
 		std::error_code ec;
-		fs::remove(request_path, ec);
-
 		const std::string id = request["id"];
 		const std::string name = request["name"];
 		if (!is_safe_name(name))
@@ -266,9 +272,48 @@ namespace
 		write_ack(id, true, "", name + ".bmp", width, height);
 	}
 
+	void handle_request(reshade::api::effect_runtime *runtime, const fs::path &request_path)
+	{
+		std::map<std::string, std::string> request;
+		if (!read_key_values(request_path, request))
+			return; // still being written or locked; try again next frame
+
+		std::error_code ec;
+		fs::remove(request_path, ec);
+
+		if (request["op"] == "frame")
+		{
+			// no picture: the frame counter and the size, for timing and for counting frames
+			uint32_t width = 0, height = 0;
+			runtime->get_screenshot_width_and_height(&width, &height);
+			write_ack(request["id"], true, "", "", width, height);
+			return;
+		}
+
+		const int after = std::atoi(request["after"].c_str());
+		if (after > 0)
+		{
+			g_pending = true;
+			g_pending_frame = g_frame + static_cast<uint64_t>(after);
+			g_pending_request = request;
+			return;
+		}
+		save_frame(runtime, request);
+	}
+
 	void on_reshade_present(reshade::api::effect_runtime *runtime)
 	{
+		++g_frame;
 		ensure_ready(runtime);
+
+		if (g_pending)
+		{
+			if (g_frame < g_pending_frame)
+				return;
+			g_pending = false;
+			save_frame(runtime, g_pending_request);
+			return;
+		}
 
 		const fs::path request_path = g_out_dir / L"request.txt";
 		if (GetFileAttributesW(request_path.c_str()) == INVALID_FILE_ATTRIBUTES)

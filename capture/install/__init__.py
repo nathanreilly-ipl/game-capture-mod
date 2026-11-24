@@ -20,7 +20,8 @@ from .plan import Ctx, InstallError, Record, System, default_system, run, uninst
 from .sources import SHARED_LOCK, Files, load_locks
 
 INSTALLERS = {"rdr2": "adapters.rdr2.install", "gtav": "adapters.gtav.install",
-              "gtave": "adapters.gtav.install_enhanced", "cyberpunk": "adapters.cyberpunk.install"}
+              "gtave": "adapters.gtav.install_enhanced", "cyberpunk": "adapters.cyberpunk.install",
+              "witcher3": "adapters.witcher3.install"}
 
 
 def installer(game):
