@@ -154,7 +154,10 @@ adapters/<game>/         adapter.py, install.py, mods.lock.json, launch.py, lua/
 rigs/                    rig providers (file, ring, camrigs) and their contract
 tools/                   game-agnostic comparison tools: preset_ab, upscaler_ab/_sweep,
                          compare_sheets (FLIP), exposure_check, sweep_flicker, frame_report,
-                         dlss5_skin_sweep
+                         dlss5_skin_sweep; and the visual checks of docs/VISUAL_CHECKS.md:
+                         hold_step_check (live), temporal_flicker, vignette_check, clip_strip
+docs/VISUAL_CHECKS.md    every visual and scene-consistency fault found so far, how to check it
+                         (tool and number), how each game fixed it: the list for every new game
 tests/                   no-game tests: test_install.py (sandboxed plans), test_obstacle_policy.py,
                          test_providers.py; run each with `uv run --project . python tests/<file>`
 out/                     everything produced (gitignored): mods, locations, queue, takes, probes,
@@ -369,6 +372,13 @@ and saves pictures under `out/probes/`. They are how the method was found, so ke
   it was found. BACKLOG: what is designed for but not built.
 
 ## 6. Proving consistency: clips and numbers
+
+**docs/VISUAL_CHECKS.md** is the full list: every rendering fault (noise, exposure, per-camera
+effects, history) and scene fault (a creeping instant, people vanishing, gliding or reacting to the
+hidden player, cloth vibrating, detail popping, screens and skies time-lapsing) found in any game so
+far, with the tool and the number that catch it and what each game does about it, and its routine
+(`tools/hold_step_check.py`, then a near sweep and a 30-clip-frame take with
+`tools/temporal_flicker.py`). Go through it for every new game. The steps below are its core.
 
 Run these at several kinds of places (dense city with screens and signs, interiors or covered
 markets, open land, water, night) and whenever a visual setting, mod or adapter change could

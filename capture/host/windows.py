@@ -54,6 +54,10 @@ def program_data(game=None):
     return os.environ.get("ProgramData", r"C:\ProgramData")
 
 
+def check_start(game):
+    """Nothing stops a start here (the Linux side checks the GPUs a process sees)."""
+
+
 def steam_launch(game, app_id):
     """Asks the Steam client to start a game."""
     os.startfile("steam://rungameid/%s" % app_id)

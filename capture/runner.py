@@ -125,6 +125,14 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         take["render"] = adapter.render_settings()
         if use_obstacles:
             _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take)
+        # Optional (adapter attribute preroll_steps, 0 by default, so other games are unchanged):
+        # time steps between holding the world and clip frame 1, for a game whose picture changes
+        # once on its first steps (RDR2's shadows, docs/VISUAL_CHECKS.md D3)
+        preroll = int(getattr(adapter, "preroll_steps", 0) or 0) if len(shots["steps"]) > 1 else 0
+        for _ in range(preroll):
+            adapter.advance(1.0 / fps)
+        if preroll:
+            take["preroll_steps"] = preroll
         t_shots = time.time()
         prev = None
         for st in shots["steps"]:

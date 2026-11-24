@@ -198,7 +198,12 @@ def drive(exchange, client=(2560, 1440), timeout=900, log=print, snapshots=None,
         time.sleep(2)
         if not host.WINDOWS and time.time() - asked > 180 and not host.pids(ed.exe):
             # under Proton a request to the prefix's Steam client can be lost (it shows the game's
-            # licence once and drops the start, or was not ready yet): ask again
+            # licence once and drops the start, or was not ready yet): ask again. A launcher that is up
+            # without the game gave the start up and stays on its logo ("Game launch validation timed
+            # out!" in its log, Legion Plaza, 2026-11-23), and Steam takes no new start while it runs
+            if any(host.pids(n) for n in ed.close):
+                close_game(log, ed)
+                log("the launcher is up without the game; closed it")
             host.steam_launch(ed.game, ed.steam_app)
             log("no game after 180 s; asked Steam again")
             asked = time.time()

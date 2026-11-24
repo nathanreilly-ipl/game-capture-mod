@@ -144,6 +144,14 @@ def _one_gpu():
                         "CAPTURE_ANY_GPUS=1 starts it anyway." % (n, CLI))
 
 
+def check_start(game):
+    """Raises HostError if a game cannot be started from this process (more than one GPU visible),
+    before anything is closed: a worker that ended a running game to restart it, and then could not
+    start it, lost the game (Cyberpunk 2077, 2026-11-23)."""
+    _require()
+    _one_gpu()
+
+
 def _require():
     gone = missing()
     if gone:

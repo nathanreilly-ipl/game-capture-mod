@@ -404,11 +404,51 @@ return function(ctx)
 
 	function handlers.state() end
 
+	-- eval: runs eval_in.lua from the exchange folder in this session: a chunk that returns
+	-- function(ctx, native); what that returns (a value, or a list of values) comes back as lines
+	-- r1=, r2=, ... The agent's way to try natives in a running session
+	-- (python -m adapters.common.redlua_eval --game <game> "<lua>").
+	function handlers.eval()
+		local chunk, err = loadfile(ctx.out_dir .. '\\eval_in.lua')
+		if not chunk then
+			error('eval: ' .. tostring(err))
+		end
+		local out = chunk()(ctx, native)
+		if type(out) ~= 'table' then
+			out = { out }
+		end
+		local lines = {}
+		for i, v in ipairs(out) do
+			lines[#lines + 1] = 'r' .. i .. '=' .. tostring(v)
+		end
+		return lines
+	end
+
 	-- clock h m: set the time of day.
 	function handlers.clock(args)
 		local a = numbers(args)
 		ctx.call('CLOCK', 'SET_CLOCK_TIME', math.floor(a[1] or 12), math.floor(a[2] or 0), 0)
 		return { string.format('clock=%02d:%02d', ctx.call('CLOCK', 'GET_CLOCK_HOURS'), ctx.call('CLOCK', 'GET_CLOCK_MINUTES')) }
+	end
+
+	-- clockrate [ms]: how many milliseconds of the world's time make a game minute. The game's own
+	-- is 2000, a clock 30 times real time: each 1/30 s step of a take then moved the sky and its
+	-- light by a whole second, and frames drifted 3-9% over 30 clip frames (Saint Denis,
+	-- 2026-11-24). Takes run at 60000, real time; the rate found first is given back when the
+	-- session ends (the adapter gives it back when a take ends).
+	local clock_rate0 = nil
+	ctx.defer(function()
+		if clock_rate0 then
+			pcall(native.call, 'CLOCK', '_SET_MILLISECONDS_PER_GAME_MINUTE', clock_rate0)
+		end
+	end)
+	function handlers.clockrate(args)
+		local v = numbers(args)[1]
+		if v then
+			clock_rate0 = clock_rate0 or ctx.call('CLOCK', 'GET_MILLISECONDS_PER_GAME_MINUTE')
+			ctx.call('CLOCK', '_SET_MILLISECONDS_PER_GAME_MINUTE', math.floor(v))
+		end
+		return { 'clock_ms_per_minute=' .. tostring(ctx.call('CLOCK', 'GET_MILLISECONDS_PER_GAME_MINUTE')) }
 	end
 
 	-- A Hash argument as a RedLua object: RedLua turns a plain Lua number into a float before the

@@ -417,6 +417,17 @@ and vehicle near the rig is an oriented box; a camera position inside the box, o
   (19 of 21 people removed after the fix, against 7 of 34 before); RDR2's job has the same fix,
   not yet run in the game.
 
+## Checking what a capture looks like
+
+`docs/VISUAL_CHECKS.md` lists every visual and scene-consistency fault found so far (rendering:
+noise, exposure, per-camera effects, temporal history; scene: a held instant that creeps, people
+vanishing, gliding or reacting to the hidden player, cloth vibrating, detail popping, screens and
+skies time-lapsing between clip frames), how to check each with a number, and how each game fixes
+it. Its game-agnostic tools: `tools/hold_step_check.py` (live: held repeats, 1/fps steps, exposure
+drift, a census of people), `tools/temporal_flicker.py` (a take's cameras over clip frames: flicker,
+pops, exposure drift), `tools/sweep_flicker.py`, `tools/vignette_check.py` (live: the same patch at
+the centre and near the corners), `tools/exposure_check.py`, `tools/clip_strip.py`.
+
 ## Adding a game
 
 `AGENTS.md` is the full workflow (what a capture must be, what a finished game provides, the
@@ -492,7 +503,11 @@ foreground during a take (a lost focus is detected and recovered, see Per-shot c
 - **Time steps.** Released at time scale 0.1 (about 72 ticks per 1/30 s), frame times summed,
   frozen again at the nearest tick (the freeze lands one tick late). Full take: game timer
   1,898 ms over 57 steps for 1,900 ms scheduled, within 2 ms at every clip frame, and
-  unchanged across the shots of a clip frame.
+  unchanged across the shots of a clip frame. The game's clock of day runs 30 times real time
+  (2000 ms per game minute), so each step moved the sky and its light by a second and frames drifted
+  3-11% over 30 clip frames; takes run it at real time (`clock_ms_per_minute` 60000, given back
+  after): 0.1-0.7% (2026-11-24, docs/VISUAL_CHECKS.md A5). A take steps 3 times before clip frame 1
+  (`preroll_steps`): shadows switched once on the first steps (D3).
 - **Teleport** (`teleport` session command): the player is moved with its position frozen,
   collision and the scene are loaded around it, then it is put on the ground and kept frozen
   until the session ends (no landing stumble). About 8 s for 8 km.
@@ -821,7 +836,10 @@ the PC's user files were copied in, then nothing to do), `capture host steam gta
   start-of-take clearing may delete one standing in a camera. While frozen the population
   multipliers are 0: with more people than its budget the game despawns and spawns people even in
   a frozen world (7 gone, 9 new within 60 m over 3,000 frozen frames); with them at 0 nothing
-  moved, appeared or went. The game's own people alone hold still without that.
+  moved, appeared or went. The game's own people alone hold still without that. While the world
+  steps between clip frames the multipliers at 0 still let it remove people (5 people and 2 cars
+  within 150 m over 30 steps at Vinewood, 2026-11-23), so everyone within `keep_radius` (150 m) is
+  made the session's own for the take (command `keep`) and given back after: none gone.
 - **Steam runs one game at a time**: with RDR2 running, a GTA V start fails and leaves Steam's
   launch waiting until Steam restarts; the launcher refuses to start while another game runs.
 - **The display must stay on**: with it asleep, screen grabs return the last picture shown, so
@@ -937,8 +955,13 @@ PC's bundle>` (50 steps, then nothing to do), the saves copied in, one start and
   at its widest camera's field of view and narrower cameras are cut from the middle of the frame
   and enlarged; a rig of one field of view is captured one to one. `--resolution 3840x2160` at
   install and the adapter setting `render_size` keep mixed rigs sharp, at 2.25 times the pixels.
-- **Time steps.** The world runs at a time dilation chosen every frame so that the next frame covers
-  a fifth of what is left: steps of 33.3321 and 33.3322 ms for 33.3333 asked, in 36 frames each.
+- **Time steps.** The game's frame time follows the clock our plug-in holds, so a step keeps the
+  time dilation at 1 and slows that clock alone, every frame to cover an eighth of what is left
+  (session command `step`): the world and everything on the real-time clock (screens, foliage,
+  people's small motions) move by the same 1/30 s, steps 33.331-33.333 ms in about 70-90 frames.
+  Until 2026-11-23 a step slowed only the world (a time dilation) and released the clock, which then
+  moved 1.67 s per step: ads changed every clip frame, foliage thrashed, walkers moonwalked
+  (docs/VISUAL_CHECKS.md A4; Badlands fixed cameras roughness 1.33/1.59 to 0.40/0.47).
 - **Player and HUD.** The player's body cannot be hidden from scripts, so in the held world it is
   moved 12 m under the ground and the camera offset makes up for it; a time step lets it fall a
   little, so it is parked again after each. The UI's "Empty" game context removes the whole HUD.
@@ -950,9 +973,11 @@ PC's bundle>` (50 steps, then nothing to do), the saves copied in, one start and
   engine option `Rendering/ForcedExposureAvgLum` (found by bisection; adapter setting
   `lock_exposure`). Along the same 345-pose sweep the jitter of the mean brightness fell from 2.12
   to 0.45 levels of 255; views of darker parts of the scene are now darker, as they should be.
-- **Frames per shot.** A shot is the average of 4 frames 4 frames apart (`accumulate`,
+- **Frames per shot.** A shot is the average of 8 frames 4 frames apart (`accumulate`,
   `accumulate_gap`): the path tracer's noise differs from frame to frame and showed as flicker
-  between neighbouring sweep poses, most in reflections. 2.4 s per shot instead of 1.9.
+  between neighbouring sweep poses, most in reflections. 2.4 s per shot instead of 1.9 with 4
+  frames (2026-11-22); 8 since 2026-11-24 (between clip frames at Badlands: roughness 0.54/0.44 to
+  0.46/0.30, brightness jitter 0.05 to 0.02; 12% more frames per shot).
 - **Real-time clock.** Video ads, holograms and blinking lights run on the clock the game's own code
   reads, not on the simulation's, so the freeze does not hold them. Our clock plug-in
   (`addons/clock`, `capture_clock.asi` in `bin\x64\plugins`, `install --only clock`) hooks the

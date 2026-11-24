@@ -259,12 +259,20 @@ return function(ctx)
 		end
 		return lines
 	end
+	-- The plug-in takes a command when clock.txt changes; its status file is rewritten after each
+	-- one, so reading it while it is replaced can fail (a step sends a command every frame): the
+	-- sequence number is read once and counted here after that.
+	local clock_seq = nil
 	local function clock_send(verb)
-		local st = read_kv(CLOCK_OUT)
-		if not st or not st.seq then
-			error('the clock plug-in does not answer (no clock_status.txt): is capture_clock.asi installed?')
+		if not clock_seq then
+			local st = read_kv(CLOCK_OUT)
+			if not st or not st.seq then
+				error('the clock plug-in does not answer (no clock_status.txt): is capture_clock.asi installed?')
+			end
+			clock_seq = tonumber(st.seq) or 0
 		end
-		local seq = (tonumber(st.seq) or 0) + 1
+		clock_seq = clock_seq + 1
+		local seq = clock_seq
 		local f = io.open(CLOCK_IN, 'w')
 		if not f then
 			error('cannot write clock.txt')
@@ -305,6 +313,68 @@ return function(ctx)
 			ctx.after(1, check)
 		end
 		ctx.after(1, check)
+		return ASYNC
+	end
+
+	-- step seconds hold_scale [tolerance]: a time step that moves the simulation and the clock our
+	-- plug-in holds (screens, holograms, foliage, whatever the game runs on its own clock) by the
+	-- same amount. The game's frame time follows that clock (world running with the clock at 0.1:
+	-- 0.355 s of simulation in 3.5 s, Kabuki 2026-11-23), so here the time dilation is 1 and the
+	-- clock alone is slowed, every frame to cover a fifth of what is left, down to hold_scale (the
+	-- slowest the game tolerates); below that the dilation takes the last microseconds. Ends held:
+	-- dilation HOLD, the clock at hold_scale. advance (above) instead slows only the simulation,
+	-- with the clock released, so what runs on the clock moved 1.67 s per 1/30 s step.
+	function handlers.step(args, reply, fail)
+		local a = numbers(args)
+		local target, floor, tol = a[1] or (1 / 30), a[2] or 0.0002, a[3] or 0.000002
+		local s0 = sim_time()
+		local frames, last = 0, nil
+		local dts = {}   -- the last real frame times: a frame can take several times the one before
+		local trace, s_prev = {}, s0   -- per frame: simulation advanced (ms), real frame (ms), clock scale
+		local function set_clock(scale)
+			local verb = string.format('hold %.9g', scale)
+			if verb ~= last then
+				clock_send(verb)
+				last = verb
+			end
+		end
+		clock_held = true
+		local function tick()
+			frames = frames + 1
+			local now = sim_time()
+			local left = target - (now - s0)
+			if #trace < 400 then
+				trace[#trace + 1] = string.format('%.3f/%.0f/%s', (now - s_prev) * 1000, real_dt * 1000, (last or ''):sub(6))
+			end
+			s_prev = now
+			if frames > 5000 then
+				return fail('the world did not reach the time step: ' .. left .. ' s left after ' .. frames .. ' frames')
+			end
+			if left <= tol then
+				ts:SetTimeDilation(REASON, HOLD)
+				frozen = true
+				set_clock(floor)
+				return ctx.after(3, function()
+					reply({ string.format('advanced_s=%.9f', sim_time() - s0), 'frames=' .. frames, 'trace=' .. table.concat(trace, ' ') })
+				end)
+			end
+			dts[frames % 4 + 1] = real_dt
+			local dt_hi = 0.04
+			for _, v in pairs(dts) do
+				dt_hi = math.max(dt_hi, v)
+			end
+			-- an eighth of what is left over the longest of the last 4 frames, never faster than a
+			-- twentieth of real time: a new scale takes effect a frame late (the per-frame trace),
+			-- and a slow frame after quick ones overshot a step by up to 7 ms at a fifth and 1/4
+			local want = left / (8 * dt_hi)   -- clock seconds per real second
+			local scale = math.min(0.05, math.max(want, floor))
+			set_clock(scale)
+			ts:SetTimeDilation(REASON, math.max(math.min(1, want / scale), 0.000002))
+			ctx.after(1, tick)
+		end
+		ts:SetTimeDilation(REASON, HOLD)
+		set_clock(floor)
+		ctx.after(1, tick)
 		return ASYNC
 	end
 

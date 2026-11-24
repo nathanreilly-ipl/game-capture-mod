@@ -118,11 +118,18 @@ return function(ctx)
 	-- people this session spawned (crowd): its own, so obstacles reports them as not owned and
 	-- remove may delete them; released to the game when the session ends. Keyed by handle_of.
 	local spawned = {}
+	local kept = {}   -- handles of the ambient people and vehicles `keep` made the session's own
 	ctx.defer(function()
-		for _, p in pairs(spawned) do
-			local ref = native.new('Ped', 1)
-			ref[0] = p
-			pcall(native.call, 'ENTITY', 'SET_PED_AS_NO_LONGER_NEEDED', ref)
+		for h, p in pairs(spawned) do
+			if kept[h] then
+				local ref = native.new('Entity', 1)
+				ref[0] = p
+				pcall(native.call, 'ENTITY', 'SET_ENTITY_AS_NO_LONGER_NEEDED', ref)
+			else
+				local ref = native.new('Ped', 1)
+				ref[0] = p
+				pcall(native.call, 'ENTITY', 'SET_PED_AS_NO_LONGER_NEEDED', ref)
+			end
 		end
 	end)
 
@@ -604,6 +611,52 @@ return function(ctx)
 		return out
 	end
 
+	-- keep x y z radius: every ambient person and vehicle within radius becomes the session's own
+	-- (a mission entity), so the game's population system cannot take it away while the world steps:
+	-- with the multipliers at 0 it removed 5 people and 2 cars within 150 m over 6 steps of 1/30 s
+	-- (Vinewood, 2026-11-23, tools/hold_step_check.py), which showed as people vanishing in the
+	-- background of 30-clip-frame takes. They are given back to the game when the session ends, like
+	-- the crowd; obstacles and remove treat them as the session's own (they may be deleted).
+	function handlers.keep(args)
+		local a = numbers(args)
+		local r2 = (a[4] or 150) ^ 2
+		ent_pool = ent_pool or native.new('Entity', 2048)
+		local n, peds_n, vehicles_n = 0, 0, 0
+		for _, kind in ipairs({ 'peds', 'vehicles' }) do
+			local count = kind == 'peds' and native.allpeds(ent_pool) or native.allvehicles(ent_pool)
+			for i = 0, count - 1 do
+				local e = ent_pool[i]
+				local player = kind == 'peds' and select(2, ctx.try('PED', 'IS_PED_A_PLAYER', e))
+				if e ~= ped and not player then
+					local okp, q = ctx.try('ENTITY', 'GET_ENTITY_COORDS', e, true)
+					if okp and q and (q.x - a[1]) ^ 2 + (q.y - a[2]) ^ 2 + (q.z - a[3]) ^ 2 <= r2 then
+						local h = handle_of(e, kind)
+						if not spawned[h] and not select(2, ctx.try('ENTITY', 'IS_ENTITY_A_MISSION_ENTITY', e)) then
+							local v = value_of(e, kind)
+							if ctx.try('ENTITY', 'SET_ENTITY_AS_MISSION_ENTITY', v, true, true) then
+								spawned[h] = v
+								kept[h] = true
+								n = n + 1
+								if kind == 'peds' then peds_n = peds_n + 1 else vehicles_n = vehicles_n + 1 end
+							end
+						end
+					end
+				end
+			end
+		end
+		return { 'kept=' .. n, 'kept_people=' .. peds_n, 'kept_vehicles=' .. vehicles_n }
+	end
+
+	-- wind [speed]: the wind speed now (m/s); with a speed, set it first (the game's own weather
+	-- sets it again when the weather changes)
+	function handlers.wind(args)
+		local v = numbers(args)[1]
+		if v then
+			ctx.call('MISC', 'SET_WIND_SPEED', v)
+		end
+		return { string.format('wind_speed=%.3f', ctx.call('MISC', 'GET_WIND_SPEED')) }
+	end
+
 	-- population x y z: people and vehicles near a point, within 15, 30 and 60 m
 	local pool = nil
 	function handlers.population(args)
@@ -641,6 +694,26 @@ return function(ctx)
 	end
 
 	function handlers.state() end
+
+	-- eval: runs eval_in.lua from the exchange folder in this session: a chunk that returns
+	-- function(ctx, native); what that returns (a value, or a list of values) comes back as lines
+	-- r1=, r2=, ... The agent's way to try natives in a running session
+	-- (python -m adapters.common.redlua_eval --game <game> "<lua>").
+	function handlers.eval()
+		local chunk, err = loadfile(ctx.out_dir .. '\\eval_in.lua')
+		if not chunk then
+			error('eval: ' .. tostring(err))
+		end
+		local out = chunk()(ctx, native)
+		if type(out) ~= 'table' then
+			out = { out }
+		end
+		local lines = {}
+		for i, v in ipairs(out) do
+			lines[#lines + 1] = 'r' .. i .. '=' .. tostring(v)
+		end
+		return lines
+	end
 
 	-- shoot n stem: let n ticks pass, then capture (one round trip per shot).
 	function handlers.shoot(args)

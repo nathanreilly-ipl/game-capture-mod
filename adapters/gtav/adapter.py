@@ -23,6 +23,9 @@ Settings (job settings "adapter"):
     populate_s    seconds the world runs after a teleport, so people and traffic stream in (45)
     crowd         walkers of our own spawned around a location after the teleport (12; 0 = none)
     crowd_radius  metres they walk about in around the location (12)
+    keep_radius   the people and vehicles within this many metres of the first camera become the
+                  session's own when the world is first held, so the game cannot remove them while
+                  the world steps (150; 0 = not). Given back when the session ends
     lock_white_point  with DLSS 5 installed (OptiScaler.asi in the game folder), hold its white point
                   for the take at what its meter settled on for the first shot (True). Left on
                   automatic it meters every view like an auto-exposure: at Vinewood, 2026-11-22, the
@@ -31,7 +34,11 @@ Settings (job settings "adapter"):
 
 While frozen the population multipliers are 0: with more people than its budget the game
 despawns and spawns people even in a frozen world (7 gone and 9 new within 60 m over 3,000
-frozen frames); with the multipliers at 0 nothing moved, appeared or went (2026-11-21).
+frozen frames); with the multipliers at 0 nothing moved, appeared or went (2026-11-21). They do
+not stop it removing people while the world steps between clip frames: over 30 steps of 1/30 s
+at Vinewood (2026-11-23, tools/hold_step_check.py, 150 m) 5 people and 2 cars went, 50-130 m out,
+which 30-clip-frame takes showed as people vanishing in the background. So the people and cars
+around the rig are made the session's own for the take (keep_radius, session command keep).
 """
 import math
 import os
@@ -60,7 +67,8 @@ CLIENT = (2560, 1440)
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 40, "step_frame_s": 0.0005, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
-            "min_step": 1e-7, "populate_s": 45, "crowd": 12, "crowd_radius": 12.0, "lock_white_point": True}
+            "min_step": 1e-7, "populate_s": 45, "crowd": 12, "crowd_radius": 12.0, "lock_white_point": True,
+            "keep_radius": 150.0}
 
 
 def game_dir(game="gtav"):
@@ -105,6 +113,8 @@ class GTAVAdapter(Adapter):
         self.min_step = MinStep(self.edition.exe)
         self.dlss5 = OptiScalerLive(game_dir(self.name))   # DLSS 5, if installed there
         self.white_point = None    # DLSS 5's white point held for the take, if any
+        self.kept = None           # what `keep` answered when the world was first held
+        self.wind = None           # the wind speed (m/s) when the world was first held
 
     # --- lifecycle -------------------------------------------------------------------------
     def _running(self):
@@ -157,6 +167,11 @@ class GTAVAdapter(Adapter):
                "park_height_m": float(self.settings.get("park_height") or 0)}
         if self.white_point is not None:
             out["dlss5"] = {"white_point_held": self.white_point, "by": "OptiScaler DLSS 5 fork, WhitePointSource=0"}
+        if self.kept:
+            out["kept"] = {k: int(self.kept[k]) for k in ("kept_people", "kept_vehicles") if k in self.kept}
+            out["kept"]["radius_m"] = float(self.settings["keep_radius"])
+        if self.wind is not None:
+            out["wind_speed_ms"] = self.wind
         return out
 
     def _lock_white_point(self):
@@ -270,6 +285,15 @@ class GTAVAdapter(Adapter):
         self._pose(s["pos"], s["right"], s["fwd"], s["up"], s["vfov_deg"])
         self.sess.cmd("wait", 60)
         self.sess.cmd("density", "0 0")   # no spawning or culling while frozen (see the module notes)
+        if float(self.settings.get("keep_radius") or 0) > 0:
+            # ...and no culling while it steps: the people and cars around the rig become the session's
+            p = s["pos"]
+            self.kept = self.sess.cmd("keep", "%.3f %.3f %.3f %.1f" % (p[0], p[1], p[2], float(self.settings["keep_radius"])))
+        try:
+            # flags, palms and cloth move with the wind between clip frames (BACKLOG): on record
+            self.wind = round(float(self.sess.cmd("wind")["wind_speed"]), 2)
+        except Exception:
+            self.wind = None
         self.sess.cmd("wait", 10)
         self.min_step.set(float(self.settings["min_step"]))
         self.sess.cmd("freeze", "timescale")

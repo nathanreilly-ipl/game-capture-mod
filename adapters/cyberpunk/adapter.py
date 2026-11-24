@@ -56,8 +56,17 @@ the clock to move about a microsecond per frame (at 1/100,000 it quit), and a 17
 then plays about 0.2 s of an ad. Bink held alone changed nothing: the screens follow the exe's
 clock. A near sweep at the market with it: the billboard shows one frame across all 345 poses
 (it played before) and the brightness jitter along the sweep fell from 0.59 to 0.045 levels of
-255 (tools/sweep_flicker.py). The clock runs again for time steps (advance) and when the subject is shown, and after
-a hold the game's clocks run behind real time by as long as they were held.
+255 (tools/sweep_flicker.py). The clock runs again when the subject is shown, and after a hold the
+game's clocks run behind real time by as long as they were held.
+
+Time steps: the game's frame time follows that clock (the world running with the clock at 0.1:
+0.355 s of simulation while the clock moved 0.397 s and real time 3.5 s; Kabuki Market,
+2026-11-23, probes/step_clock_probe.py). Until 2026-11-23 a step slowed only the simulation (time
+dilation up to 0.1) and released the clock for the step, so what runs on it moved 1.67 s per 1/30 s
+step (the same probe): ads changed picture every clip frame, foliage and people's small motions
+ran 50 times too fast (Kabuki and Badlands takes, BACKLOG). A step now keeps the dilation at 1 and
+slows the clock alone (session command step), so both move by the step; the clock never goes below
+clock_scale, and the last microseconds are taken by the dilation.
 
 HUD: the UI's "Empty" game context removes all of it (minimap, quest tracker, calls, hints).
 
@@ -100,7 +109,8 @@ Settings (job settings "adapter"):
     clock_settle    frames after setting the clock (240)
     park_depth      metres the hidden player is parked under the ground (12)
     populate_s      seconds the world runs after a teleport, so people and traffic arrive (15)
-    step_dilation   the largest time dilation during a time step (0.1; it shrinks as the target nears)
+    step_dilation   the largest time dilation during a time step when the clock is not held (0.1; it
+                    shrinks as the target nears). With hold_clock the clock alone sets the pace (Time steps)
     check_settings  refuse to capture unless the game is on the capture settings (settings.py;
                     the installer writes them into the game's settings file) (True)
     pose_tolerance_m    how far the rendered camera may be from the pose asked for (0.005)
@@ -110,9 +120,11 @@ Settings (job settings "adapter"):
     render_vfov     the vertical field of view everything is rendered at, degrees. A take sets it
                     to its widest camera (prepare_take) and a preview to its own; 76 otherwise
     lock_exposure   hold the exposure of a take at what auto-exposure gave its first shot (True)
-    accumulate      frames averaged into each shot (4), accumulate_gap frames apart (4): the path
+    accumulate      frames averaged into each shot (8), accumulate_gap frames apart (4): the path
                     tracer's noise differs from frame to frame, so a shot of one frame flickers
-                    against its neighbours in a sweep, most in reflections
+                    against its neighbours in a sweep, most in reflections. 8 instead of 4 (2026-11-24,
+                    tools/hold_step_check.py at Badlands, 10 steps): roughness between clip frames
+                    0.54/0.44 to 0.46/0.30, brightness jitter 0.05 to 0.02, 12% more frames per shot
     devices_off_m   devices within this many metres are switched off while the subject is hidden
                     (60; 0 leaves them on): their screens, holograms and blinking lights run on
                     real time and would differ from shot to shot
@@ -150,7 +162,7 @@ DEFAULTS = {"settle": 120, "first_settle": 240, "clock_settle": 240, "park_depth
             "step_dilation": 0.1, "check_settings": True, "pose_tolerance_m": 0.005,
             "render_size": [2560, 1440], "output_size": [2560, 1440], "render_vfov": 76.0,
             "weather": "24h_weather_sunny", "devices_off_m": 60.0,
-            "lock_exposure": True, "accumulate": 4, "accumulate_gap": 4, "hold_clock": True, "clock_scale": 0.0002, "lock_white_point": True}
+            "lock_exposure": True, "accumulate": 8, "accumulate_gap": 4, "hold_clock": True, "clock_scale": 0.0002, "lock_white_point": True}
 
 
 def _rz(deg):
@@ -574,13 +586,15 @@ class CyberpunkAdapter(Adapter):
         """Exactly `seconds` of world time: the world runs at a reduced time dilation, in stages
         ten times slower each as the target comes near, and is held again. The parked player fell
         a little meanwhile, so it is parked again and the camera's anchor measured again."""
-        held = self.clock_held
-        self._hold_clock(False)   # the world's time steps over real frames: they need the clock running
-        r = self.sess.cmd("advance", "%.9f %.6f" % (seconds, float(self.settings["step_dilation"])), timeout=300)
+        if self.clock_held:
+            # the clock our plug-in holds drives the game's frame time: slowing it alone, with no
+            # time dilation, moves the simulation and everything on that clock (screens, foliage)
+            # by the same step (session command step; see Time steps above)
+            r = self.sess.cmd("step", "%.9f %.9g" % (seconds, float(self.settings["clock_scale"])), timeout=300)
+        else:
+            r = self.sess.cmd("advance", "%.9f %.6f" % (seconds, float(self.settings["step_dilation"])), timeout=300)
         if self.subject_hidden:
             self._park()
-        if held:
-            self._hold_clock(True)
         return {"advanced_s": float(r["advanced_s"]), "ticks": int(r["frames"]), "sim_time": float(r["sim_time"])}
 
     def instant(self):

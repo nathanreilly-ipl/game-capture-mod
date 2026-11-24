@@ -8,6 +8,11 @@ Settings (job settings "adapter"):
     settle        ticks between a camera write and its capture (40; README: settle test)
     step_scale    time scale while stepping the frozen world (0.1)
     first_settle  ticks on the first shot before exposure is locked (90)
+    clock_ms_per_minute  how many milliseconds of world time make a game minute during a take
+                  (60000: real time; the game's own is 2000, a clock 30 times real time, under which
+                  each 1/30 s step moved the sky's light by a second: frames drifted 3-9% darker or
+                  brighter over 30 clip frames at Saint Denis, 0.0% at real time; 2026-11-24,
+                  tools/hold_step_check.py). 0 leaves the game's. Given back when the take ends
     clock_settle  ticks after setting the clock (240)
     park_height   metres to park the hidden player above the location during a take (10; 0 =
                   stay at the spot). Measured 2026-11-20: 200 m costs no render detail; in Rhodes
@@ -46,7 +51,7 @@ def game_dir():
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
-DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
+DEFAULTS = {"settle": 40, "step_scale": 0.1, "first_settle": 90, "clock_ms_per_minute": 60000, "clock_settle": 240, "park_height": 10.0,
             "lock_white_point": True}
 
 
@@ -82,12 +87,17 @@ def _reshade_preset():
 class RDR2Adapter(Adapter):
     name = "rdr2"
     capabilities = frozenset({"obstacles", "raycast"})
+    # Shadows change once on a take's first steps (Saint Denis, 2026-11-24: a house's gable sunlit
+    # in clip frames 1-2, in shade from 3 on, in two of four takes): the take loop steps this many
+    # times before clip frame 1 (capture/runner.py)
+    preroll_steps = 3
 
     def __init__(self, settings=None):
         super().__init__(dict(DEFAULTS, **(settings or {})))
         self.sess = None
         self.proc = None
         self.frame = None
+        self.clock_rate0 = None    # the game's clock rate (ms per game minute) before a take changed it
         self.hwnd = None
         self.subject_hidden = False
         self.frozen = False
@@ -150,6 +160,8 @@ class RDR2Adapter(Adapter):
                "park_height_m": float(self.settings.get("park_height") or 0)}
         if self.white_point is not None:
             out["dlss5"] = {"white_point_held": self.white_point, "by": "OptiScaler DLSS 5 fork, WhitePointSource=0"}
+        if self.clock_rate0:
+            out["clock_ms_per_game_minute"] = int(self.settings["clock_ms_per_minute"])
         return out
 
     # --- conventions -----------------------------------------------------------------------
@@ -267,6 +279,11 @@ class RDR2Adapter(Adapter):
         player = vec(self.sess.cmd("state")["player"])
         found, _ = rc.calibrate(self.sess, self.proc, player)
         pitch, yaw = rc.pitch_yaw(first_shot["fwd"])
+        rate = int(self.settings.get("clock_ms_per_minute") or 0)
+        if rate:
+            # the clock at real time for the take, so a step moves the sky as much as the world
+            self.clock_rate0 = int(self.sess.cmd("clockrate")["clock_ms_per_minute"])
+            self.sess.cmd("clockrate", rate)
         self.sess.pose(first_shot["pos"], pitch, yaw, first_shot["vfov_deg"])
         self.sess.cmd("wait", 60)
         self.sess.cmd("freeze")
@@ -391,6 +408,9 @@ class RDR2Adapter(Adapter):
     def end_frozen(self):
         try:
             self.sess.cmd("exposure", "unlock")
+            if self.clock_rate0:
+                self.sess.cmd("clockrate", self.clock_rate0)
+                self.clock_rate0 = None
         finally:
             self.sess.cmd("unfreeze")
             self.frozen = False

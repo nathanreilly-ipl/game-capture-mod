@@ -66,7 +66,12 @@ def start(game_dir, timeout=900, key_interval=5.0, log=print):
         if time.time() - t0 > timeout:
             raise RuntimeError("no loader heartbeat after %d s (is the game in story mode with RedLua's Autorun on?)" % timeout)
         if seen is None and time.time() - asked > 180 and not host.pids(install.EXE):
-            # a request can be lost: Steam shows the game's licence once and drops the start, or was not ready
+            # a request can be lost: Steam shows the game's licence once and drops the start, or was not
+            # ready. A launcher that is up without the game gave the start up (GTA V's did, 2026-11-23:
+            # "Game launch validation timed out!"), and Steam takes no new start while it runs
+            if any(host.pids(n) for n in CLOSE):
+                close_game(log)
+                log("the launcher is up without the game; closed it")
             host.steam_launch(GAME, install.STEAM_APP)
             log("no game after 180 s; asked Steam again")
             asked = time.time()

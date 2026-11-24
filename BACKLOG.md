@@ -3,6 +3,127 @@
 Work that is designed for but not built. Each item says what the current system does instead,
 and what is already in place so the item can be added without reworking the pipeline.
 
+## Top priority now: visual faults in the CoreWeave takes (before The Witcher 3)
+
+Set by Nathan, 2026-11-23, after watching the nine locations' takes on the work-docs page (near
+sweep and 30 clip frames each, Linux on CoreWeave). Most faults show in the 30-clip-frame takes,
+where the world steps 1/30 s between clip frames. Tick an item once a retake at the same place
+shows it gone and `tools/temporal_flicker.py` (each fixed camera's clip frame against the average
+of its neighbours) says so; the numbers before are in `out/checks/visual_20261123/before/`, after
+in `.../after/`. "First multi-frame" below is the moving camera's video, "second" the fixed camera
+00's. docs/VISUAL_CHECKS.md has every fault, its check and its fix for any game. None of the fixes
+below is committed yet (2026-11-24).
+
+Cyberpunk 2077 (fixed cameras before: roughness 0.46-0.61 Kabuki, 1.10-1.41 Cherry Blossom
+Market, 1.33-1.59 Badlands; pixels over 12: 0.2-0.5%, 0.7-1.0%, 2.2-2.9%):
+
+- [x] **Time-lapse of what runs on the real-time clock between clip frames.** A time step
+  released our clock plug-in to full speed for the whole step, so the clock moved 1.67 s per 1/30 s
+  step (`probes/step_clock_probe.py`): ad billboards changed picture every clip frame, foliage
+  thrashed, people's small motions jumped. The game's frame time follows that clock, so a step now
+  keeps the dilation at 1 and slows the clock alone (session command `step`; the clock moves 33-40
+  ms per step, steps 33.331-33.333 ms). Badlands retake (2026-11-23): fixed cameras roughness 1.33
+  and 1.59 to 0.40 and 0.47, pixels over 12 2.2% and 2.9% to 0.03% and 0.11%, brightness jitter 0.32
+  to 0.08. Kabuki retake: roughness 0.46 and 0.61 to 0.41 and 0.42, pixels over 12 0.19% and 0.53%
+  to 0.08% and 0.07%; the sign that changed picture every few clip frames shows one picture
+  throughout. Left: at clip frame 19 of the Badlands retake the whole scene brightens 0.5 levels and
+  the bushes change shape once (a gust or a cloud edge, both cameras).
+- [ ] **Cloth through time steps** (from the PC session's The Witcher 3, 2026-11-24: steps that
+  end on microsecond frames kicked the cloth solver). Cyberpunk's `step` also ends on small frames
+  (an eighth of what is left per frame, then the dilation for the last microseconds). No kick seen
+  in the Kabuki and Badlands retakes or at the Cherry Blossom Market (`hold_step_check.py`: the
+  flicker map shows only a walker), but nothing with cloth was aimed at. Check with a flag or
+  awning in a fixed camera; if it kicks, even frames as the PC session did.
+- [x] **NPCs gliding across the ground in sync** (Kabuki, moving camera): the old take's walker
+  goes through a stride every clip frame or two while hardly moving (walk animation on the
+  time-lapsed clock). With `step`, a walker at the Cherry Blossom Market takes half a stride over 15
+  steps (0.5 s), as walking does (`hold_step_check.py` steps sheet, 2026-11-23). The Kabuki retake
+  had no walker in view.
+- [x] **Path-tracing noise between clip frames** (all three places). With the clock fixed, what is
+  left between steps equals the change within one step: renderer noise. 8 frames averaged per shot
+  instead of 4 (the default now): Badlands roughness 0.54/0.44 to 0.46/0.30, brightness jitter 0.05
+  to 0.02 (`hold_step_check.py`, 2026-11-24), 12% more frames per shot.
+- [ ] **Exposure 9 and 14 levels of 255 too bright at Kabuki and Badlands**: the forced exposure
+  has a floor the lock cannot go under (README, Cyberpunk on Linux). Not a flicker, but wrong.
+  `Rendering/ForcedPreExposure` does not help (70-82 for 0.001 to 10, Kabuki 2026-11-23,
+  `probes/exposure_range.py --option ForcedPreExposure`). Left to try: the option dump's
+  `Developer/FeatureToggles/EyeAdaptation`, `DLSS/ExposureScale`, `Rendering/ACES/*`.
+- [x] **Steps 34.2-34.7 ms instead of 33.3** in 2-3 of 29 steps at Kabuki and Badlands (the
+  advance overshot on a slow frame). With `step`: 33.3314-33.3327 ms over the 29 steps of the
+  Badlands retake.
+
+RDR2 (fixed cameras before: roughness 0.33-0.64, pixels over 12 at most 0.35%):
+
+- [x] **Exposure falls over the take at the lakeshore**: brightness 117.3 at clip frame 1 and
+  105.3 at frame 30 (camera 00): the "white flash" at the start. Cause: the game's clock runs 30
+  times real time (2000 ms per game minute), so each 1/30 s step moved the sky and its light by a
+  second. `hold_step_check.py` at Saint Denis, 30 steps, the take's two fixed cameras (2026-11-24):
+  exposure drift 0.970/0.978 and 0.915/0.916 at the game's rate, 0.999/0.993 at real time. Takes
+  now run the clock at real time (`clock_ms_per_minute` 60000, session command `clockrate`; given
+  back after). Lakeshore retake: 0.991/0.992 (was 0.89).
+- [ ] **A smooth 2-4% exposure change over the first 10 clip frames** (Saint Denis, Rhodes, with
+  the clock at real time; up in some takes, down in others): not from the obstacle checks, the
+  order of the cameras, the view showing during a step, the eye adapting before the lock (primed on
+  sky or ground: same), or a clock jump; not seen in `hold_step_check.py` at the same place. A
+  15-step pre-roll turned +3% into -3%.
+- [x] **Shadows flicker very dark in some clip frames** (Saint Denis: the house most). With the
+  game's clock at 30x the house's gable switched between sun and shade at clip frames 3, 11 and 13;
+  at real time once, at clip frame 3, in 2 of 4 takes; with 3 pre-roll steps before clip frame 1
+  (`preroll_steps`, capture/runner.py) in 0 of 2 (2026-11-24). Rhodes' basket: no pop in the
+  retake.
+- [ ] **Rain splashes in a Rhodes puddle may run too fast and look noisy** (no reference yet):
+  check whether particles follow the game timer.
+- [ ] **The corners darker** (also in the PC's Saint Denis sweep of 2026-11-20). Measured with
+  `tools/vignette_check.py --game rdr2` (the same patch of scene at the centre and turned near each
+  corner, exposure held): 0.57/0.20 of its centre brightness at the top/bottom corners in haze,
+  0.29/0.56 in sun; the same with Reality Redemption 2 off and with no ReShade effect at all;
+  Cyberpunk by the same test 0.93-1.08. So the game renders a point darker toward the frame's
+  edges depending on what surrounds it, a per-camera difference. It acts like a local tone mapper
+  (the whole frame darker when bright sky or sunlit road fills it; `exposure_check.py` shows the
+  exposure itself held). Not the game's HDR setting (`hdr` false: the same 0.45-0.73 on the
+  landscape view, 2026-11-24). Next: ambient occlusion (`ssao`, `ssdo...`), volumetrics,
+  screen-space shadows in system.xml, one at a time, game closed, with this test.
+- [ ] **Motion blur is on in RDR2** (`<motionBlur value="true" />` in system.xml, from the PC's
+  profile; the install does not set it). A per-camera effect AGENTS.md wants off: moving people
+  are blurred along their 1/30 s motion. Add an XmlSet step (motionBlur false) to the install.
+
+GTA V Enhanced (fixed cameras before: roughness 0.21-0.90, Vinewood 0.8-1.1% of pixels over 12):
+
+- [ ] **NPCs disappear in the background between clip frames** (Vinewood, both multi-frame
+  videos). Measured: with the multipliers at 0 the game removed 5 people and 2 cars within 150 m
+  over 30 steps (`tools/hold_step_check.py` census, 50-130 m out). Fixed in the check: the session
+  makes everyone within `keep_radius` (150 m) its own for the take (command `keep`): 0 people gone,
+  1 car at the 150 m edge. Vinewood retake: fixed cameras roughness 0.74/0.72 to 0.53/0.39, no
+  pop but palm shadows at clip frame 9 (below). Takes record the people and cars kept and the
+  wind.
+- [ ] **Shapes flicker in and out on trees and a background billboard; bad geometry in far
+  trees** (Vinewood): `temporal_flicker.py --size 960x540` finds pops at clip frame 20 (old take)
+  and 9 (retake) on palm fronds' shadows on a wall: different for one clip frame, then back.
+  Palms move with the wind as the banner does; a held world shows no change there. A test with the
+  wind held at 0 was cut short by RedLua's fault.
+- [ ] **A flag near the red cube vibrates** (Legion Square, moving camera). Measured: still in a
+  held world; across steps it moves with the wind (12 m/s: roughness 2.05 with the 67-frame steps,
+  4.26 with 4 frames of 8.3 ms; with the wind of the first check it hardly moved). The game's cloth,
+  not a clock. To decide: record the wind per take, and hold it lower during takes or not.
+- [ ] **Temporal noise in ray-traced reflections** (the marble ground at Vinewood, faintly the
+  whole frame, near sweep). A held world shows none (spread over 4 on 0.000-0.085% of pixels), so it
+  is the history after each camera cut. Vinewood near sweep with 80 settle frames against 40:
+  brightness jitter along the sweep 0.43 to 0.054 (one take each; the crowd differs, so roughness
+  cannot be compared). To decide: settle 80 for GTA V Enhanced (a sweep takes 13 min instead of 7).
+  Also: exposure follows the view slowly even in a held world (+0.4 levels after 67 frames on a
+  brighter view, 1.2-1.4 between steps when cycling views; `probes/step_exposure_probe.py`;
+  `SET_EXPOSURETWEAK` did not hold it).
+- [x] **The clock of day moving the light between clip frames** (RDR2's fault, A5): not in GTA V,
+  exposure drift 1.000 on both fixed cameras over 30 steps at Vinewood with its clock running
+  (2026-11-24). Nothing to change.
+- [ ] **RedLua faults mid-session** (`lua51.dll+0x5C83`, `+0x5DDE`): four times in
+  `hold_step_check.py` runs on 2026-11-23/24, each during its per-step census of people (with and
+  without `keep`); without the census the run went through. Takes list obstacles once per clip
+  frame and went through. Watch the worker logs for restarts.
+- [ ] **Aliasing**, slight in general and in the far background (Legion Square, right edge near
+  the truck, camera 00). The game runs DLSS under Proton (nvngx_dlss loaded, settings.xml DLAA,
+  sharpening 0.8). Options: sharpening 0; rendering 3840x2160 and scaling down.
+
 ## Top priority: the game-agnostic code on Linux, what is left
 
 Set by Nathan, 2026-11-23, as the long-term priority. Started that day, once Cyberpunk 2077

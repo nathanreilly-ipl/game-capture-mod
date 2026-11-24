@@ -111,6 +111,7 @@ def heartbeat(exchange):
 def start(exchange, client=(2560, 1440), timeout=600, log=print, snapshots=None, through_steam=False):
     """Restarts the game and loads the last save; returns the game window once ingame=1."""
     window.keep_awake()
+    host.check_start(paths.GAME)   # before the running game is closed: a start that cannot happen must not end it
     close_game(log)
     other = running_app() if host.WINDOWS else "0"
     if other not in ("0", paths.STEAM_APP):

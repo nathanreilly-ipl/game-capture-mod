@@ -240,6 +240,9 @@ def steps(ctx):
         out.append(XmlSet(xml, "dlssQuality", "2", why="a DLSS mode the game creates the feature for"))
     out.append(XmlSet(xml, "vSync", "0", why="uncapped frame rate"))
     out.append(XmlSet(xml, "pauseOnFocusLoss", "false", why="the game keeps running if focus is lost"))
+    # the PC's profile had it on (2026-11-24): moving people blurred along their 1/30 s motion, a
+    # per-camera effect (AGENTS.md section 1, docs/VISUAL_CHECKS.md C)
+    out.append(XmlSet(xml, "motionBlur", "false", why="no motion blur"))
     if opt.get("resolution"):
         w, h = (int(v) for v in opt["resolution"].lower().split("x"))
         if abs(w / h - 16 / 9) > 0.01:
