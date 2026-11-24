@@ -352,7 +352,11 @@ problem. Parking side effects: under water at Northside docks Cyberpunk's camera
 **F1. The HUD and mod overlays.** Hide the HUD every frame if the game redraws it; turn mod
 overlays off at install (ReShade, CET, OptiScaler toasts, trainers). Nothing detects a small
 overlay. The Witcher 3's debug console slides shut over 0.2 s after a command: nothing is captured
-sooner than 0.45 s after one. Kingdom Come: Deliverance takes commands through its console too: the
+sooner than 0.45 s after one; and when the key that closes it is lost (Linux, 2026-11-24: one shot
+of a 345-pose near sweep at Crookback Bog had the console over its top quarter, a dark frame in the
+sweep: `sweep_flicker.py` brightness jitter 1.52 against 0.04 elsewhere), `capture()` now finds its
+green echo in the shot (`session.console_in`) and the shot is taken again after `recover()` closes
+it. Kingdom Come: Deliverance takes commands through its console too: the
 session checks a frame for the open console (a solid black line at half height) and recovers when
 it is out of step; anything else typing into the game while a worker runs breaks this (a probe
 did once and failed a near sweep).

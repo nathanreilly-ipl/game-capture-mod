@@ -159,7 +159,7 @@ from capture.adapter import Adapter, AdapterError
 from ..common import frames, window
 from ..common.optiscaler_live import OptiScalerLive
 from . import launch, paths, settings as game_settings
-from .session import Session, pack, parse_kv, vec
+from .session import Session, console_in, pack, parse_kv, vec
 
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
@@ -562,7 +562,10 @@ class Witcher3Adapter(Adapter):
         a = self._shoot(path, int(settle or self.settings["settle"]))
         st = self.sess.state()
         self.last_size = [a["width"], a["height"]]
-        info = {"width": a["width"], "height": a["height"], "health": {"problems": self._problems(st)},
+        problems = self._problems(st)
+        if console_in(path):     # a closing key lost: the shot is taken again after recover()
+            problems.append("the debug console is in the picture")
+        info = {"width": a["width"], "height": a["height"], "health": {"problems": problems},
                 "rendered_pos": st.get("cam"), "rendered_fwd": st.get("fwd"), "rendered_up": st.get("up"),
                 "rendered_fov": st.get("fov"), "sim_time": "%.6f" % self._engine(st), "player": st.get("player"),
                 "render_frame": a["frame"]}
@@ -656,6 +659,9 @@ class Witcher3Adapter(Adapter):
             if st.get("menu") == "1":
                 window.press(self.hwnd, "Esc")
                 time.sleep(1.5)
+            if self.sess.console_open():
+                window.press(self.hwnd, self.sess.CONSOLE_KEY, hold_s=0.08)
+                time.sleep(self.sess.CLEAR_S + 0.2)
             if self.subject_hidden:
                 self.sess.cmd("hud", 0)
                 self.sess.cmd("freeze")

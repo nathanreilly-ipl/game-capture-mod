@@ -40,23 +40,29 @@ class Session(ConsoleSession):
         return "is the game started with -debugscripts, the debug console on and our script installed? "
 
     def console_open(self):
-        """Whether the debug console is in the picture now, or None if no frame came. It is drawn
-        over the top quarter of the frame, left two thirds, and the commands it ran are echoed
-        there in bright green (2026-11-23)."""
+        """Whether the debug console is in the picture now, or None if no frame came."""
         try:
             a = frames.shoot(self.exchange(), "console_check", after=1, timeout=5.0)
         except frames.FrameError:
             return None
         try:
-            from PIL import Image
-            import numpy as np
-            with Image.open(a["path"]) as im:
-                w, h = im.size
-                arr = np.asarray(im.convert("RGB").crop((0, 0, int(w * 0.66), int(h * 0.24))), dtype=np.int16)
+            return console_in(a["path"])
         finally:
             try:
                 os.remove(a["path"])
             except OSError:
                 pass
-        green = (arr[..., 1] > 170) & (arr[..., 0] < 100) & (arr[..., 2] < 100)
-        return float(green.mean()) > 0.0004
+
+
+def console_in(path):
+    """Whether the debug console is in a saved frame. It is drawn over the top quarter of the
+    frame, left two thirds, and the commands it ran are echoed there in bright green
+    (2026-11-23). In a near sweep at Crookback Bog (Linux, 2026-11-24) the one shot with the
+    console in it had 0.089 of that area green, the other 344 none."""
+    from PIL import Image
+    import numpy as np
+    with Image.open(path) as im:
+        w, h = im.size
+        arr = np.asarray(im.convert("RGB").crop((0, 0, int(w * 0.66), int(h * 0.24))), dtype=np.int16)
+    green = (arr[..., 1] > 170) & (arr[..., 0] < 100) & (arr[..., 2] < 100)
+    return float(green.mean()) > 0.0004

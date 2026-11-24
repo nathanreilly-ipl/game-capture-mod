@@ -8,6 +8,7 @@ down, the comparison views of tools/preset_ab.py), each held `--hold` frames, an
 target is darker after the bright view and brighter after the dark one.
 
     uv run --project . python tools/exposure_check.py --game gtave --location gtave-vinewood-walk-001 --clock 14:00 --weather EXTRASUNNY
+        [--set key=value ...]   (adapter settings for this run, as tools/hold_step_check.py)
 
 Writes out/checks/exposure/<stamp>/: frames, report.json.
 """
@@ -42,14 +43,17 @@ def main():
     ap.add_argument("--hold", type=int, default=300, help="frames on the bright or dark view before the cut")
     ap.add_argument("--settle", type=int, default=40, help="frames after the cut, as in a take (default 40)")
     ap.add_argument("--late", type=int, default=600, help="frames after the cut for the late shot")
+    ap.add_argument("--set", action="append", help="an adapter setting for this run, key=value (value as JSON if it parses)")
     a = ap.parse_args()
     out = os.path.join(paths.OUT, "checks", "exposure", stamp() + "_" + a.game)
     os.makedirs(out)
     log = print
-    adapter = adapters_registry.get(a.game)()
+    from hold_step_check import settings_arg
+    adapter = adapters_registry.get(a.game)(settings_arg(a.set) or None)
     adapter.ensure_ready(restart=False)
     adapter.open()
-    report = {"game": a.game, "location": a.location, "hold": a.hold, "settle": a.settle, "late": a.late}
+    report = {"game": a.game, "location": a.location, "hold": a.hold, "settle": a.settle, "late": a.late,
+              "settings": settings_arg(a.set)}
     try:
         loc = locs.get(paths.LOCATIONS, a.location)
         adapter.go_to(loc["position"], loc["facing_deg"])
