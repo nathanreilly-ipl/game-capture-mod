@@ -94,6 +94,30 @@ plausible reason.
 
 ## How to work
 
+This review is meant to be long: expect well over a hundred steps and an hour or more. There is no
+time limit and nobody waits on you. A review that looks at a few sheets and stops is not done; do
+not end before every take has been checked in every category.
+
+Start each take with the evidence tool, unless the take already holds an `evidence/` folder:
+`uv run --project . python tools/qc_evidence.py <take folder> --out {{work_dir}}/<take folder name>`.
+It writes `index.md`, `timestamps.md` (game time per shot and clip frame), a strip of every clip
+frame and a strip of differences between neighbouring clip frames for each camera, crops around
+each pop, and a sweep's flagged poses with their neighbours. Where a take holds `npc_tracks.jsonl`,
+also run `tools/npc_tracks.py` on it (people, animals and vehicles through the clip frames).
+
+The least that every review covers:
+- Every take's `metrics/` reports and its "known" spots in `take.json` or the manifest, each known
+  spot confirmed as still there or not.
+- Every 30-clip-frame take: a time strip of every camera (`tools/clip_strip.py`), and the full
+  frames of each camera at the first, middle and last clip frames and at every clip frame a metric
+  flags (with the frames before and after it).
+- Every near sweep: at least ten poses spread over the sweep at full size, and every pose a metric
+  flags with its neighbours.
+- People, animals and vehicles: each one you can see in a clip take followed through its clip
+  frames (where it is, which way it faces, what it does), to judge both NPC categories.
+- In `coverage`, for every category, every take by its folder name with what you did for it, or
+  "not checked" and why.
+
 1. Read `docs/VISUAL_CHECKS.md`, the manifest and the earlier findings.
 2. Go through the six categories one at a time, each over every take of the round. Start from what
    is cheap: the tools' numbers and maps, time strips of one camera across clip frames
@@ -105,10 +129,14 @@ plausible reason.
    would; nothing pops, vanishes, teleports, flickers or drifts.
 5. Check each earlier finding: still present (report it again with `previous_id`) or gone (list it
    under `gone`, with why you think so).
+6. Before you finish, read your `coverage` back against the list of takes above: any take a
+   category has not covered is still to do.
 
 ## What to report
 
 - Report every possible fault. A missed fault is worse than a false one.
+- One finding per fault and place: the same fault in two takes is two findings, so each can be
+  fixed and checked on its own.
 - Guessing is allowed: report lower-confidence suspicions too.
 - Rate each finding's confidence:
   - 1: possible, worth a look;
@@ -142,9 +170,12 @@ category), so that work is not lost if you stop early. Its form:
  ],
  "gone": [{"previous_id": "<id>", "why": "<what shows it is gone>"}],
  "requests": [{"kind": "tool | data", "what": "<what you wished for>", "why": "<what it would have caught>"}],
- "coverage": {"<category>": "<what you checked, over which takes>"}
+ "coverage": {"<category>": {"<take folder>": "<what you did for this take in this category>"}}
 }
 ```
+
+`coverage` names every take under every category, by its folder name. A take you have not done
+yet is missing or "not checked": when you stop, the orchestrator sends you back to those.
 
 Categories are written as: {{categories}}. A finding can carry more than one. Do not give findings
 an id: the orchestrator does (ids stay the same across the game's rounds). When you have finished

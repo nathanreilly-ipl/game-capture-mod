@@ -39,7 +39,7 @@ CATEGORIES = ["geometry_continuity", "geometry_accuracy", "lighting_continuity",
 ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit", "Bash(uv run *)", "PowerShell(uv run *)"]
 DEFAULTS = {"max_agents": 2, "model": "sonnet", "claude": None, "agent_cmd": None, "allowed_tools": ALLOWED_TOOLS,
             "s3_root": "s3://data-interns/nathan.reilly/transfer-qc", "s3_endpoint": None, "aws": "aws",
-            "timeout_min": 240}
+            "timeout_min": 240, "max_passes": 6}
 
 
 def settings(**over):
@@ -104,10 +104,23 @@ def game_state(game):
     return load_state().get("games", {}).get(game, {})
 
 
-def enqueue(game, rnd, force=False):
+def enqueue(game, rnd, force=False, redo=False):
+    """Queues a game's round. redo: the round's feedback so far is moved aside (feedback.tryN) and
+    the ids it gave out are given again, so a review done over keeps the game's ids continuous."""
     cur = game_state(game)
     if cur.get("state") == "reviewing" and not force:
         raise SystemExit("%s is being reviewed (round %s); a game is in one state at a time" % (game, cur.get("round")))
+    fb = feedback_dir(game, rnd)
+    if os.path.exists(os.path.join(fb, "findings.json")):
+        if not redo:
+            raise SystemExit("%s %s has findings already: --redo to review it again" % (game, round_name(rnd)))
+        n = 1
+        while os.path.exists("%s.try%d" % (fb, n)):
+            n += 1
+        os.rename(fb, "%s.try%d" % (fb, n))
+        first = (cur.get("first_id") or {}).get(str(int(rnd)))
+        if first:
+            _update(game, next_id=int(first))
     return _update(game, state="queued", round=int(rnd), queued_at=_now(), note=None)
 
 
@@ -144,9 +157,8 @@ def pull(game, rnd, src=None, keep_s3=False, force=False, **over):
         if commit and subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=REPO,
                                      capture_output=True).returncode != 0:
             print("warning: this checkout does not have the round's commit %s: git pull first (its tools)" % commit)
-    takes = [d for d in sorted(os.listdir(dest)) if os.path.isdir(os.path.join(dest, d)) and d != "feedback"]
     enqueue(game, rnd, force=force)
-    print("%s %s: %d take(s) in %s; queued (position %d)" % (game, round_name(rnd), len(takes), dest,
+    print("%s %s: %d take(s) in %s; queued (position %d)" % (game, round_name(rnd), len(takes(game, rnd)), dest,
                                                                queue().index(game) + 1))
 
 
@@ -161,7 +173,7 @@ def push(game, rnd, dest=None, **over):
         where = dest
     else:
         where = "%s/%s/%s/feedback/" % (s["s3_root"].rstrip("/"), game, round_name(rnd))
-        _aws(s, "s3", "sync", src, where, "--only-show-errors", "--exclude", "work/*")
+        _aws(s, "s3", "sync", src, where, "--only-show-errors")     # work/ too: the findings' evidence
     _update(game, state="fixes", pushed_at=_now())
     f = read_json(os.path.join(src, "findings.json"))
     print("%s %s feedback at %s: %s" % (game, round_name(rnd), where, summary(f)))
@@ -194,14 +206,16 @@ def _agent_env(game, rnd):
     return env
 
 
-def agent_command(game, rnd, s):
+def agent_command(game, rnd, s, resume=None):
+    """The reviewer's command; resume: a claude session to continue (a further pass)."""
     if s.get("agent_cmd"):
         if sys.platform != "win32":
             return shlex.split(s["agent_cmd"])
         # Windows paths keep their backslashes (posix=False), which leaves the quotes on: drop them
         return [t[1:-1] if len(t) > 1 and t[0] == t[-1] == '"' else t for t in shlex.split(s["agent_cmd"], posix=False)]
     return ([_claude(s), "-p", "--model", s["model"], "--output-format", "json", "--strict-mcp-config",
-             "--no-session-persistence", "--add-dir", round_dir(game, rnd), "--allowedTools"] + list(s["allowed_tools"]))
+             "--add-dir", round_dir(game, rnd)] + (["--resume", resume] if resume else []) +
+            ["--allowedTools"] + list(s["allowed_tools"]))
 
 
 def _listing(d):
@@ -209,7 +223,7 @@ def _listing(d):
     lines = []
     for t in sorted(os.listdir(d)):
         p = os.path.join(d, t)
-        if not os.path.isdir(p) or t == "feedback":
+        if not os.path.isdir(p) or t.startswith("feedback"):
             continue
         counts = {}
         for root, _, files in os.walk(p):
@@ -254,21 +268,70 @@ def prompt(game, rnd, s=None):
     return text
 
 
+CONTINUE = """Your review of {game}, round {round}, is not finished. findings.json's coverage does not yet show
+these takes as checked:
+{gaps}
+Continue now. For each of them do the least the review covers (the evidence tool's output, the
+strips, full frames at the first, middle and last clip frames and wherever a metric points, ten
+sweep poses, every person followed), add what you find to findings.json, and set coverage[category]
+[take] to what you did. Keep findings.json written as you go. Do not stop until every take is
+covered in every category; this is pass {n} of at most {max}."""
+
+
+def _launch(game, rnd, s, text, n, resume=None):
+    """One reviewer process: pass n (1: the prompt; 2 on: CONTINUE in the same claude session)."""
+    fb = feedback_dir(game, rnd)
+    out_path = os.path.join(fb, "agent_output.json" if n == 1 else "agent_output_pass%d.json" % n)
+    out = open(out_path, "wb")
+    err = open(os.path.join(fb, "agent_stderr.log"), "ab")
+    cmd = agent_command(game, rnd, s, resume=resume)
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=out, stderr=err, cwd=REPO, env=_agent_env(game, rnd))
+    p.stdin.write(text.encode("utf-8"))
+    p.stdin.close()
+    _update(game, state="reviewing", passes=n)
+    print("%s %s: reviewer pass %d started (%s, pid %d)" % (game, round_name(rnd), n,
+                                                             s.get("model") if not s.get("agent_cmd") else cmd[0], p.pid))
+    return {"p": p, "rnd": rnd, "t0": time.time(), "out": out, "err": err, "out_path": out_path, "pass": n}
+
+
 def start(game, rnd, s):
     fb = feedback_dir(game, rnd)
     os.makedirs(os.path.join(fb, "work"), exist_ok=True)
     text = prompt(game, rnd, s)
     with open(os.path.join(fb, "prompt.md"), "w", encoding="utf-8") as f:
         f.write(text)
-    out = open(os.path.join(fb, "agent_output.json"), "wb")
-    err = open(os.path.join(fb, "agent_stderr.log"), "wb")
-    cmd = agent_command(game, rnd, s)
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=out, stderr=err, cwd=REPO, env=_agent_env(game, rnd))
-    p.stdin.write(text.encode("utf-8"))
-    p.stdin.close()
-    _update(game, state="reviewing", started_at=_now(), model=s.get("model"), agent=os.path.basename(cmd[0]))
-    print("%s %s: reviewer started (%s, pid %d)" % (game, round_name(rnd), s.get("model") if not s.get("agent_cmd") else cmd[0], p.pid))
-    return p, out, err
+    _update(game, started_at=_now(), model=s.get("model"))
+    return _launch(game, rnd, s, text, 1)
+
+
+def gaps(game, rnd):
+    """What the reviewer's coverage still lacks: {category: [takes]}, or None without findings."""
+    f = os.path.join(feedback_dir(game, rnd), "findings.json")
+    try:
+        return uncovered(read_json(f), takes(game, rnd))
+    except (OSError, ValueError):
+        return None
+
+
+def next_pass(game, r, s):
+    """Another pass of the same reviewer while its coverage has gaps (claude only: it resumes the
+    session), up to max_passes; None when the review is done."""
+    if s.get("agent_cmd") or r["pass"] >= int(s.get("max_passes") or 1):
+        return None
+    g = gaps(game, r["rnd"])
+    if not g:
+        return None
+    try:
+        session = read_json(r["out_path"]).get("session_id")
+    except (OSError, ValueError):
+        session = None
+    if not session:
+        return None
+    text = CONTINUE.format(game=game, round=int(r["rnd"]), n=r["pass"] + 1, max=s["max_passes"],
+                           gaps="\n".join("- %s: %s" % (c, ", ".join(t)) for c, t in g.items()))
+    nxt = _launch(game, r["rnd"], s, text, r["pass"] + 1, resume=session)
+    nxt["t0"] = r["t0"]          # timeout_min counts from the first pass
+    return nxt
 
 
 def finish(game, rnd, code):
@@ -283,8 +346,9 @@ def finish(game, rnd, code):
         _update(game, state="failed", finished_at=_now(), note="findings.json unusable: %s" % e)
         print("%s %s: FAILED, findings.json unusable: %s" % (game, round_name(rnd), e))
         return None
-    _update(game, state="reviewed", finished_at=_now(), note=summary(data))
-    print("%s %s: reviewed, %s; next: capture qc push %s %d" % (game, round_name(rnd), summary(data), game, int(rnd)))
+    note = summary(data) + ("; %d problems, see report.md" % len(data["problems"]) if data.get("problems") else "")
+    _update(game, state="reviewed", finished_at=_now(), note=note)
+    print("%s %s: reviewed, %s; next: capture qc push %s %d" % (game, round_name(rnd), note, game, int(rnd)))
     return data
 
 
@@ -296,35 +360,50 @@ def run(**over):
     n = max(1, int(s["max_agents"]))
     running = {}
     while True:
-        for g, (p, rnd, t0, out, err) in list(running.items()):
-            late = time.time() - t0 > float(s["timeout_min"]) * 60
-            if p.poll() is None and late:
-                p.kill()
-                p.wait()
-            if p.poll() is not None:
-                out.close()
-                err.close()
-                finish(g, rnd, p.returncode)
-                del running[g]
+        for g, r in list(running.items()):
+            done = _poll(g, r, s)
+            if done is not None:
+                if done is True:
+                    del running[g]
+                else:
+                    running[g] = done
         waiting = [g for g in queue() if g not in running]
         while waiting and len(running) < n:
             g = waiting.pop(0)
-            rnd = game_state(g)["round"]
-            p, out, err = start(g, rnd, s)
-            running[g] = (p, rnd, time.time(), out, err)
+            running[g] = start(g, game_state(g)["round"], s)
         if not running and not waiting:
             break
         time.sleep(5)
     print(status_text())
 
 
+def _poll(game, r, s):
+    """None while the reviewer runs; its next pass when it stopped short; True once finished."""
+    p = r["p"]
+    late = time.time() - r["t0"] > float(s["timeout_min"]) * 60
+    if p.poll() is None and late:
+        p.kill()
+        p.wait()
+    if p.poll() is None:
+        return None
+    r["out"].close()
+    r["err"].close()
+    nxt = None if late else next_pass(game, r, s)
+    if nxt:
+        return nxt
+    finish(game, r["rnd"], p.returncode)
+    return True
+
+
 def review(game, rnd, **over):
     s = settings(**over)
-    p, out, err = start(game, rnd, s)
-    p.wait()
-    out.close()
-    err.close()
-    return finish(game, rnd, p.returncode)
+    r = start(game, rnd, s)
+    while True:
+        r["p"].wait()
+        done = _poll(game, r, s)
+        if done is True:
+            return
+        r = done
 
 
 # --- findings ---------------------------------------------------------------------------------
@@ -332,8 +411,38 @@ def _extent(f):
     return max(1, len(f.get("cameras") or [])) * max(1, len(f.get("clip_frames") or []))
 
 
-def validate(data):
+def takes(game, rnd):
+    d = round_dir(game, rnd)
+    return [t for t in sorted(os.listdir(d)) if os.path.isdir(os.path.join(d, t)) and not t.startswith("feedback")]
+
+
+def uncovered(data, take_names):
+    """The categories whose coverage note names neither every take nor "all takes": a review that
+    stopped short."""
+    cov = data.get("coverage") or {}
+    out = {}
+    for c in CATEGORIES:
+        v = cov.get(c)
+        if isinstance(v, dict):          # {take: what was done}: a take missing or "not checked" is a gap
+            missing = [t for t in take_names
+                       if not str(v.get(t, "")).strip() or str(v.get(t, "")).strip().lower().startswith(NOT_DONE)]
+        else:                            # free text: every take named, or "all takes"
+            text = str(v or "")
+            if "all takes" in text.lower() or "every take" in text.lower():
+                continue
+            missing = [t for t in take_names if t not in text]
+        if missing:
+            out[c] = missing
+    return out
+
+
+NOT_DONE = ("not checked", "not examined", "not done", "skipped", "todo", "to do", "none", "n/a")
+
+
+def validate(data, take_names=()):
     problems = []
+    for c, missing in uncovered(data, take_names).items():
+        problems.append("coverage of %s does not name %d of %d takes" % (c, len(missing), len(take_names)))
     for i, f in enumerate(data.get("findings", [])):
         bad = [c for c in f.get("categories", []) if c not in CATEGORIES]
         if not f.get("categories") or bad:
@@ -356,6 +465,7 @@ def report(game, rnd):
         st = load_state()
         g = st.setdefault("games", {}).setdefault(game, {})
         nxt = int(g.get("next_id", 1))
+        g.setdefault("first_id", {}).setdefault(str(int(rnd)), nxt)   # where this round's new ids start
         for f in data["findings"]:
             if f.get("id"):
                 continue
@@ -367,7 +477,7 @@ def report(game, rnd):
         g["next_id"] = nxt
         write_json(STATE, st)
     data["findings"].sort(key=lambda f: (-int(f.get("confidence") or 0), -_extent(f)))
-    data.update(game=game, round=int(rnd), problems=validate(data))
+    data.update(game=game, round=int(rnd), problems=validate(data, takes(game, rnd)))
     write_json(path, data)
     with open(os.path.join(feedback_dir(game, rnd), "report.md"), "w", encoding="utf-8") as fh:
         fh.write(report_md(data))
@@ -420,8 +530,15 @@ def report_md(data):
     out += ["- %s: %s" % (g.get("previous_id"), g.get("why", "")) for g in data.get("gone", [])] or ["None."]
     out += ["", "## Requests: tools and data the reviewer wished for", ""]
     out += ["- (%s) %s: %s" % (r.get("kind", "?"), r.get("what", ""), r.get("why", "")) for r in data.get("requests", [])] or ["None."]
-    if data.get("coverage"):
-        out += ["", "## Coverage", "", str(data["coverage"])]
+    cov = data.get("coverage")
+    if cov:
+        out += ["", "## Coverage", ""]
+        for c in CATEGORIES:
+            v = cov.get(c)
+            if isinstance(v, dict):
+                out += ["**%s**" % c, ""] + ["- %s: %s" % (t, d) for t, d in v.items()] + [""]
+            elif v:
+                out += ["**%s**: %s" % (c, v), ""]
     return "\n".join(out) + "\n"
 
 

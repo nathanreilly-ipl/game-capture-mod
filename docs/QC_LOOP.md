@@ -201,8 +201,17 @@ The reviewer is told to:
 - note any tool or data it wished it had. These go into the feedback as requests for steps 1 and 3.
 
 A reviewer may read anything and run `uv run` (the repository's tools); it may write only its
-feedback. It runs with no MCP servers and no saved session (`--strict-mcp-config`,
-`--no-session-persistence`). The tools it may use are this machine's setting `allowed_tools`.
+feedback. It runs with no MCP servers (`--strict-mcp-config`). The tools it may use are this
+machine's setting `allowed_tools`.
+
+**Passes.** A reviewer writes, per category and take, what it did (`coverage`). When it stops while
+a take is missing there or marked "not checked", `qc` resumes the same Claude session
+(`claude -p --resume`) with the list of what is left, up to `max_passes` passes (6). Only then does
+the review end.
+
+Each pass's output is kept: `agent_output.json`, then `agent_output_pass2.json` and so on. The first
+reviews of 2026-11-25 stopped after 1.2 to 1.7 minutes and 22 to 37 turns, even with the coverage
+minimum in the prompt, and said themselves what they had skipped. That is why the passes exist.
 
 ### 6. Feedback (Windows, as soon as the game's QC ends)
 
@@ -221,7 +230,8 @@ Then:
 ```
 
 `qc push` sends `findings.json`, `report.md` (with the reviewer's tool and data requests), the
-prompt and the agent's output, and the game is in fixes. The Windows session then messages the
+reviewer's evidence (`work/`: strips, crops and scripts the findings point to, about 30 MB a game
+in round 1), the prompt and the agent's output, and the game is in fixes. The Windows session then messages the
 CoreWeave session naming the game and round, with the summary line `qc push` prints.
 
 ### 7. Triage (CoreWeave)
@@ -273,7 +283,8 @@ Each gets a 30-clip-frame ring or moving-camera take plus a near sweep.
 | `--max-agents` | 2 | reviewers running at once |
 | `--model` | `sonnet` | the reviewers' model |
 | `--claude` | on PATH, else `~/.local/bin/claude(.exe)` | the Claude Code command |
-| `--agent-cmd` | none | any other reviewer command instead: it gets the prompt on stdin and `QC_GAME`, `QC_ROUND`, `QC_ROUND_DIR`, `QC_FEEDBACK_DIR` in its environment, and must write `findings.json` there |
+| `--agent-cmd` | none | any other reviewer command instead: it gets the prompt on stdin and `QC_GAME`, `QC_ROUND`, `QC_ROUND_DIR`, `QC_FEEDBACK_DIR` in its environment, and must write `findings.json` there (one pass only) |
+| `--max-passes` | 6 | passes of one reviewer while its coverage has gaps |
 | `--s3-root` | `s3://data-interns/nathan.reilly/transfer-qc` | where rounds are exchanged |
 | `--s3-endpoint` | none (the aws configuration's) | the S3 endpoint |
 
@@ -281,6 +292,18 @@ Each gets a 30-clip-frame ring or moving-camera take plus a near sweep.
 changing the settings. A reviewer that runs longer than `timeout_min` (240) is stopped. A game
 whose reviewer writes no usable `findings.json` is marked failed. `capture qc enqueue <game>
 <round>` queues it again.
+
+A review that stopped short is caught before its feedback goes back. Its `coverage` must name, for
+each category, every take of the round (or say "all takes"), and `report.md` lists every category
+that does not as a problem. `capture qc enqueue <game> <round> --redo` reviews the round again:
+- the first try is kept as `feedback.try1`;
+- the round's ids are given out again from the same number.
+
+The first reviews of round 1 (2026-11-25) were short: 1.2 to 1.7 minutes, 22 to 27 turns and about
+$0.60 each, mostly from the sheets. The prompt now sets the least each review covers: every take's
+evidence (`tools/qc_evidence.py`), metrics and known spots; a time strip of every camera; full
+frames at set clip frames and wherever a metric points; ten sweep poses; every person followed. It
+also tells the reviewer to expect a long review, and the passes above see it through.
 
 ## Cost
 

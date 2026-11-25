@@ -300,7 +300,8 @@ def cmd_worker(a):
 
 def cmd_qc(a):
     from . import config, qc
-    over = {k: getattr(a, k, None) for k in ("max_agents", "model", "claude", "agent_cmd", "s3_root", "s3_endpoint")}
+    over = {k: getattr(a, k, None) for k in ("max_agents", "model", "claude", "agent_cmd", "s3_root", "s3_endpoint",
+                                             "max_passes")}
     if a.qc_cmd == "config":
         changed = {k: v for k, v in over.items() if v is not None}
         if changed:
@@ -311,7 +312,7 @@ def cmd_qc(a):
     elif a.qc_cmd == "pull":
         qc.pull(a.game, a.round, src=a.src, keep_s3=a.keep_s3, force=a.force, **over)
     elif a.qc_cmd == "enqueue":
-        qc.enqueue(a.game, a.round, force=a.force)
+        qc.enqueue(a.game, a.round, force=a.force, redo=a.redo)
         print(qc.status_text())
     elif a.qc_cmd == "run":
         qc.run(**over)
@@ -490,6 +491,8 @@ def main(argv=None):
         p.add_argument("--model", help="the reviewers' model (default sonnet)")
         p.add_argument("--claude", help="the claude command (default: on PATH, else ~/.local/bin)")
         p.add_argument("--agent-cmd", help="any other reviewer command: it gets the prompt on stdin and QC_* variables")
+        p.add_argument("--max-passes", type=int,
+                       help="passes of one reviewer (its claude session resumed) while its coverage has gaps (default 6)")
 
     def s3_opts(p):
         p.add_argument("--s3-root", help="where rounds are exchanged (default s3://.../transfer-qc)")
@@ -510,6 +513,8 @@ def main(argv=None):
     p.add_argument("game")
     p.add_argument("round", type=int)
     p.add_argument("--force", action="store_true")
+    p.add_argument("--redo", action="store_true",
+                   help="review a round again: its feedback is moved to feedback.tryN and its ids are given again")
     p = qs.add_parser("run", help="reviewers for the queue, first in first out, --max-agents at once")
     agent_opts(p)
     p = qs.add_parser("review", help="one reviewer for one game's round now")

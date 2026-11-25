@@ -81,6 +81,21 @@ try:
           [(f["id"], f["status"]) for f in f2["findings"]])
     check("ids carry on", qc.game_state("alpha")["next_id"] == 4, qc.game_state("alpha")["next_id"])
 
+    # a review with no coverage note is flagged; a redo moves the feedback aside and gives the ids again
+    fb1 = read_json(os.path.join(qc.feedback_dir("beta", 1), "findings.json"))
+    check("missing coverage flagged for all six categories", sum("coverage of" in p for p in fb1["problems"]) == 6,
+          fb1["problems"])
+    try:
+        qc.enqueue("beta", 1)
+        check("refuses to review a round again without --redo", False)
+    except SystemExit:
+        check("refuses to review a round again without --redo", True)
+    qc.enqueue("beta", 1, redo=True)
+    qc.run(agent_cmd=FAKE, max_agents=2)
+    again = [f["id"] for f in read_json(os.path.join(qc.feedback_dir("beta", 1), "findings.json"))["findings"]]
+    check("redo keeps the first try and gives the same ids", os.path.isdir(qc.feedback_dir("beta", 1) + ".try1") and
+          sorted(again) == ["beta-001", "beta-002", "beta-003"], again)
+
     # one state at a time: no new round while one is being reviewed
     qc._update("beta", state="reviewing")
     try:
