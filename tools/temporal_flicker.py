@@ -43,6 +43,8 @@ from take_frames import frame_file  # noqa: E402
 SIZE = (480, 270)
 
 
+STEP_FLAG = 0.3   # levels of 255: a whole-frame brightness step listed in brightness_step_flags
+
 def cameras(take):
     """{camera name: [(clip frame, path)]} for the accepted shots of a take, cameras with 3 or more
     clip frames only. A shot's name is t<frame>_<camera>_<index>; the clip frame is read from the
@@ -155,7 +157,19 @@ def measure(shots):
         # the ratio of the means: a median of per-pixel ratios cannot see a change under a level
         # (whole-number pixels stay equal, the median stays 1.0)
         drift.append(round(float(g[m].sum() / g0[m].sum()), 4) if m.any() else None)
+    # per step, the change of whole-frame brightness over the pixels that hardly change (levels of 255):
+    # a step over STEP_FLAG levels and 3x the median step is listed (an exposure or light switch)
+    lv = []
+    for f in fs:
+        g = f.mean(axis=2)
+        m = (g0 > 20) & (g0 < 220) & (np.abs(g - g0) < 0.25 * g0)
+        lv.append(float(g[m].mean()) if m.any() else float(g.mean()))
+    dl = [lv[i + 1] - lv[i] for i in range(len(lv) - 1)]
+    med = float(np.median(np.abs(dl))) if dl else 0.0
+    step_flags = [{"to_clip_frame": frames[i + 1], "levels": round(v, 3)} for i, v in enumerate(dl)
+                  if abs(v) > STEP_FLAG and abs(v) > 3 * med]
     return {"clip_frames": len(fs), "roughness": round(sum(per) / n, 4), "share_over_12": round(over / n, 5),
+            "brightness_steps": [round(v, 3) for v in dl], "brightness_step_flags": step_flags,
             "brightness_jitter": round(jitter, 4), "brightness_first_last": [round(float(lum[0]), 2), round(float(lum[-1]), 2)],
             "first_step": round(steps[0], 3), "first_step_ratio": round(steps[0] / later, 2) if later else None,
             "worst": [{"clip_frame": frames[i + 1], "roughness": round(per[i], 3)} for i in worst],

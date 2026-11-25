@@ -157,11 +157,13 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
             take["preroll_steps"] = preroll
         t_shots = time.time()
         prev = None
+        world_t = 0.0    # world time since clip frame 1, summed from the steps (some games' own timers stand still)
         for st in shots["steps"]:
             if prev is not None:
                 for _ in range(st["frame"] - prev):
                     r = adapter.advance(1.0 / fps)
-                    steps_log.write(json.dumps(dict(r, to_frame=st["frame"])) + "\n")
+                    world_t += float(r.get("advanced_s") or 0.0)
+                    steps_log.write(json.dumps(dict(r, to_frame=st["frame"], world_time_s=round(world_t, 6))) + "\n")
             prev = st["frame"]
             instant = adapter.instant()
             blocked = {}
@@ -182,7 +184,7 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
                         st["frame"], len(blocked), "/".join(what), 100 * progress))
             for shot in st["shots"]:
                 retries += _capture_shot(adapter, shot, st["frame"], raw_dir, take_dir, settle, check, instant,
-                                         settings["shot_attempts"], cap_log, log, blocked.get(shot["id"]))
+                                         settings["shot_attempts"], cap_log, log, blocked.get(shot["id"]), world_t)
                 done += 1
                 if done % 250 == 0 or done == total:
                     el = time.time() - t_shots
@@ -252,7 +254,7 @@ def _check_frame(adapter, step, centre, reach_m, margin):
 
 
 def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instant, attempts, cap_log, log,
-                  obstructed=None):
+                  obstructed=None, world_t=None):
     """Captures one shot, retrying after a failed check. Returns the number of retries."""
     for attempt in range(attempts):
         dst = os.path.join(raw_dir, "%s.bmp" % shot["id"])
@@ -267,6 +269,8 @@ def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instan
             kept = dst
         rec = {"id": shot["id"], "name": shot["name"], "frame": frame, "file": os.path.relpath(kept, take_dir),
                "attempt": attempt, "accepted": not problems, "problems": problems, "picture": stats}
+        if world_t is not None:      # the world time since clip frame 1, from the steps (QC: 1/fps between clip frames)
+            rec["world_time_s"] = round(world_t, 6)
         for k, v in info.items():  # the adapter's fields never replace the take's own ("frame" is the clip frame)
             if k != "health":
                 rec["adapter_" + k if k in rec else k] = v

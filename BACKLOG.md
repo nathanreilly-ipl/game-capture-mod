@@ -345,8 +345,18 @@ Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
 
 Set up on 2026-11-23 (README: Kingdom Come: Deliverance adapter). Left:
 
-- **The HD texture pack**, a free Steam DLC, is not installed on this PC. Installing it is a Steam
-  action, for Nathan. The adapter's visual set would then turn on `wh_r_HDTextures`.
+- **The HD texture pack**, a free Steam DLC, is not installed on the PC or the node. Installing it
+  is a Steam action, for Nathan. The look (`look.py`) would then turn on `wh_r_HDTextures`. It is
+  the one step left to "the highest possible quality on all settings" (Nathan, 2026-11-25): the
+  look is now every spec group at the game's top level 7 with 3x3 supersampling (README, The look).
+- **The scene's light settling over a take** (Talmberg, CoreWeave, 2026-11-25): with the eye held,
+  both fixed cameras of a 30-clip-frame take brightened 3.0% and 2.5%, smoothly, by about the same
+  few levels everywhere, shadows included (+2.6 in dark pixels, +2.9 in bright ones): additive, so
+  ambient light or the voxel GI (SVOTI) still converging while the world runs during the steps,
+  not exposure and not cloud shadows. Before the eye lock the eye hid it. Sasau 0.3-0.6%, Rattay
+  under 0.2% with the lock. Next: how long the GI takes to settle at a first pose (frames run
+  before the hold against brightness), then a longer run before the hold (ghost_run_s) or the
+  SVOTI integration settings.
 - **A scouting overlay.** Our script could draw with the game's UI or debug text. Not started;
   scouting is by agent (`probes/scout_places.py`, `capture scout`).
 - **Cloth through steps** against the world running unbroken (The Witcher 3's

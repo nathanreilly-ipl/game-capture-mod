@@ -39,8 +39,11 @@ def rows_of(take):
 
 
 def game_time(r):
-    """The shot's game time in seconds: sim_time (Cyberpunk, The Witcher 3, KCD; seconds) or game_timer
-    (RDR2, GTA V: the game's timer in milliseconds)."""
+    """The shot's game time in seconds: world_time_s (every take since 2026-11-25: the world time since
+    clip frame 1, summed from the steps), else sim_time (Cyberpunk, The Witcher 3, KCD; seconds), else
+    game_timer (RDR2, GTA V: the game's timer in milliseconds; GTA V's stands still under its step)."""
+    if r.get("world_time_s") is not None:
+        return float(r["world_time_s"])
     if r.get("sim_time") not in (None, ""):
         return float(r["sim_time"])
     if r.get("game_timer") not in (None, ""):

@@ -20,6 +20,10 @@ the nearest thing of the same kind within a gate. Flags, per track:
 - player: coming within 2 m of the hidden player's parked spot (take.json subject_position), and
   how its path bends there: people must not react to the player (step aside, stop, turn).
 
+And per shot (with the take's shots.json): the nearest person, animal or vehicle in front of each
+camera, inside its view; under CLOSE_M (1.5 m) it is listed in close_to_camera: a stranger filling
+the picture at lens distance (GTA V Alamo Sea, round 1).
+
 Writes <out>/npc_tracks.json (tracks, per-step speeds, flags) and npc_tracks_map.png (a top-down
 map of the paths, flagged steps in red, the rig centre and the player's spot), and prints a summary.
 """
@@ -34,6 +38,7 @@ import numpy as np
 LIMITS = {  # kind: (max speed m/s, max speed change per step m/s, max rise m)
     "human": (9.0, 4.0, 0.35), "animal": (20.0, 8.0, 0.35), "vehicle": (60.0, 10.0, 0.5)}
 GATE = {"human": 1.0, "animal": 2.0, "vehicle": 4.0}   # metres per step for linking without an id
+CLOSE_M = 1.5     # a thing nearer than this to a camera, in its view, is listed
 
 
 def load(take):
@@ -79,6 +84,40 @@ def link(rows):
             tracks.setdefault(key, []).append((r["frame"], th))
             last[key] = (r["frame"], th)
     return tracks
+
+
+def close_to_cameras(take, rows):
+    """[{clip_frame, camera, kind, id, distance_m}] for things in a camera's view nearer than CLOSE_M
+    (distance from the lens to the box's centre minus its largest horizontal half extent)."""
+    p = os.path.join(take, "shots.json")
+    if not os.path.exists(p):
+        return None
+    with open(p, encoding="utf-8") as f:
+        shots = json.load(f)
+    by_frame = {r["frame"]: r["things"] for r in rows}
+    out = []
+    for st in shots.get("steps", []):
+        things = by_frame.get(st["frame"])
+        if not things:
+            continue
+        for sh in st["shots"]:
+            pos, fwd = np.asarray(sh["pos"], float), np.asarray(sh["fwd"], float)
+            # the horizontal half angle of a 16:9 picture, and a little more (a body's edge in the picture)
+            half = math.degrees(math.atan(math.tan(math.radians(float(sh.get("vfov_deg") or 60) / 2)) * 16 / 9))
+            cos_half = math.cos(math.radians(min(85.0, half + 10)))
+            best = None
+            for th in things:
+                v = np.asarray(th["center"], float) - pos
+                dist = float(np.linalg.norm(v))
+                if dist < 1e-6 or (v @ fwd) / dist < cos_half:
+                    continue
+                d = max(0.0, dist - max(th.get("half", [0.3, 0.3, 0.9])[:2]))
+                if best is None or d < best[0]:
+                    best = (d, th)
+            if best and best[0] < CLOSE_M:
+                out.append({"clip_frame": st["frame"], "camera": sh["name"].split("_", 1)[1].rsplit("_", 1)[0],
+                            "kind": best[1].get("kind"), "id": best[1].get("id"), "distance_m": round(best[0], 2)})
+    return out
 
 
 def analyse(take, fps=None):
@@ -140,8 +179,11 @@ def analyse(take, fps=None):
     for tr in out:
         for f in tr["flags"]:
             counts[f["flag"]] = counts.get(f["flag"], 0) + 1
+    close = close_to_cameras(take, rows)
+    if close:
+        counts["close_to_camera"] = len(close)
     return {"take": os.path.basename(os.path.normpath(take)), "clip_frames": [first, lastf], "fps": fps,
-            "player": player, "centre": centre, "tracks": len(out), "flag_counts": counts,
+            "player": player, "centre": centre, "tracks": len(out), "flag_counts": counts, "close_to_camera": close,
             "by_track": sorted(out, key=lambda tr: -len(tr["flags"]))}
 
 

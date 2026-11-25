@@ -40,6 +40,7 @@ from capture.package import ffmpeg_exe  # noqa: E402
 
 S3_ROOT = "s3://data-interns/nathan.reilly/transfer-qc"
 TOOLS = "uv run --project . python tools/"
+RUN = 30    # consecutive sweep poses sent around the worst flagged one
 
 
 def _git(*args):
@@ -126,9 +127,14 @@ def build_take(take, dest, sweep_every, quality, notes):
         keep = {0, len(rows) - 1} | {i for i in range(len(rows)) if i % sweep_every == 0}
         for p in flagged:
             keep |= {i for i in range(p - 2, p + 3) if 0 <= i < len(rows)}
+        # a run of RUN consecutive poses around the worst flagged one (or the middle), so flicker can be
+        # told from parallax on neighbours (round 1's reviewers asked for it)
+        mid = flagged[0] if flagged else len(rows) // 2
+        a0 = max(0, min(len(rows) - RUN, mid - RUN // 2))
+        keep |= set(range(a0, min(len(rows), a0 + RUN)))
         rows = [r for i, r in enumerate(rows) if i in keep]
-        frames_what = "near sweep: every %dth pose, the first and last, and +-2 around the poses sweep_flicker flags %s" % (
-            sweep_every, flagged)
+        frames_what = ("near sweep: every %dth pose, the first and last, +-2 around the poses sweep_flicker flags %s, "
+                       "and the %d consecutive poses %d-%d" % (sweep_every, flagged, RUN, a0, a0 + RUN - 1))
         metrics = {k: m.get(k) for k in ("roughness", "share_over_12", "brightness_jitter", "worst")}
     else:
         ms = clip_metrics(take, os.path.join(d, "metrics"))
