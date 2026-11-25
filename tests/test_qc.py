@@ -96,6 +96,17 @@ try:
     check("redo keeps the first try and gives the same ids", os.path.isdir(qc.feedback_dir("beta", 1) + ".try1") and
           sorted(again) == ["beta-001", "beta-002", "beta-003"], again)
 
+    # an earlier finding reported at two places keeps its id once; the second gets a new id
+    dup = os.path.join(qc.feedback_dir("alpha", 2), "findings.json")
+    d2 = read_json(dup)
+    d2["findings"].append(dict(d2["findings"][0]))
+    with open(dup, "w") as f:
+        json.dump(d2, f)
+    d2 = qc.report("alpha", 2)
+    pairs = sorted((f["id"], f.get("same_as")) for f in d2["findings"])
+    check("a repeated earlier id becomes a new id, marked the same fault", pairs == [("alpha-002", None), ("alpha-004", "alpha-002")],
+          pairs)
+
     # one state at a time: no new round while one is being reviewed
     qc._update("beta", state="reviewing")
     try:

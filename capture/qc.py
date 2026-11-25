@@ -466,14 +466,20 @@ def report(game, rnd):
         g = st.setdefault("games", {}).setdefault(game, {})
         nxt = int(g.get("next_id", 1))
         g.setdefault("first_id", {}).setdefault(str(int(rnd)), nxt)   # where this round's new ids start
+        used = set()
         for f in data["findings"]:
-            if f.get("id"):
-                continue
-            if f.get("previous_id"):
-                f["id"], f["status"] = f["previous_id"], "still present"
-            else:
-                f["id"], f["status"] = "%s-%03d" % (game, nxt), "new"
+            if not f.get("id"):
+                if f.get("previous_id") and f["previous_id"] not in used:
+                    f["id"], f["status"] = f["previous_id"], "still present"
+                else:
+                    f["id"], f["status"] = "%s-%03d" % (game, nxt), "new"
+                    nxt += 1
+            elif f["id"] in used:            # an earlier finding reported again at a second place
+                f["same_as"], f["id"], f["status"] = f["id"], "%s-%03d" % (game, nxt), "new"
                 nxt += 1
+            if f.get("previous_id") and f["id"] != f["previous_id"]:
+                f["same_as"] = f["previous_id"]
+            used.add(f["id"])
         g["next_id"] = nxt
         write_json(STATE, st)
     data["findings"].sort(key=lambda f: (-int(f.get("confidence") or 0), -_extent(f)))
@@ -497,7 +503,8 @@ def _finding_md(f):
         "cameras %s" % ", ".join(map(str, f["cameras"])) if f.get("cameras") else "",
         "clip frames %s" % ", ".join(map(str, f["clip_frames"])) if f.get("clip_frames") else "",
         "game times %s" % ", ".join(map(str, f["game_times"])) if f.get("game_times") else ""] if x)
-    lines = ["### %s (confidence %s, %s)" % (f.get("id"), f.get("confidence"), f.get("status", "new")),
+    status = f.get("status", "new") + (", the same fault as %s elsewhere" % f["same_as"] if f.get("same_as") else "")
+    lines = ["### %s (confidence %s, %s)" % (f.get("id"), f.get("confidence"), status),
              "", "Categories: %s. %s" % (", ".join(f.get("categories", [])), where), "", f.get("what", "")]
     ev = f.get("evidence") or {}
     for img in ev.get("images", []):
