@@ -97,11 +97,15 @@ Clock. Calendar.SetWorldTime does not move the clock back (it leaves it where it
 works), so a take asking for an hour already past ran at the game's own time (12:00 asked, 14:33
 given); `cm clock` now goes to that hour the next day.
 
-The look. The game's own top settings: Ultra High (4) on every category, SMAA 2TX, object detail and
-view distances at the menu's maximum, no VSync. The game's attributes.xml (the options its menu
-saves) sets them at start over user.cfg, so the install writes them there with the game closed
-(install.ATTRS; since 2026-11-24, after a node crashed switching the specs at run time), and the
-session still applies them through the console when it opens and reads them back. Against the game's High
+The look (look.py). Every spec group at 7, the game's top level (Engine\\Config\\ultraspec.cfg,
+sys_spec_Full 7; the menu's "Ultra High" is 4, veryhighspec.cfg), SMAA 2TX, 3x3 supersampling,
+16x anisotropic filtering, 4096 shadow maps, a 8192 MB texture pool, object detail and view
+distances at their top, no VSync, no motion blur, depth of field, vignette, grain, chromatic
+aberration or lens flares. The game starts at High (3) whatever its attributes.xml or user.cfg say
+(PC, 2026-11-24: our values in both, sys_spec 3 at the main menu), so launch.py sets the look through
+the console at the main menu, before a save loads (a supersampling change resets the eye, which the
+world running through the load and the ghost run adapts again), and the session sets it again when
+it opens (nothing changes) and reads it back. Earlier look, Ultra High (4): against the game's High
 at one held instant in Rattay: softer, fuller shading, more grass and rocks, a mean change of
 2.5-7.0 levels of 255 per view, the same frame rate (probes/visual_probe.py). No upscaler exists in
 the game, so OptiScaler (DLSS 5) has nothing to hook; the free HD texture pack (a Steam DLC) is not
@@ -149,7 +153,7 @@ from capture import host
 from capture.adapter import Adapter, AdapterError
 
 from ..common import frames, window
-from . import launch, paths, places
+from . import launch, look, paths, places
 from .session import Session, pack, parse_kv, vec  # noqa: F401
 
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
@@ -161,16 +165,9 @@ DEFAULTS = {"settle": 20, "first_settle": 60, "clock_settle": 60, "populate_s": 
             "eye_run_speed": 30.0}
 EYE = "r_HDREyeAdaptationSpeed"   # how fast the eye adapts, per second of game time; 0 holds it
 EYE_GAME = 3.0                    # the game's own value (read on the PC, 2026-11-24)
-# The capture look: the game's own top settings (Ultra High, the menu's maximum, on every category),
-# SMAA 2TX, object detail and view distances at their menu maximum, no VSync (it capped the game at
-# 60 frames/s). attributes.xml, which the game writes, sets these at start over user.cfg, so the
-# session sets them through the console (they apply live) and reads them back.
-SPEC = ["sys_spec_GameEffects", "sys_spec_ObjectDetail", "sys_spec_Particles", "sys_spec_Physics", "sys_spec_PostProcessing",
-        "sys_spec_Shading", "sys_spec_Shadows", "sys_spec_Texture", "sys_spec_Vegetation", "sys_spec_VolumetricEffects",
-        "sys_spec_Water", "sys_spec_light"]
-VISUAL = dict({k: 4 for k in SPEC}, r_AntialiasingMode=3, e_LodRatio=100, e_ViewDistRatio=100,
-              e_MergedMeshesViewDistRatio=100, e_ViewDistRatioVegetation=100, r_VSync=0,
-              r_MotionBlur=0, r_DepthOfField=0, r_HDRVignetting=0, r_HDRGrainAmount=0, r_ChromaticAberration=0)
+# The capture look (look.VISUAL, see The look): set by launch.py at the main menu and again, as a
+# check, when a session opens.
+VISUAL = look.VISUAL
 RAYS_PER_CALL = 20000
 ANIMALS = {"Horse", "Dog", "Boar", "Deer", "Hare", "Sheep", "Pig", "Cow", "Chicken", "Hen", "Rooster", "Wolf"}
 
@@ -270,11 +267,8 @@ class KcdAdapter(Adapter):
             self._eye_speed = EYE_GAME
         self.applied = {}
         if self.settings.get("visual"):
-            for k, v in VISUAL.items():
-                self.sess.cmd("cvar", k, v)
+            self.applied, wrong = look.apply(self.sess, VISUAL)
             frames.wait(self.exchange, 60)
-            self.applied = {k: (self.sess.cmd("cvar", k).data or ["?"])[0] for k in VISUAL}
-            wrong = {k: v for k, v in self.applied.items() if float(v) != float(VISUAL[k])}
             if wrong:
                 raise AdapterError("the game did not take the capture settings: %s" % wrong)
         for k, v in (self.settings.get("cvars") or {}).items():

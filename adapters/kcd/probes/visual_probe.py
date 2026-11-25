@@ -19,7 +19,7 @@ from capture import locations as locs
 from capture import paths as capture_paths
 
 from ...common import frames
-from .. import paths
+from .. import look, paths
 from ..session import Session
 
 SPEC = ["sys_spec_GameEffects", "sys_spec_ObjectDetail", "sys_spec_Particles", "sys_spec_Physics", "sys_spec_PostProcessing",
@@ -29,13 +29,29 @@ SETS = {
     "high": dict({k: 3 for k in SPEC}, r_AntialiasingMode=2, e_LodRatio=25, e_ViewDistRatio=100, e_MergedMeshesViewDistRatio=70),
     "ultra": dict({k: 4 for k in SPEC}, r_AntialiasingMode=3, e_LodRatio=100, e_ViewDistRatio=100, e_MergedMeshesViewDistRatio=100,
                   e_ViewDistRatioVegetation=100),
+    # level 7: Engine\Config\ultraspec.cfg (sys_spec_Full 7), the spec groups' top level; "ultra" (4) is
+    # veryhighspec.cfg's. The view distance its ObjectDetail group sets (e_ViewDistRatio 125) is kept.
+    "ultra7": dict({k: 7 for k in SPEC}, r_AntialiasingMode=3, e_LodRatio=100, e_ViewDistRatio=125, e_MergedMeshesViewDistRatio=100,
+                   e_ViewDistRatioVegetation=100),
 }
+# the capture look (look.VISUAL) with 1x1, 2x2 and 3x3 supersampling
+SETS.update({"top%d" % n: dict(look.VISUAL, r_Supersampling=n) for n in (1, 2, 3)})
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return v
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--location", default="kcd-loc-001")
     ap.add_argument("--sets", default="high,ultra")
+    ap.add_argument("--run-s", type=float, default=0.0,
+                    help="seconds the world runs after each set is applied, before it is held again (the eye "
+                         "adapts meanwhile; a switch of supersampling resets it)")
     a = ap.parse_args()
     from PIL import Image
     loc = next(l for l in locs.load(capture_paths.LOCATIONS)["locations"] if l["id"] == a.location)
@@ -58,10 +74,17 @@ def main():
         for name in a.sets.split(","):
             for k, v in SETS[name].items():
                 s.cmd("cvar", k, v)
+            if a.run_s:      # the eye adapts on game time only: let the world run (eye fast) after a switch
+                s.cmd("cvar", "r_HDREyeAdaptationSpeed", 30)
+                s.cmd("unfreeze")
+                time.sleep(a.run_s)
+                s.cmd("freeze")
+                s.cmd("cvar", "r_HDREyeAdaptationSpeed", 3)
             frames.wait(ex, 120)
-            got = {k: s.cmd("cvar", k).data[0] for k in ("sys_spec_Shading", "r_AntialiasingMode", "e_LodRatio")}
+            got = {k: s.cmd("cvar", k).data[0] for k in SETS[name]}
+            wrong = {k: v for k, v in got.items() if _num(v) != _num(SETS[name][k])}
             fps = frames.frame_rate(ex, 1.0)
-            report["sets"][name] = {"fps": round(fps, 1), "read_back": got}
+            report["sets"][name] = {"fps": round(fps, 1), "read_back": got, "not_taken": wrong}
             for view, heading in views.items():
                 s.cmd("pose", x, y, z, 0.0, 0.0, heading, 60.0)
                 time.sleep(s.console_clear_in())
@@ -70,7 +93,7 @@ def main():
                     imgs[(name, view)] = np.asarray(im.convert("RGB"), dtype=np.float32)
                     im.convert("RGB").save(os.path.join(out, "%s_%s.jpg" % (name, view)), quality=92)
                 os.remove(r["path"])
-            print("%s: %.1f frames/s, %s" % (name, fps, got))
+            print("%s: %.1f frames/s, not taken: %s" % (name, fps, wrong or "none"))
         names = a.sets.split(",")
         for name in names[1:]:
             report["sets"][name]["mean_change_vs_%s" % names[0]] = {

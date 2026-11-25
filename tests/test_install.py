@@ -78,6 +78,10 @@ def part_a(tmp):
     open(os.path.join(game, "old.dll"), "wb").write(b"the game's own file")
     open(os.path.join(game, "settings.ini"), "wb").write(b"[A]\r\nKeep=1\r\nKey=old\r\n[B]\r\nOther=2\r\n")
     open(os.path.join(game, "settings.xml"), "wb").write(b'<root>\r\n  <vSync value="1" />\r\n  <API>vulkan</API>\r\n</root>\r\n')
+    own_attrs = ('<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n'
+                 '  <Attr name="LodRatio" value="25" />\r\n  <Attr name="controller_sensitivity" value="45" />\r\n</Attributes>\r\n')
+    open(os.path.join(game, "attributes.xml"), "w", encoding="utf-8", newline="").write(own_attrs)
+    empty_attrs = '<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n</Attributes>\r\n'
     before = tree(game)
 
     payload = b"mod payload " * 1000
@@ -107,14 +111,23 @@ def part_a(tmp):
              plan.IniSet(os.path.join(game, "settings.ini"), "C", "Added", "1"),
              plan.XmlSet(os.path.join(game, "settings.xml"), "vSync", "0"),
              plan.XmlSet(os.path.join(tmp, "no_such.xml"), "vSync", "0"),      # no settings file yet: skipped
-             plan.JsonSet(os.path.join(game, "cfg", "Settings.json"), "autorun", True, default={"x": 1})]
-    assert plan.run(ctx, steps, dry_run=True) == 7 and tree(game) == before, "a dry run must change nothing"
+             plan.JsonSet(os.path.join(game, "cfg", "Settings.json"), "autorun", True, default={"x": 1}),
+             plan.XmlAttrSet(os.path.join(game, "attributes.xml"), "LodRatio", "100"),         # set, the rest kept
+             plan.XmlAttrSet(os.path.join(game, "attributes.xml"), "vsync", "0"),             # added
+             plan.XmlAttrSet(os.path.join(game, "new", "attributes.xml"), "vsync", "0", empty=empty_attrs)]   # created
+    assert plan.run(ctx, steps, dry_run=True) == 10 and tree(game) == before, "a dry run must change nothing"
     try:
         plan.run(ctx, steps + [plan.CopyFile(files.ref("absent", "absent.dll"), os.path.join(game, "absent.dll"))])
         raise AssertionError("expected the missing file to stop the install")
     except plan.InstallError as e:
         assert "absent.dll" in str(e) and tree(game) == before, "a missing file must stop the install before any change"
-    assert plan.run(ctx, steps) == 7
+    assert plan.run(ctx, steps) == 10
+    text = open(os.path.join(game, "attributes.xml"), encoding="utf-8", newline="").read()
+    assert plan.xml_attr_value(text, "LodRatio") == "100" and plan.xml_attr_value(text, "vsync") == "0" and \
+        plan.xml_attr_value(text, "controller_sensitivity") == "45" and text.endswith("</Attributes>\r\n") and \
+        "\n" not in text.replace("\r\n", ""), "XmlAttrSet: ours set or added, the rest kept, CRLF"
+    text = open(os.path.join(game, "new", "attributes.xml"), encoding="utf-8", newline="").read()
+    assert text.startswith(empty_attrs[:60]) and plan.xml_attr_value(text, "vsync") == "0", "XmlAttrSet creates a missing file"
     ini = plan.Ini(os.path.join(game, "settings.ini"))
     assert (ini.get("A", "Key"), ini.get("A", "Keep"), ini.get("B", "Other"), ini.get("C", "Added")) == ("new", "1", "2", "1")
     assert 'vSync value="0"' in open(os.path.join(game, "settings.xml")).read()
@@ -135,6 +148,7 @@ def part_a(tmp):
     assert kept in after, "a file changed since the install is left alone"
     del after[kept]
     assert after == before, (sorted(set(after) ^ set(before)), [k for k in before if after.get(k) != before[k]])
+    assert open(os.path.join(game, "attributes.xml"), encoding="utf-8", newline="").read() == own_attrs, "attributes back"
     print("A ok: steps, dry run, missing-file stop, backups, record, second run, game-running refusal, uninstall")
 
 
@@ -628,16 +642,10 @@ def part_h(tmp, mods, system_class, label):
     os.makedirs(os.path.join(game, "Data"))
     open(os.path.join(game, kp.EXE), "wb").write(b"not the real game")
     exchange = os.path.join(root, "user", "capture_mod")
-    attrs = os.path.join(root, "user", "profiles", "default", "attributes.xml")   # never the real profile
-    opts = {"exchange_dir": exchange, "attributes_xml": attrs}
+    opts = {"exchange_dir": exchange}
     system, work = system_class(root), os.path.join(root, "work")
     before = tree(game)
     n = inst.install("kcd", game, opts, mods, system=system, work=work, log=lines.append)
-    text = open(attrs, encoding="utf-8", newline="").read()
-    assert text.startswith('<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n') and \
-        text.endswith("</Attributes>\r\n"), "attributes.xml created in the game's own form where it had none"
-    assert plan.xml_attr_value(text, "sys_spec_Shading") == "4" and plan.xml_attr_value(text, "vsync") == "0" and \
-        plan.xml_attr_value(text, "MergedMeshesRatio") == "100"
     b = kp.bin_dir(game)
     for rel in ("dxgi.dll", "ReShade.ini", addon.NAME):
         assert os.path.exists(os.path.join(b, rel)), rel
@@ -657,13 +665,6 @@ def part_h(tmp, mods, system_class, label):
     inst.uninstall("kcd", work=work, log=lines.append)
     after = tree(game)
     assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
-    assert not os.path.exists(attrs), "the attributes.xml the install created is removed"
-    # the game's own attributes.xml: our options set, the rest kept, all of it back after an uninstall
-    own_attrs = ('<?xml version="1.0" encoding="us-ascii"?>\r\n<Attributes Version="31">\r\n'
-                 '  <Attr name="LodRatio" value="25" />\r\n  <Attr name="controller_sensitivity" value="45" />\r\n'
-                 '  <Attr name="sys_spec_Shading" value="3" />\r\n  <Attr name="vsync" value="1" />\r\n</Attributes>\r\n')
-    os.makedirs(os.path.dirname(attrs), exist_ok=True)
-    open(attrs, "w", encoding="utf-8", newline="").write(own_attrs)
     # the game's own mod_status.xml is never written over, and an uninstall leaves it
     game2 = os.path.join(root, "game2")
     os.makedirs(os.path.join(game2, os.path.dirname(kp.EXE)))
@@ -674,15 +675,10 @@ def part_h(tmp, mods, system_class, label):
     work2 = os.path.join(root, "work2")
     inst.install("kcd", game2, opts, mods, system=system, work=work2, log=lines.append)
     assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "the game's own mod_status.xml kept"
-    text = open(attrs, encoding="utf-8", newline="").read()
-    assert plan.xml_attr_value(text, "LodRatio") == "100" and plan.xml_attr_value(text, "sys_spec_Shading") == "4" \
-        and plan.xml_attr_value(text, "sys_spec_Water") == "4" and plan.xml_attr_value(text, "controller_sensitivity") == "45" \
-        and text.endswith("</Attributes>\r\n") and "\n" not in text.replace("\r\n", ""), "ours set, the rest kept, CRLF"
     inst.uninstall("kcd", work=work2, log=lines.append)
     assert open(os.path.join(game2, "mod_status.xml"), encoding="utf-8").read() == own, "and left by an uninstall"
-    assert open(attrs, encoding="utf-8", newline="").read() == own_attrs, "the game's own attributes.xml back as it was"
     print("H ok (%s): the Kingdom Come: Deliverance plan in a sandbox: %d steps, then nothing to do; uninstall put "
-          "it all back; the game's own mod_status.xml kept, its attributes.xml set and put back" % (label, n))
+          "it all back; the game's own mod_status.xml kept" % (label, n))
 
 
 def ours_ready(probe, part):

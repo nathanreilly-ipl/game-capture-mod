@@ -1328,10 +1328,9 @@ check does not separate there either (34.1 against 35.9). What it took, each in 
 - **By hand, once:** the publisher's EULA accepted with E (as on the PC, on Nathan's word for this
   copy). Steam Cloud brought the account's own KCD saves into the prefix when the game first ran
   beside the client; Continue loads the newest (BACKLOG: keep closing the game by its window).
-- One session crashed the game (0xC0000005) right after setting `sys_spec_Shading` 4 at run time,
-  while the profile's `attributes.xml` was still empty (the same settings went through in verify
-  and the next job). Since the install writes the capture values into `attributes.xml`, the game
-  starts at them and the session's switch changes nothing (2026-11-24).
+- One session crashed the game (0xC0000005) right after setting `sys_spec_Shading` 4 at run time
+  in a loaded world (the same settings went through in verify and the next job). The look is now
+  set at the main menu, before a save loads (The look, below).
 
 ### How a take is captured in Kingdom Come: Deliverance (measured 2026-11-23)
 
@@ -1390,17 +1389,23 @@ check does not separate there either (34.1 against 35.9). What it took, each in 
 - **Clock.** The game does not move its clock back: `Calendar.SetWorldTime` to an earlier time leaves
   it where it was. So the first takes asking for 12:00 ran in the afternoon (14:33 to 15:21). An hour
   already past is now that hour the next day.
-- **The look.** The game's top settings:
-  - Ultra High on every category, SMAA 2TX, object detail and view distances at the menu's
-    maximum, no VSync (it capped the game at 60 frames/s);
-  - lens effects, depth of field and motion blur off.
+- **The look** (`adapters/kcd/look.py`, since 2026-11-25). The game's highest setting of everything:
+  - every spec group at 7, the game's top level (`Engine\Config\ultraspec.cfg`; the menu's
+    "Ultra High" is 4), object detail and view distances at their top, 16x anisotropic filtering,
+    4096 shadow maps, an 8192 MB texture pool;
+  - SMAA 2TX with 3x3 supersampling (7680x4320 rendered for 2560x1440): edge energy at one held
+    view 0.48 at 1x1, 0.31-0.33 at 2x2, 0.30 at 3x3; foliage loses its stair-steps
+    (`probes/supersampling_probe.py`, Rattay, CoreWeave);
+  - no VSync; lens flares, vignette, grain, chromatic aberration, depth of field and motion blur off.
 
-  The game's `attributes.xml` (the options its menu saves) overrides `user.cfg` at start, so the
-  install writes them there with the game closed. The session still sets them through the console
-  and reads them back: switching the specs at run time crashed the game once on a CoreWeave node,
-  whose file had no saved options. Against the game's High at one held instant: softer, fuller shading
-  and more grass and rocks, with a mean change of 2.5 to 7.0 levels of 255 per view
-  (`probes/visual_probe.py`).
+  The game starts at High (3) whatever its `attributes.xml` or `user.cfg` say (PC, 2026-11-24), so
+  `launch.py` sets the look through the console at the main menu, before Continue; a change of
+  supersampling resets the eye (a held frame went to 248 of 255), which the world running through
+  the load and the ghost run adapt again. The session sets it again when it opens (nothing changes)
+  and refuses a take if any value is not read back. On CoreWeave (2026-11-25): 224 s to a loaded
+  save (145 before), 40 frames/s at Rattay (54 at level 4), `verify --launch` passed (24 shots in
+  113 s, steps exact). Level 7 against 4 at one held instant: a mean change of 0.8-1.5 levels of
+  255 per view, 116 against 140 frames/s on the PC (`probes/visual_probe.py`, sets ultra7 and top1-3).
 - **No DLSS 5.** The game has no upscaler for OptiScaler to hook. The free HD texture pack (a Steam
   DLC) is not installed here.
 - **Scene and moving things.** Rays against terrain and static objects. People and animals come back

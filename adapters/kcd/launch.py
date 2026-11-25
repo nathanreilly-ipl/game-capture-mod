@@ -5,8 +5,9 @@
 The exe with -devmode (the console our commands use; Steam picks the game up on its own), intro
 films off by user.cfg (wh_sys_HideIntroVideo, install.py). Our script answers from the main menu;
 Enter there is the menu's first item, Continue (the latest save). The game is in a world once the
-player stands away from the main menu's spot and no save is loading. On the first start on a
-machine the game shows its EULA, which E accepts (done on this PC on 2026-11-23, on Nathan's word).
+player stands away from the main menu's spot and no save is loading. The capture look (look.py) is
+set at the main menu, before Continue. On the first start on a machine the game shows its EULA,
+which E accepts (done on this PC on 2026-11-23, on Nathan's word; on the CoreWeave node 2026-11-24).
 """
 import os
 import time
@@ -14,7 +15,7 @@ import time
 from capture import host
 
 from ..common import window
-from . import paths
+from . import look, paths
 from .session import Session
 
 ARGS = ("-devmode",)
@@ -89,6 +90,10 @@ def start(timeout=420, log=print):
     """Restarts the game and returns once a save is loaded and our script answers."""
     t0 = time.time()
     s = to_menu(timeout=min(300, timeout), log=log)
+    # the capture look before a save loads (look.py): the game starts at High whatever its files say,
+    # and a change of supersampling resets the eye, which the world running from here adapts again
+    got, wrong = look.apply(s)
+    log("the capture look set at the main menu (%d settings%s)" % (len(got), "; not taken: %s" % wrong if wrong else ""))
     st = enter_world(s, timeout=max(60, timeout - (time.time() - t0)), log=log)
     log("in the world after %.0f s" % (time.time() - t0))
     return s.hwnd()
