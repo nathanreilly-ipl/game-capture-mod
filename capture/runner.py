@@ -59,6 +59,21 @@ DEFAULT_SETTINGS = {
 }
 
 
+def code_version():
+    """The repository's commit a take is made with, "+changes" when the working tree differs from it
+    (for QC rounds, docs/QC_LOOP.md); None outside a git checkout."""
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        head = subprocess.run(["git", "-C", root, "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                              timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"], capture_output=True,
+                               text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (head + ("+changes" if dirty else "")) or None
+
+
 def merged_settings(settings):
     out = dict(DEFAULT_SETTINGS)
     out.update({k: v for k, v in (settings or {}).items() if v is not None or k == "clock"})
@@ -83,7 +98,7 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         # One id per run, never reused: no two runs share a world state until the adapter
         # can snapshot and restore it (BACKLOG.md: shot reuse).
         "world_state_id": uuid.uuid4().hex,
-        "started": now_iso(), "status": "running",
+        "started": now_iso(), "status": "running", "commit": code_version(),
     }
     write_json(os.path.join(take_dir, "take.json"), take)
 

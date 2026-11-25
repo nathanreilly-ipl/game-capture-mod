@@ -27,6 +27,7 @@ import sys
 
 import numpy as np
 from PIL import Image
+from take_frames import frame_file  # noqa: E402
 
 SIZE = (640, 360)
 RINGS = [(0.0, 0.3), (0.3, 0.5), (0.5, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.0)]
@@ -37,8 +38,9 @@ def frames(take):
     with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
         for line in f:
             e = json.loads(line)
-            if e.get("accepted"):
-                out.append(os.path.join(take, e["file"]))
+            path = frame_file(take, e["file"]) if e.get("accepted") else None
+            if path:
+                out.append(path)
     return out
 
 

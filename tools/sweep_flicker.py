@@ -21,6 +21,8 @@ import sys
 
 import numpy as np
 from PIL import Image
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from take_frames import frame_file  # noqa: E402
 
 SIZE = (480, 270)
 
@@ -30,8 +32,9 @@ def frames(take):
     with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
         for line in f:
             e = json.loads(line)
-            if e.get("accepted"):
-                paths.append(os.path.join(take, e["file"]))
+            path = frame_file(take, e["file"]) if e.get("accepted") else None
+            if path:      # a QC round may send a subset of the poses: the measure is then over those
+                paths.append(path)
     return paths
 
 

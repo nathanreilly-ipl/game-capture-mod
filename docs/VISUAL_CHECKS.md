@@ -35,6 +35,8 @@ which of the loop's six categories each tool serves: geometry, lighting or NPC, 
 | `clip_strip.py <take> <camera> <out.jpg> [--crop x,y,w,h]` | a take's raw frames | one camera's clip frames side by side, a crop of them | looking at what the numbers point to (the pop boxes are crops) | take: all six (evidence) |
 | `compare_sheets.py`, `preset_ab.py`, `upscaler_ab.py`, `upscaler_sweep.py`, `dlss5_skin_sweep.py` | the game, live | settings side by side at one frozen instant, with FLIP maps | what a visual setting changes, and whether it differs between views | live: lighting A |
 | `frame_report.py` | a job's frames | contact sheet and pairwise differences | a quick look | take: all six (overview) |
+| `qc_round.py <game> <round> [--upload]` | the capturing machine's takes | builds a QC round (docs/QC_LOOP.md step 3): per take the logs, full-resolution JPEG frames (every camera at every clip frame; a near sweep's every 6th pose and the poses around flagged ones), preview videos, sheets, temporal/sweep_flicker reports on the full take, and manifest.json | nothing itself: what reviewers get | all six (data) |
+| `take_frames.py` | a take folder | where a logged frame is: the log's file, or the same stem as .jpg/.png (a QC round) | used by the tools above, so they run on a round's JPEG frames | (helper) |
 
 Also: every take's `capture_log.jsonl` (each shot's game clock, rendered pose and field of view,
 picture saturation and brightness, health problems), `steps.jsonl` (each time step: world time

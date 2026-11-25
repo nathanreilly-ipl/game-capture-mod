@@ -14,6 +14,8 @@ import os
 import sys
 
 from PIL import Image, ImageDraw
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from take_frames import frame_file  # noqa: E402
 
 
 def shots(take, camera):
@@ -25,8 +27,9 @@ def shots(take, camera):
         for line in f:
             e = json.loads(line)
             head, rest = e["name"].split("_", 1)
-            if e.get("accepted") and rest.rsplit("_", 1)[0] == camera:
-                out.append((int(head[1:]), os.path.join(take, e["file"])))
+            path = frame_file(take, e["file"]) if e.get("accepted") and rest.rsplit("_", 1)[0] == camera else None
+            if path:
+                out.append((int(head[1:]), path))
     return sorted(out)
 
 

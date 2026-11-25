@@ -37,6 +37,8 @@ from collections import defaultdict
 
 import numpy as np
 from PIL import Image
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from take_frames import frame_file  # noqa: E402
 
 SIZE = (480, 270)
 
@@ -54,7 +56,9 @@ def cameras(take):
                 continue
             head, rest = e["name"].split("_", 1)
             cam = rest.rsplit("_", 1)[0]
-            by[cam].append((int(head[1:]), os.path.join(take, e["file"])))
+            path = frame_file(take, e["file"])
+            if path:
+                by[cam].append((int(head[1:]), path))
     return {c: sorted(v) for c, v in by.items() if len({fr for fr, _ in v}) >= 3}
 
 
