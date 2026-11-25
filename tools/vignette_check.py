@@ -79,7 +79,7 @@ def live(argv):
 
     game, location = arg("--game", None), arg("--location", None)
     view, reach = arg("--view", "wide"), float(arg("--reach", 0.8))
-    out = os.path.join(paths.OUT, "checks", "vignette", time.strftime("%Y%m%d_%H%M%S") + "_" + game)
+    out = arg("--out", None) or os.path.join(paths.OUT, "checks", "vignette", time.strftime("%Y%m%d_%H%M%S") + "_" + game)
     os.makedirs(out)
     ad = adapters_registry.get(game)()
     ad.ensure_ready(restart=False)
