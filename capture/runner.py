@@ -154,8 +154,26 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         # time steps between holding the world and clip frame 1, for a game whose picture changes
         # once on its first steps (RDR2's shadows, docs/VISUAL_CHECKS.md D3)
         preroll = int(getattr(adapter, "preroll_steps", 0) or 0) if len(shots["steps"]) > 1 else 0
-        for _ in range(preroll):
+        # Optional (adapter attribute preroll_views, False by default): the pre-roll steps show the take's
+        # cameras one after another, the last two the first pose again, so what a game streams in for a
+        # view first rendered mid-take is there before clip frame 1 (Cyberpunk, QC round 2: a banner's
+        # texture and a shadow arriving at clip frame 14 at Kabuki)
+        views = []
+        if preroll and getattr(adapter, "preroll_views", False):
+            seen = set()
+            for st_ in shots["steps"]:
+                for sh in st_["shots"]:
+                    cam = sh["name"].split("_", 1)[1].rsplit("_", 1)[0]
+                    if cam not in seen or (st_["frame"] % 6 == 0 and "moving" in cam):
+                        seen.add(cam)
+                        views.append(sh)
+            views = views[:max(0, preroll - 2)]
+        for i in range(preroll):
+            if views:
+                adapter.set_camera(views[i] if i < len(views) else first)
             adapter.advance(1.0 / fps)
+        if views:
+            adapter.set_camera(first)
         if preroll:
             take["preroll_steps"] = preroll
         t_shots = time.time()
@@ -271,7 +289,7 @@ def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instan
         dst = os.path.join(raw_dir, "%s.bmp" % shot["id"])
         adapter.set_camera(shot)
         info = adapter.capture(dst, settle)
-        pic_problems, stats = check.check(dst)
+        pic_problems, stats = check.check(dst, key=shot["name"].split("_", 1)[1].rsplit("_", 1)[0])
         problems = list(info.get("health", {}).get("problems", [])) + pic_problems
         if problems:
             kept = dst + ".rejected%d" % attempt
