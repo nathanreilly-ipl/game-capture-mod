@@ -354,9 +354,10 @@ Set up on 2026-11-23 (README: Kingdom Come: Deliverance adapter). Left:
   few levels everywhere, shadows included (+2.6 in dark pixels, +2.9 in bright ones): additive, so
   ambient light or the voxel GI (SVOTI) still converging while the world runs during the steps,
   not exposure and not cloud shadows. Before the eye lock the eye hid it. Sasau 0.3-0.6%, Rattay
-  under 0.2% with the lock. Next: how long the GI takes to settle at a first pose (frames run
-  before the hold against brightness), then a longer run before the hold (ghost_run_s) or the
-  SVOTI integration settings.
+  under 0.2% with the lock. At the look's level 7 (2026-11-25) the same Talmberg clip stays within
+  0.03% (exposure drift 0.9997/0.9998): gone in one take, to watch in the QC rounds. If it comes
+  back: `probes/light_settle_probe.py` (how long the light takes to settle at a first pose), then
+  a longer run before the hold (ghost_run_s) or the SVOTI settings.
 - **A scouting overlay.** Our script could draw with the game's UI or debug text. Not started;
   scouting is by agent (`probes/scout_places.py`, `capture scout`).
 - **Cloth through steps** against the world running unbroken (The Witcher 3's

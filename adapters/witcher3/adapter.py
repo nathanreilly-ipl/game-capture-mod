@@ -209,6 +209,10 @@ def angles(fwd, up):
 class Witcher3Adapter(Adapter):
     name = "witcher3"
     capabilities = frozenset({"obstacles", "raycast"})
+    # The eye adapts once the world steps: at Crookback Bog the moving camera and camera 00 lost 2.4% and
+    # 1.1% over the first 8 clip frames, then held (QC round 2, witcher3-013/014, CoreWeave): the take
+    # loop steps this many times (1/3 s of world time) before clip frame 1 (capture/runner.py)
+    preroll_steps = 10
     # path tracing, DLAA and DLSS 5 at 2560x1440 on an RTX 5090: 54 frames/s at a Velen farm, 29 in
     # Novigrad's Hierarch Square (2026-11-23); the frame rate only sets the time a shot takes
     min_fps = 20

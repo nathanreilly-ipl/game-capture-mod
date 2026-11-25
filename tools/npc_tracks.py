@@ -22,6 +22,9 @@ track:
 - player: coming within 2 m of the hidden player's parked spot (take.json subject_position), and
   how its path bends there: people must not react to the player (step aside, stop, turn).
 
+Per track also headings_deg (from the box's forward axis, per clip frame) and facing_off_player_deg
+(0 = facing the hidden player's spot): people turning toward an empty spot show there.
+
 And per shot (with the take's shots.json): the nearest person, animal or vehicle in front of each
 camera, inside its view; under CLOSE_M (1.5 m) it is listed in close_to_camera: a stranger filling
 the picture at lens distance (GTA V Alamo Sea, round 1).
@@ -178,6 +181,19 @@ def analyse(take, fps=None):
             flags.append({"flag": "pop", "frame": fr[0], "what": "appears"})
         if fr[-1] < lastf:
             flags.append({"flag": "pop", "frame": fr[-1] + 1, "what": "vanishes"})
+        # heading per clip frame from the box's forward axis (degrees, counter-clockwise from +x), and
+        # how far it is from facing the hidden player's spot
+        headings, off_player = [], []
+        for fr_i, th in pts:
+            ax = th.get("axes")
+            if ax and len(ax) > 1:
+                fx, fy = float(ax[1][0]), float(ax[1][1])
+                headings.append(round(math.degrees(math.atan2(fy, fx)), 1))
+                if player:
+                    to = np.asarray(player[:2], float) - np.asarray(th["center"][:2], float)
+                    if np.linalg.norm(to) > 1e-6 and math.hypot(fx, fy) > 1e-6:
+                        cosv = (fx * to[0] + fy * to[1]) / (math.hypot(fx, fy) * np.linalg.norm(to))
+                        off_player.append(round(math.degrees(math.acos(max(-1.0, min(1.0, cosv)))), 1))
         near = None
         if player:
             d = np.linalg.norm(c[:, :2] - np.asarray(player[:2], float), axis=1)
@@ -188,6 +204,7 @@ def analyse(take, fps=None):
                     "path_m": round(float(np.linalg.norm(np.diff(c[:, :2], axis=0), axis=1).sum()) if len(c) > 1 else 0.0, 2),
                     "mean_speed_m_s": round(float(np.mean(speeds)), 2) if speeds else 0.0,
                     "closest_to_player_m": near, "speeds": speeds, "flags": flags,
+                    "headings_deg": headings, "facing_off_player_deg": off_player,
                     "path": [[round(float(x), 2), round(float(y), 2)] for x, y in c[:, :2]]})
     counts = {}
     for tr in out:
