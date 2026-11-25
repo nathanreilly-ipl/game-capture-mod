@@ -114,7 +114,7 @@ def build_take(take, dest, sweep_every, quality, notes):
     d = os.path.join(dest, name)
     for sub in ("raw", "videos", "sheets", "metrics"):
         os.makedirs(os.path.join(d, sub), exist_ok=True)
-    for f in ("capture_log.jsonl", "steps.jsonl", "shots.json", "take.json"):
+    for f in ("capture_log.jsonl", "steps.jsonl", "shots.json", "take.json", "npc_tracks.jsonl"):
         if os.path.exists(os.path.join(take, f)):
             shutil.copyfile(os.path.join(take, f), os.path.join(d, f))
     rows = [r for r in log_rows(take) if r.get("accepted")]
@@ -140,6 +140,12 @@ def build_take(take, dest, sweep_every, quality, notes):
         src = os.path.join(take, r["file"])
         stem = os.path.splitext(r["file"])[0]
         Image.open(src).convert("RGB").save(os.path.join(d, stem + ".jpg"), "JPEG", quality=quality)
+    # evidence (tools/qc_evidence.py) and the NPC tracks (tools/npc_tracks.py) from the full take
+    subprocess.run([sys.executable, os.path.join(HERE, "qc_evidence.py"), take, "--out", os.path.join(d, "evidence")],
+                   capture_output=True, text=True, cwd=ROOT)
+    if os.path.exists(os.path.join(take, "npc_tracks.jsonl")):
+        subprocess.run([sys.executable, os.path.join(HERE, "npc_tracks.py"), take, "--out", os.path.join(d, "metrics")],
+                       capture_output=True, text=True, cwd=ROOT)
     for v in glob.glob(os.path.join(take, "package", "*", "rgb.mp4")):
         video(v, os.path.join(d, "videos", os.path.basename(os.path.dirname(v)) + ".mp4"))
     for s in glob.glob(os.path.join(take, "sheets", "*.png")):
@@ -189,7 +195,11 @@ def main():
                           "says .bmp; tools/take_frames.py finds the .jpg); which frames: see each take's 'frames'" % a.quality,
                           "videos/: the preview videos (package/*/rgb.mp4, under 10 MB each)",
                           "sheets/: the take's sheets (sweep, time, ring) as JPEG",
-                          "metrics/: temporal_flicker.py or sweep_flicker.py on the full take (all poses), with their maps"],
+                          "metrics/: temporal_flicker.py or sweep_flicker.py on the full take (all poses), with their maps; "
+                          "npc_tracks.json and its map where the take has npc_tracks.jsonl (takes from 2026-11-25)",
+                          "evidence/: tools/qc_evidence.py on the full take: timestamps.md, per camera a strip of every clip "
+                          "frame and the differences between neighbouring clip frames, crops around pops, flagged sweep poses "
+                          "with their neighbours (index.md lists them)"],
         "changes_since_last_round": a.changes,
         "tools_new": a.tools_new,
         "tools_hint": "Every tool reads a take folder here: %stemporal_flicker.py <take>, %sclip_strip.py <take> "

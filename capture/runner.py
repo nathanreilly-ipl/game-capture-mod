@@ -124,6 +124,9 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     fps = float(shots.get("fps") or 30)
     cap_log = open(os.path.join(take_dir, "capture_log.jsonl"), "w", encoding="utf-8")
     steps_log = open(os.path.join(take_dir, "steps.jsonl"), "w", encoding="utf-8")
+    # people, animals and vehicles near the rig at every clip frame (the obstacle check lists them
+    # anyway): read by tools/npc_tracks.py for the QC loop's NPC categories
+    tracks_log = open(os.path.join(take_dir, "npc_tracks.jsonl"), "w", encoding="utf-8")
     settle = settings["adapter"].get("settle")
     done = retries = 0
     t_shots = None
@@ -138,6 +141,10 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         first = shots["steps"][0]["shots"][0]
         adapter.begin_frozen(first)
         take["render"] = adapter.render_settings()
+        try:     # where the hidden player was left (parked, a ghost): people must not react to it
+            take["subject_position"] = [round(float(v), 3) for v in adapter.subject_state()["position"]]
+        except Exception:
+            pass
         if use_obstacles:
             _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take)
         # Optional (adapter attribute preroll_steps, 0 by default, so other games are unchanged):
@@ -159,7 +166,10 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
             instant = adapter.instant()
             blocked = {}
             if use_obstacles:
-                blocked = _check_frame(adapter, st, centre, reach_m, margin)
+                blocked, obs = _check_frame(adapter, st, centre, reach_m, margin)
+                tracks_log.write(json.dumps({"frame": st["frame"], "instant": instant, "things": [
+                    {k: (np.round(np.asarray(v, float), 3).tolist() if k in ("center", "axes", "half") else v)
+                     for k, v in o.items() if k in ("id", "kind", "owned", "center", "axes", "half")} for o in obs]}) + "\n")
                 if blocked:
                     progress = done / total
                     what = sorted({b["kind"] for b in blocked.values()})
@@ -180,6 +190,7 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
                         done, total, el / done, (total - done) * el / done / 60))
             cap_log.flush()
             steps_log.flush()
+            tracks_log.flush()
         take["render"] = adapter.render_settings()  # again, now that frames exist
         adapter.end_frozen()
         take["status"] = "captured"
@@ -194,6 +205,7 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     finally:
         cap_log.close()
         steps_log.close()
+        tracks_log.close()
         try:
             adapter.hide_subject(False)
         except Exception:
@@ -228,14 +240,15 @@ def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take):
 
 
 def _check_frame(adapter, step, centre, reach_m, margin):
-    """{shot id: {"kind": ...}} for this clip frame's cameras inside or against something."""
+    """({shot id: {"kind": ...}} for this clip frame's cameras inside or against something, the
+    obstacles listed)."""
     obs = adapter.obstacles(centre, reach_m)
     pos = [s["pos"] for s in step["shots"]]
     out = {}
     for k, idx in obstacles.hits(obs, pos, margin).items():
         for i in idx:
             out[step["shots"][i]["id"]] = {"kind": obs[k]["kind"]}
-    return out
+    return out, obs
 
 
 def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instant, attempts, cap_log, log,
