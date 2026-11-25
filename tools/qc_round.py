@@ -78,6 +78,13 @@ def sweep_metrics(take, dest):
     lines = [l for l in out.stdout.splitlines() if l.startswith("{")]
     with open(os.path.join(dest, "sweep_flicker.jsonl"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+    # the same with the camera's turning taken out (--warp): what is left is parallax and flicker
+    warped = os.path.join(dest, "warped")
+    w = subprocess.run([sys.executable, os.path.join(HERE, "sweep_flicker.py"), take, "--warp", "--out", warped],
+                       capture_output=True, text=True, cwd=ROOT)
+    wl = [l for l in w.stdout.splitlines() if l.startswith("{")]
+    with open(os.path.join(dest, "sweep_flicker_warped.jsonl"), "w", encoding="utf-8") as f:
+        f.write("\n".join(wl) + "\n")
     return json.loads(lines[-1]) if lines else {}
 
 

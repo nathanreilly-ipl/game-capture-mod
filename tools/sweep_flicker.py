@@ -13,7 +13,12 @@ same place); flicker, which changes and changes back, does not. Reported per tak
 
 and a map of where it happens (mean over the sweep, x8).
 
-    uv run --project . python tools/sweep_flicker.py <take folder> [<take folder> ...] [--out DIR]
+    uv run --project . python tools/sweep_flicker.py <take folder> [<take folder> ...] [--out DIR] [--warp]
+
+--warp: each neighbour is first turned into this pose's view by the rotation between the two cameras
+(the homography K R_i R_j^T K^-1 from the take's shots.json), so the part of the change that is the
+camera turning cancels; what moving the camera along the path shows (parallax) is left. Compare
+warped numbers with warped numbers only.
 """
 import json
 import os
@@ -27,29 +32,67 @@ from take_frames import frame_file  # noqa: E402
 SIZE = (480, 270)
 
 
-def frames(take):
+def frames(take, with_names=False):
     paths = []
     with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
         for line in f:
             e = json.loads(line)
             path = frame_file(take, e["file"]) if e.get("accepted") else None
             if path:      # a QC round may send a subset of the poses: the measure is then over those
-                paths.append(path)
+                paths.append((path, e["name"]) if with_names else path)
     return paths
 
 
-def measure(take):
-    paths = frames(take)
+def _poses(take):
+    """{shot name: (R world->camera with rows right, -up, fwd; vertical fov in degrees)} from shots.json."""
+    with open(os.path.join(take, "shots.json"), encoding="utf-8") as f:
+        shots = json.load(f)
+    out = {}
+    for st in shots["steps"]:
+        for sh in st["shots"]:
+            fwd, up = np.asarray(sh["fwd"], float), np.asarray(sh["up"], float)
+            right = np.asarray(sh["right"], float) if "right" in sh else np.cross(fwd, up)
+            out[sh["name"]] = (np.stack([right, -up, fwd]), float(sh["vfov_deg"]))
+    return out
+
+
+def _warp(img, R_src, R_dst, vfov):
+    """img (seen from R_src) as seen from R_dst, the camera turned in place (PIL image, same size)."""
+    w, h = img.size
+    fy = (h / 2) / np.tan(np.radians(vfov) / 2)
+    K = np.array([[fy, 0, w / 2], [0, fy, h / 2], [0, 0, 1.0]])
+    M = K @ R_src @ R_dst.T @ np.linalg.inv(K)      # destination pixel -> source pixel
+    M = M / M[2, 2]
+    return img.transform(img.size, Image.PERSPECTIVE, tuple(M.flatten()[:8]), Image.BILINEAR)
+
+
+def measure(take, warp=False):
+    named = frames(take, with_names=True)
+    paths = [p for p, _ in named]
     if len(paths) < 3:
         raise SystemExit("%s: fewer than 3 accepted frames" % take)
+    poses = _poses(take) if warp else None
     prev2 = prev = None
     rough, over, lum, heat, per = 0.0, 0.0, [], None, []
     n = 0
-    for p in paths:
-        f = np.asarray(Image.open(p).convert("RGB").resize(SIZE, Image.BOX), dtype=np.float32)
+    ims = [None, None, None]     # PIL images of the last three poses (for --warp)
+    names = [None, None, None]
+    for p, name in named:
+        im = Image.open(p).convert("RGB").resize(SIZE, Image.BOX)
+        f = np.asarray(im, dtype=np.float32)
+        ims, names = ims[1:] + [im], names[1:] + [name]
         lum.append(float(f.mean()))
         if prev2 is not None:
-            d = np.abs(prev - (prev2 + f) / 2).mean(axis=2)
+            if warp and all(nm in poses for nm in names):
+                R0, R1, R2 = (poses[nm][0] for nm in names)
+                v = poses[names[1]][1]
+                a = np.asarray(_warp(ims[0], R0, R1, v), dtype=np.float32)
+                c = np.asarray(_warp(ims[2], R2, R1, v), dtype=np.float32)
+                d = np.abs(prev - (a + c) / 2).mean(axis=2)
+                d[:6, :] = d[-6:, :] = 0      # the borders a turned neighbour does not cover
+                d[:, :6] = d[:, -6:] = 0
+            else:
+                d = np.abs(prev - (prev2 + f) / 2).mean(axis=2)
             rough += float(d.mean())
             over += float((d > 12).mean())
             heat = d if heat is None else heat + d
@@ -59,17 +102,18 @@ def measure(take):
     lum = np.array(lum)
     jitter = float(np.sqrt(np.mean((lum[1:-1] - (lum[:-2] + lum[2:]) / 2) ** 2)))
     worst = sorted(range(len(per)), key=lambda i: -per[i])[:5]
-    return {"take": take, "frames": len(paths), "roughness": round(rough / n, 4),
+    return {"take": take, "frames": len(paths), "warped": bool(warp), "roughness": round(rough / n, 4),
             "share_over_12": round(over / n, 5), "brightness_jitter": round(jitter, 4),
             "worst": [{"pose": i + 1, "roughness": round(per[i], 3)} for i in worst]}, heat / n
 
 
 def main(argv):
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
+    warp = "--warp" in argv
     takes = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] != "--out")]
     results = []
     for t in takes:
-        r, heat = measure(t)
+        r, heat = measure(t, warp)
         results.append(r)
         print(json.dumps(r))
         if out:
