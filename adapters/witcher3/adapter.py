@@ -44,12 +44,14 @@ pinhole camera of 39.96, 59.64 and 89.88 degrees (within 0.6% of the number set;
 a perspective shift as a translation, so this is its accuracy, not the game's); the same with the
 photo mode on. The field of view changes in a held world, so each shot is rendered at its own.
 
-Time step. Our pause off, the world run over step_frames frames (8) that each cover the same game
+Time step. Our pause off, the world run over step_frames frames (16) that each cover the same game
 time, the pause on again (cm_stepe; the per-frame hook is the game's own CR4Game.OnTick, wrapped
 with the script compiler's @wrapMethod). An even step lands within a share of a frame's time, so
 advance() adds what a step missed by to the next one: at Hierarch Square 29 steps of 32.77 to
 33.59 ms (mean 33.3324) for 33.3333 asked, 0.028 ms short over all of them (2026-11-23,
-probes/cloth_clip_probe.py). Two methods were dropped:
+probes/cloth_clip_probe.py). On CoreWeave, where frame times jitter more, 8 frames gave steps of 29.4
+to 37.4 ms, alternating long and short (QC round 1, witcher3-001/002, Mulbrydale): a step's error is
+about its last frame's share, so steps are spread over 16 frames since 2026-11-25. Two methods were dropped:
 - the photo mode's own tick (SetPhotomodeTickTime, cm_step) advances engine time, wind and grass
   exactly, but not people: 57 people did not move over 30 steps of 1/30 s while in a second of
   play 10 moved up to 1.6 m; they only animated in place (probes/people_step_probe.py);
@@ -138,7 +140,7 @@ Settings (job settings "adapter"):
     ghost           while the subject is hidden, the player stays where he is but is not seen by
                     people and has no collisions (cm_park in place; True). `submit --park-height` has
                     no effect here: the game puts a teleported player on the ground.
-    step_frames     frames each time step is spread over, each covering the same game time (8)
+    step_frames     frames each time step is spread over, each covering the same game time (16)
 
 Places. The game loads one world at a time (Velen and Novigrad, Skellige, Kaer Morhen, White
 Orchard, Vizima, Toussaint); a scouted location carries its world ("place") and a take loads it
@@ -166,7 +168,7 @@ A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 DEFAULTS = {"settle": 60, "first_settle": 120, "clock_settle": 120, "populate_s": 10, "render_size": [2560, 1440],
             "check_settings": True, "pose_tolerance_m": 0.005, "weather": "WT_Clear", "accumulate": 1, "accumulate_gap": 4,
-            "lock_white_point": True, "ghost": True, "step_frames": 8}
+            "lock_white_point": True, "ghost": True, "step_frames": 16}
 
 AREAS = {"AN_NMLandNovigrad": "Velen and Novigrad", "AN_Skellige_ArdSkellig": "Skellige", "AN_Kaer_Morhen": "Kaer Morhen",
          "AN_Prologue_Village": "White Orchard", "AN_Wyzima": "Vizima", "AN_Island_of_Myst": "Isle of Mists",

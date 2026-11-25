@@ -14,7 +14,9 @@ World frame: metres, right-handed, +Z up. Heading (degrees) is counter-clockwise
 (north): forward = (-sin h, cos h, 0); the same RAGE conventions as RDR2.
 
 Settings (job settings "adapter"):
-    settle        frames between a camera move and its capture (40)
+    settle        frames between a camera move and its capture (80: with 40 the ray-traced reflections on
+                  Vinewood's marble still sparkled between neighbouring sweep poses, brightness jitter
+                  along the sweep 0.43 against 0.054 with 80; QC round 1, gtave-008)
     step_frame_s  world time per frame while stepping the frozen world (0.0005 s: 67 frames per 1/30 s)
     first_settle  frames on the first shot (90)
     clock_settle  frames after setting the clock (240)
@@ -66,7 +68,7 @@ CLIENT = (2560, 1440)
 # camrig/v1 (x, y up, z) -> game (x, -z, y): rig +Y (up) to game +Z, rig +Z to game -Y.
 A = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
-DEFAULTS = {"settle": 40, "step_frame_s": 0.0005, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
+DEFAULTS = {"settle": 80, "step_frame_s": 0.0005, "first_settle": 90, "clock_settle": 240, "park_height": 10.0,
             "min_step": 1e-7, "populate_s": 45, "crowd": 12, "crowd_radius": 12.0, "lock_white_point": True,
             "keep_radius": 150.0}
 
@@ -99,6 +101,10 @@ def euler_from_axes(right, fwd, up):
 class GTAVAdapter(Adapter):
     name = "gtav"
     capabilities = frozenset({"obstacles", "raycast"})
+    # The frame darkens about 1% from clip frame 1 to 2 and then holds (QC round 1, gtave-005/006: Alamo
+    # Sea, Vinewood; first step 2.0-2.7x the later ones): the take loop steps this many times before
+    # clip frame 1 (capture/runner.py)
+    preroll_steps = 3
     edition = launch.LEGACY
     exchange = EXCHANGE
 

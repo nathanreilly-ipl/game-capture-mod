@@ -174,6 +174,10 @@ class CyberpunkAdapter(Adapter):
     name = "cyberpunk"
     capabilities = frozenset({"obstacles", "raycast"})
     min_fps = 15   # path tracing at 3840x2160: about 45 frames/s on an RTX 5090; a shot waits 40 frames
+    # The light settles on a take's first step (QC round 1, cyberpunk-005: Cherry Blossom Market's camera
+    # 16 changed 3.98x as much from clip frame 1 to 2 as later): the take loop steps this many times before
+    # clip frame 1 (capture/runner.py)
+    preroll_steps = 3
 
     def __init__(self, settings=None):
         super().__init__(dict(DEFAULTS, **(settings or {})))

@@ -52,6 +52,8 @@ DEFAULT_SETTINGS = {
     "keep_raw": True,        # keep raw frames after packaging
     "obstacle_check": True,  # clear and check moving things in the cameras (adapter capability)
     "obstacle_margin": 0.15, # metres around a person/animal/vehicle box that count as inside
+    "obstacle_clear_margin": 1.0,  # at the start of a take, what is this near a camera is deleted (where the game
+                             # allows): someone a metre away walks into the lens within a second (QC round 1, GTA V)
     "retake_before": 2 / 3,  # a camera inside something before this share of shots: retake
     "max_retakes": 3,        # retakes of one job before it fails
     "qc": "flag",            # the rig provider's check of the package: flag (record), fail, off
@@ -146,7 +148,8 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
         except Exception:
             pass
         if use_obstacles:
-            _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take)
+            _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take,
+                           max(margin, float(settings.get("obstacle_clear_margin") or 0.0)))
         # Optional (adapter attribute preroll_steps, 0 by default, so other games are unchanged):
         # time steps between holding the world and clip frame 1, for a game whose picture changes
         # once on its first steps (RDR2's shadows, docs/VISUAL_CHECKS.md D3)
@@ -220,21 +223,26 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     return take
 
 
-def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take):
-    """At the start of a take: deletes everything holding any camera position of the take.
-    Records what it found in take["cleared"] (also when it raises Retake)."""
+def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take, clear_margin=None):
+    """At the start of a take: deletes everything holding any camera position of the take, or within
+    clear_margin of one (default: margin). Something a game script owns is never deleted: inside a
+    camera (margin) it makes the take a Retake; only near one, it stays. Records what it found in
+    take["cleared"] (also when it raises Retake)."""
     obs = adapter.obstacles(centre, reach_m)
-    hit = obstacles.hits(obs, positions, margin)
+    clear_margin = margin if clear_margin is None else clear_margin
+    hit = obstacles.hits(obs, positions, clear_margin)
+    inside = obstacles.hits(obs, positions, margin) if clear_margin != margin else hit
     ids = [obs[k]["id"] for k in hit]
     res = adapter.remove_obstacles(ids)
-    record = {"near": len(obs), "in_cameras": [{"kind": obs[k]["kind"], "cameras": len(v), "box": obs[k]["approx"]}
-                                                for k, v in hit.items()],
-              "removed": res["removed"], "skipped": res["skipped"]}
+    record = {"near": len(obs), "in_cameras": [{"kind": obs[k]["kind"], "cameras": len(v), "box": obs[k]["approx"],
+                                                 "inside": k in inside} for k, v in hit.items()],
+              "clear_margin_m": clear_margin, "removed": res["removed"], "skipped": res["skipped"]}
     log("start of take: %d people/animals/vehicles near the rig, %d hold cameras; %d entities deleted%s" % (
         len(obs), len(hit), res["removed"], ", %d not (owned by a game script)" % len(res["skipped"])
         if res["skipped"] else ""))
     take["cleared"] = record
-    if res["skipped"]:
+    skipped_inside = [i for i in res["skipped"] if any(obs[k]["id"] == i for k in inside)]
+    if skipped_inside:
         raise Retake("a camera is inside something a game script owns, which is never deleted", 0.0)
     if ids:
         adapter.wait_frames(10)  # let the deletion reach the rendered frame

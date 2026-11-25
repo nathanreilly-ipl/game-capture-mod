@@ -133,6 +133,10 @@ return function(ctx)
 			local t = ts:GetGameTime()
 			return string.format('%02d:%02d', t:Hours(), t:Minutes())
 		end)
+		add('game_seconds', function()   -- the clock of day in seconds (for steps crossing a minute)
+			local t = ts:GetGameTime()
+			return string.format('%d', t:Hours() * 3600 + t:Minutes() * 60 + t:Seconds())
+		end)
 		add('paused', function() return Game.GetSystemRequestsHandler():IsGamePaused() and 1 or 0 end)
 		add('menu', function()   -- the inventory, map, journal...: they hold the world and have their own camera
 			local defs = GetAllBlackboardDefs().UI_System
