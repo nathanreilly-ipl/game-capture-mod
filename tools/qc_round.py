@@ -178,6 +178,8 @@ def main():
     ap.add_argument("--notes", help="JSON file: {location id: [known problem spots]}")
     ap.add_argument("--changes", default="first round")
     ap.add_argument("--tools-new", default="", help="what is new in the tools since the last round")
+    ap.add_argument("--triage", help="JSON file: the triage of the last round's findings, sent as triage.json")
+    ap.add_argument("--reuse", nargs="*", default=[], help="take folders sent again unchanged since the last round")
     ap.add_argument("--upload", action="store_true")
     ap.add_argument("--s3-root", default=S3_ROOT)
     a = ap.parse_args()
@@ -214,6 +216,12 @@ def main():
                       "(RDR2 Rhodes, a fixed camera: 0.48 on the JPEGs, 0.26 lossless); metrics/ is the reference, the "
                       "tools on the JPEGs are for finding where." % (TOOLS, TOOLS, TOOLS),
     }
+    if a.triage:
+        shutil.copyfile(a.triage, os.path.join(dest, "triage.json"))
+        manifest["triage"] = "triage.json: the last round's findings marked fixed, not a fault or open, with reasons"
+    reused = {os.path.relpath(t, paths.OUT) for t in a.reuse}
+    for e in entries:
+        e["new_this_round"] = e["source"] not in reused
     with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
     size = sum(os.path.getsize(os.path.join(r, n)) for r, _, ns in os.walk(dest) for n in ns)

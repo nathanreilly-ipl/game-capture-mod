@@ -5,8 +5,10 @@ parked spot). For the QC loop's NPC categories (docs/QC_LOOP.md); runs on a roun
 
     uv run --project . python tools/npc_tracks.py <take folder> [--out DIR] [--fps 30]
 
-Tracks are linked by the adapter's id; where an id is missing from one clip frame to the next, by
-the nearest thing of the same kind within a gate. Flags, per track:
+Tracks are linked by position (the adapters' ids are list positions, not stable): each clip frame
+the closest pairs of the same kind within a gate per step (human 0.5 m, animal 1 m, vehicle 3 m),
+then a thing ending and one starting within 15 m in the same step are joined as a jump. Flags, per
+track:
 
 - teleport: a step faster than the kind can move (human 9 m/s, animal 20 m/s, vehicle 60 m/s);
 - jerk: the speed changing by more than a kind's limit in one step (human 4 m/s, animal 8, vehicle
@@ -37,7 +39,8 @@ import numpy as np
 
 LIMITS = {  # kind: (max speed m/s, max speed change per step m/s, max rise m)
     "human": (9.0, 4.0, 0.35), "animal": (20.0, 8.0, 0.35), "vehicle": (60.0, 10.0, 0.5)}
-GATE = {"human": 1.0, "animal": 2.0, "vehicle": 4.0}   # metres per step for linking without an id
+GATE = {"human": 0.5, "animal": 1.0, "vehicle": 3.0}   # metres per step: linked as one thing moving
+JUMP_M = 15.0     # a track ending and one starting this near in the same step: one thing that jumped
 CLOSE_M = 1.5     # a thing nearer than this to a camera, in its view, is listed
 
 
@@ -57,32 +60,43 @@ def load(take):
 
 
 def link(rows):
-    """{track id: [(frame, thing)]}: by the adapter's id, else the nearest of the same kind."""
-    tracks, last = {}, {}
+    """{track key: [(frame, thing)]}, linked by position: the adapters' ids are each call's list
+    positions, not stable (every adapter, 2026-11-25), so they are not used. Each clip frame, the
+    closest pairs of the same kind within GATE go first; a track that ends and one that starts in the
+    same step, same kind, within JUMP_M, are one thing that jumped (flagged as a teleport)."""
+    tracks, live = {}, {}      # live: key -> (frame, thing) of tracks seen in the frame before
     nxt = 0
     for r in rows:
-        seen = set()
-        for th in r["things"]:
-            key = None
-            tid = th.get("id")
-            if tid is not None and ("id", str(tid)) in last and ("id", str(tid)) not in seen:
-                key = ("id", str(tid))
-            if key is None:     # no id, or a new id: the nearest unclaimed track of its kind in the gate
-                c = np.asarray(th["center"], float)
-                best, bd = None, GATE.get(th.get("kind"), 2.0)
-                for k, (fr, prev) in last.items():
-                    if k in seen or prev.get("kind") != th.get("kind") or fr != r["frame"] - 1:
-                        continue
-                    d = float(np.linalg.norm(np.asarray(prev["center"], float) - c))
-                    if d < bd:
-                        best, bd = k, d
-                key = best
-            if key is None:
-                key = ("id", str(tid)) if tid is not None and ("id", str(tid)) not in last else ("n", nxt)
+        f = r["frame"]
+        things = list(r["things"])
+        pairs = []
+        for k, (fr, prev) in live.items():
+            if fr != f - 1:
+                continue
+            for j, th in enumerate(things):
+                if th.get("kind") != prev.get("kind"):
+                    continue
+                d = float(np.linalg.norm(np.asarray(th["center"], float) - np.asarray(prev["center"], float)))
+                pairs.append((d, k, j))
+        pairs.sort()
+        used_k, used_j, new_live = set(), set(), {}
+        for d, k, j in pairs:      # within the gate first, then the jumps
+            if k in used_k or j in used_j or d > GATE.get(things[j].get("kind"), 2.0):
+                continue
+            used_k.add(k); used_j.add(j)
+            tracks[k].append((f, things[j])); new_live[k] = (f, things[j])
+        for d, k, j in pairs:
+            if k in used_k or j in used_j or d > JUMP_M:
+                continue
+            used_k.add(k); used_j.add(j)
+            tracks[k].append((f, dict(things[j], jumped_m=round(d, 2)))); new_live[k] = (f, things[j])
+        for j, th in enumerate(things):
+            if j not in used_j:
+                key = ("n", nxt)
                 nxt += 1
-            seen.add(key)
-            tracks.setdefault(key, []).append((r["frame"], th))
-            last[key] = (r["frame"], th)
+                tracks[key] = [(f, th)]
+                new_live[key] = (f, th)
+        live = new_live
     return tracks
 
 

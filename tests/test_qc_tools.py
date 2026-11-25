@@ -41,14 +41,20 @@ def main():
         {"name": "t%03d_near_temporal_16_000" % f, "pos": [0.6, -1.5, 0.9], "fwd": [0.0, -1.0, 0.0], "vfov_deg": 60}]}
         for f in range(1, 31)]}, open(os.path.join(take, "shots.json"), "w"))
     rep = npc_tracks.analyse(take)
-    by = {tr["track"]: {f["flag"] for f in tr["flags"]} for tr in rep["by_track"]}
-    assert by["id:1"] == set(), by
-    assert "teleport" in by["id:2"], by
-    assert "pop" in by["id:3"], by
-    assert {"stop", "player"} <= by["id:4"], by
-    assert "lift" in by["id:5"], by
+    assert rep["tracks"] == 5, rep["tracks"]      # linked by position (ids are not trusted): one track each
+    starts = {1: (0.05, 0.0), 2: (5.0, 5.0), 3: (-5.0, 0.0), 4: (10.05, 0.0), 5: (-10.0, 10.0)}
+    by = {}
+    for tr in rep["by_track"]:
+        x, y = tr["path"][0]
+        who = min(starts, key=lambda k: (starts[k][0] - x) ** 2 + (starts[k][1] - y) ** 2)
+        by[who] = {f["flag"] for f in tr["flags"]}
+    assert by[1] == set(), by
+    assert "teleport" in by[2], by
+    assert "pop" in by[3], by
+    assert {"stop", "player"} <= by[4], by
+    assert "lift" in by[5], by
     close = rep["close_to_camera"]
-    assert close and all(c["camera"] == "near_temporal_00" and c["id"] == 1 for c in close), close
+    assert close and all(c["camera"] == "near_temporal_00" and c["id"] == 1 for c in close), close   # id: the list position
     assert 12 in {c["clip_frame"] for c in close}, close
     npc_tracks.draw(rep, os.path.join(tmp, "map.png"))
     assert os.path.getsize(os.path.join(tmp, "map.png")) > 1000
