@@ -236,7 +236,10 @@ def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take, clear
     res = adapter.remove_obstacles(ids)
     record = {"near": len(obs), "in_cameras": [{"kind": obs[k]["kind"], "cameras": len(v), "box": obs[k]["approx"],
                                                  "inside": k in inside} for k, v in hit.items()],
-              "clear_margin_m": clear_margin, "removed": res["removed"], "skipped": res["skipped"]}
+              "clear_margin_m": clear_margin, "removed": res["removed"], "skipped": res["skipped"],
+              # what was deleted, for the QC loop's NPC categories (a person missing from the clips)
+              "deleted": [{"kind": obs[k]["kind"], "center": [round(float(v), 2) for v in obs[k]["center"]]}
+                          for k in hit if obs[k]["id"] not in set(res["skipped"])] if res["removed"] else []}
     log("start of take: %d people/animals/vehicles near the rig, %d hold cameras; %d entities deleted%s" % (
         len(obs), len(hit), res["removed"], ", %d not (owned by a game script)" % len(res["skipped"])
         if res["skipped"] else ""))
