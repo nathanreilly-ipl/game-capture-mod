@@ -193,7 +193,10 @@ def main():
         "changes_since_last_round": a.changes,
         "tools_new": a.tools_new,
         "tools_hint": "Every tool reads a take folder here: %stemporal_flicker.py <take>, %sclip_strip.py <take> "
-                      "<camera> <out.jpg>, %ssweep_flicker.py <take> (on the poses sent)." % (TOOLS, TOOLS, TOOLS),
+                      "<camera> <out.jpg>, %ssweep_flicker.py <take> (on the poses sent). Numbers from these JPEG frames "
+                      "run higher than metrics/ (made here from the lossless frames): compression adds to roughness "
+                      "(RDR2 Rhodes, a fixed camera: 0.48 on the JPEGs, 0.26 lossless); metrics/ is the reference, the "
+                      "tools on the JPEGs are for finding where." % (TOOLS, TOOLS, TOOLS),
     }
     with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
