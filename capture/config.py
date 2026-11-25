@@ -22,3 +22,14 @@ def set_game(name, **values):
     cfg = load()
     cfg.setdefault("games", {}).setdefault(name, {}).update(values)
     write_json(PATH, cfg)
+
+
+def section(name):
+    """A section of this machine's settings other than the games: {"qc": {"max_agents": 2, ...}}."""
+    return load().get(name, {})
+
+
+def set_section(name, **values):
+    cfg = load()
+    cfg.setdefault(name, {}).update(values)
+    write_json(PATH, cfg)

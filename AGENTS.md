@@ -11,6 +11,17 @@ layout. The pictures are training data that stands in for real footage. Three th
 everything else (next section), and most of the work of a new game goes into proving them in that
 game.
 
+**Who does what (Nathan, 2026-11-24).**
+- The **Windows** session brings a game to a working first worker capture, scouting and iteration
+  tools, with an initial set of photorealism mods and a clean-slate install (section 2).
+- The **CoreWeave** session owns visual iteration from there, for every game: look settings,
+  consistency fixes, retakes.
+- The two meet in the **QC loop** (`docs/QC_LOOP.md`, section 6). CoreWeave sends a game's previews
+  and QC data over S3, reviewer agents on Windows (`capture qc`) report faults in six categories, and
+  CoreWeave triages and fixes.
+- For now the Windows session mediates: it runs its side's transfers, commits and pushes its own
+  work, and messages the CoreWeave session.
+
 ## 1. What a capture must be
 
 **Frozen while held at one instant; stepped exactly between instants.** A rig is not always a
@@ -131,6 +142,9 @@ capture/                 game-agnostic: CLI, locations, scout, scene (rays), pro
                          shot lists, take loop (runner.py), per-shot picture check (checks.py),
                          obstacles policy, packaging, sheets, folder queue, worker
 capture/adapter.py       THE contract a game implements (read it first)
+capture/qc.py            the QC loop's reviewing side (`capture qc`): rounds pulled from S3, a first-in
+                         first-out queue of reviewer agents (headless Claude Code, max_agents at
+                         once), findings with ids kept across rounds, report.md, feedback pushed back
 capture/adapters_registry.py   game name -> adapter class
 capture/install/         installer framework: steps with status/apply/record, lockfiles, file
                          sources by sha256, verify, docs; install/__init__.py registers games
@@ -158,8 +172,11 @@ tools/                   game-agnostic comparison tools: preset_ab, upscaler_ab/
                          hold_step_check (live), temporal_flicker, vignette_check, clip_strip
 docs/VISUAL_CHECKS.md    every visual and scene-consistency fault found so far, how to check it
                          (tool and number), how each game fixed it: the list for every new game
+docs/QC_LOOP.md          the QC loop: six categories, roles, per-game rounds, S3 layout, findings
+docs/qc/reviewer.md      the reviewer agents' prompt (the six definitions word for word)
 tests/                   no-game tests: test_install.py (sandboxed plans), test_obstacle_policy.py,
-                         test_providers.py; run each with `uv run --project . python tests/<file>`
+                         test_providers.py, test_qc.py (the QC loop with a stand-in reviewer);
+                         run each with `uv run --project . python tests/<file>`
 out/                     everything produced (gitignored): mods, locations, queue, takes, probes,
                          install records, config.json (game folders); CAPTURE_OUT moves it
 ```
@@ -384,6 +401,12 @@ Run these at several kinds of places (dense city with screens and signs, interio
 markets, open land, water, night) and whenever a visual setting, mod or adapter change could
 affect them. Keep the reports under `out/probes/` or `out/checks/`.
 
+Beyond the numbers, every game in the QC loop (`docs/QC_LOOP.md`) is reviewed by agents in rounds:
+each round's previews and QC data go through six categories (geometry, lighting and NPCs, each for
+continuity and accuracy), and the findings go back for fixes. A tool that reads a take's files and
+helps find a fault belongs under `tools/`, with its line in VISUAL_CHECKS.md's table of tools, so
+that reviewers can run it.
+
 ```powershell
 # one pose in a held world, captured repeatedly (the game's probe; Cyberpunk's shown)
 uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <id> --phases "run,hold@0.0002"
@@ -475,7 +498,11 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 
 - Ask the person you work for before downloading any third-party file (name, source, size), before
   anything that raises an administrator prompt (`install --only machine`), and before committing
-  or pushing. Commit messages are brief conventional subjects (`feat: ...`, `fix: ...`).
+  or pushing. Commit messages are brief conventional subjects (`feat: ...`, `fix: ...`). Within the
+  QC loop, each session's commits and pushes of its own loop work are part of the loop (Nathan,
+  2026-11-24; `docs/QC_LOOP.md`).
+- Exchanges between the machines go only under `s3://data-interns/nathan.reilly/transfer-*`, and
+  the receiving side deletes what it copied. QC rounds use `transfer-qc/<game>/round-NN/`.
 - Story mode and offline only; never start online modes or touch anti-cheat beyond what the
   install documents.
 - Several agent sessions may share one PC. Before starting a game, check Steam's

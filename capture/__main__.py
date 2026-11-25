@@ -15,6 +15,7 @@ Windows, ./capture.sh <command> on Linux).
     worker     take jobs from the queue and capture them
     package    package a captured take (the worker does this itself)
     sheets     render sheets for a captured take
+    qc         the QC loop's reviewing side: pull a game's round, run reviewer agents, push findings
 """
 import argparse
 import json
@@ -297,6 +298,33 @@ def cmd_worker(a):
     print("%d jobs" % n)
 
 
+def cmd_qc(a):
+    from . import config, qc
+    over = {k: getattr(a, k, None) for k in ("max_agents", "model", "claude", "agent_cmd", "s3_root", "s3_endpoint")}
+    if a.qc_cmd == "config":
+        changed = {k: v for k, v in over.items() if v is not None}
+        if changed:
+            config.set_section("qc", **changed)
+        print(json.dumps(qc.settings(), indent=1))
+    elif a.qc_cmd == "status":
+        print(qc.status_text())
+    elif a.qc_cmd == "pull":
+        qc.pull(a.game, a.round, src=a.src, keep_s3=a.keep_s3, force=a.force, **over)
+    elif a.qc_cmd == "enqueue":
+        qc.enqueue(a.game, a.round, force=a.force)
+        print(qc.status_text())
+    elif a.qc_cmd == "run":
+        qc.run(**over)
+    elif a.qc_cmd == "review":
+        qc.review(a.game, a.round, **over)
+    elif a.qc_cmd == "prompt":
+        print(qc.prompt(a.game, a.round))
+    elif a.qc_cmd == "report":
+        print(qc.summary(qc.report(a.game, a.round)))
+    elif a.qc_cmd == "push":
+        qc.push(a.game, a.round, dest=a.dest, **over)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="capture", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--locations", default=paths.LOCATIONS, help="locations file (default %(default)s)")
@@ -453,6 +481,53 @@ def main(argv=None):
     s.add_argument("take")
     s.add_argument("--out")
     s.set_defaults(fn=lambda a: make_sheets(a.take, a.out))
+
+    s = sub.add_parser("qc", help="the QC loop's reviewing side (docs/QC_LOOP.md)")
+    qs = s.add_subparsers(dest="qc_cmd", required=True)
+
+    def agent_opts(p):
+        p.add_argument("--max-agents", type=int, help="reviewers running at once (default 2)")
+        p.add_argument("--model", help="the reviewers' model (default sonnet)")
+        p.add_argument("--claude", help="the claude command (default: on PATH, else ~/.local/bin)")
+        p.add_argument("--agent-cmd", help="any other reviewer command: it gets the prompt on stdin and QC_* variables")
+
+    def s3_opts(p):
+        p.add_argument("--s3-root", help="where rounds are exchanged (default s3://.../transfer-qc)")
+        p.add_argument("--s3-endpoint", help="the S3 endpoint, if the aws configuration has none")
+
+    p = qs.add_parser("config", help="show or set this machine's QC settings (out/config.json)")
+    agent_opts(p)
+    s3_opts(p)
+    qs.add_parser("status", help="each game's state, round and queue position")
+    p = qs.add_parser("pull", help="a game's round in from S3 (deleted there after) or a folder; the game queues")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    p.add_argument("--src", help="a folder holding the round instead of S3")
+    p.add_argument("--keep-s3", action="store_true", help="leave the S3 copy")
+    p.add_argument("--force", action="store_true", help="even while the game is being reviewed")
+    s3_opts(p)
+    p = qs.add_parser("enqueue", help="queue a round already in out/qc")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    p.add_argument("--force", action="store_true")
+    p = qs.add_parser("run", help="reviewers for the queue, first in first out, --max-agents at once")
+    agent_opts(p)
+    p = qs.add_parser("review", help="one reviewer for one game's round now")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    agent_opts(p)
+    p = qs.add_parser("prompt", help="print the reviewer's prompt for a round")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    p = qs.add_parser("report", help="ids, order and report.md from a round's findings.json")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    p = qs.add_parser("push", help="a round's feedback out to S3 (or a folder); the game is in fixes")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    p.add_argument("--dest", help="a folder instead of S3")
+    s3_opts(p)
+    s.set_defaults(fn=cmd_qc)
 
     a = ap.parse_args(argv)
     a.fn(a)

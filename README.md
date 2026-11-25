@@ -429,6 +429,33 @@ drift, a census of people), `tools/temporal_flicker.py` (a take's cameras over c
 pops, exposure drift), `tools/sweep_flicker.py`, `tools/vignette_check.py` (live: the same patch at
 the centre and near the corners), `tools/exposure_check.py`, `tools/clip_strip.py`.
 
+## The QC loop: agents review every game's captures in rounds
+
+Since 2026-11-24 (`docs/QC_LOOP.md`), each game Nathan picks goes round by round:
+- **CoreWeave** fixes the game's faults, retakes a fixed set of places and sends the previews and QC
+  data over S3.
+- **Reviewer agents on Windows** go through them for every fault in six categories: geometry,
+  lighting and NPCs, each for continuity and for accuracy. They use the QC tools under `tools/`.
+- **Their findings go back**, and CoreWeave triages them and fixes again.
+
+Games run independently, each in QC or in fixes at any moment. CoreWeave owns visual iteration;
+Windows brings games to a working first capture and runs the reviews. For now the Windows session
+mediates: it runs the transfers on its side and messages the CoreWeave session.
+
+```powershell
+.\capture.ps1 qc config --max-agents 2 --model sonnet   # this machine's reviewer settings
+.\capture.ps1 qc pull rdr2 1                            # a round in from S3 (deleted there), queued
+.\capture.ps1 qc run                                    # reviewers for the queue, first in first out
+.\capture.ps1 qc status                                 # each game: queued, reviewing, reviewed, fixes
+.\capture.ps1 qc push rdr2 1                            # findings.json and report.md back to S3
+```
+
+A reviewer is a headless Claude Code run (`claude -p`), or any command set with `--agent-cmd`. Its
+prompt is `docs/qc/reviewer.md`: the six definitions, the known faults, the tools, the output format.
+It writes `out\qc\<game>\round-NN\feedback\findings.json`, which `qc` gives ids that persist across
+the game's rounds and turns into `report.md`. `tests/test_qc.py` runs the whole loop with a
+stand-in reviewer.
+
 ## Adding a game
 
 `AGENTS.md` is the full workflow (what a capture must be, what a finished game provides, the
@@ -1356,6 +1383,10 @@ check does not separate there either (34.1 against 35.9). What it took, each in 
     speed left the frame 15-25 levels of 255 from adapted, 2 s at 30 arrived (79.5 against 79.8 after
     15 s). Held at 0 through 30 steps, a view stayed within 0.1 levels, and a view still read the same
     after the sky and after the darkest view (118.17, 118.00 against 118.11).
+  - Retaken with the lock on the node (fixed cameras), Sasau drifts 0.3% and 0.6% (was 2.8% and
+    1.8%) and Rattay within 0.2%. Talmberg now brightens 3% and 2.5%. That is a nearly constant +2.5
+    levels everywhere, which looks like scene light settling during the steps rather than the eye;
+    it is still open (docs/VISUAL_CHECKS.md, B2).
 - **Clock.** The game does not move its clock back: `Calendar.SetWorldTime` to an earlier time leaves
   it where it was. So the first takes asking for 12:00 ran in the afternoon (14:33 to 15:21). An hour
   already past is now that hour the next day.

@@ -3,6 +3,27 @@
 Work that is designed for but not built. Each item says what the current system does instead,
 and what is already in place so the item can be added without reworking the pipeline.
 
+## The QC loop: what is left (docs/QC_LOOP.md)
+
+- **Automatic back-and-forth.**
+  - Now: the Windows session mediates every exchange. It runs `capture qc pull/run/push` when the
+    CoreWeave session's message names a game and round, and messages back when the feedback is up.
+  - Planned: a watcher on each side, polling `s3://.../transfer-qc/` for a new `manifest.json`
+    (Windows) or `feedback/findings.json` (CoreWeave), then running the next step.
+  - In place: `qc pull` and `qc push` are each one command, and `qc run` picks up games queued while
+    it runs.
+- **Splitting a big round over consecutive reviewers.**
+  - Now: one reviewer per game per round, so a round too big for one is sent smaller (CoreWeave's
+    choice of data).
+  - Planned: `qc run --takes-per-agent N`, which gives a game's takes to reviewers one after the
+    other, each carrying the last one's findings, and merges their findings.json files.
+- **The QC tool survey (CoreWeave, step 0).**
+  - An NPC track log recorded at capture time (the adapters' `obstacles()` per clip frame), with a
+    tool that flags speed outliers, stops, flying, and paths bending around the parked player.
+  - An evidence tool: time strips, difference maps between neighbouring clip frames, same-instant
+    pairs, crops where metrics flag something.
+- **Round summaries on the work-docs page.** Written by hand from each round's `report.md` for now.
+
 ## Top priority now: visual faults in the CoreWeave takes (before The Witcher 3)
 
 Set by Nathan, 2026-11-23, after watching the nine locations' takes on the work-docs page (near

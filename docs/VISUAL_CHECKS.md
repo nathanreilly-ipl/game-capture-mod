@@ -20,16 +20,21 @@ tick them there.
 All under `tools/` are game-agnostic: they read a take's files, or drive any game through its
 adapter (`capture/adapter.py`). Run them with `uv run --project . python tools/<tool>.py`.
 
-| tool | reads | measures | catches |
-|---|---|---|---|
-| `hold_step_check.py --game G --location L` | the game, live | (1) each view captured repeatedly in a held world: per-pixel spread (`share_std_over_4/12`, map); (2) 1/fps time steps, each view captured twice per step: flicker over the steps (`roughness`, `share_over_12`, map), change within one step (`within_step_diff`), `exposure_drift`, the game's step sizes; (3) a census of people, animals and vehicles at every step, matched by position (who left or arrived). `--shots <take>/shots.json --cameras ...` uses a take's own cameras; `--key`/`--key-after` press a key first and last (a ReShade preset); `--set k=v` an adapter setting; `--clock`, `--weather` | noise, real-time animation, exposure moving, flicker caused by steps, history settling after a step, people vanishing or popping in |
-| `temporal_flicker.py <take>` | a take's raw frames | per camera over its clip frames: `roughness`, `share_over_12`, `brightness_jitter`, `first_step_ratio`, `exposure_drift` (whole-frame brightness against clip frame 1 from the pixels that hardly change), `pops` (a region that jumps in one step while calm before, after and around it), maps; `--size 960x540` finds small pops | flicker in multi-frame takes, exposure drift or a flash at the start, pops (vanishing people, LOD switches, shadows switching), time-lapsing screens |
-| `sweep_flicker.py <take>` | a take's raw frames | along a sweep at one instant: each pose against its neighbours' average | exposure re-adapting per view, noise, real-time animation, anything that differs between cameras of one instant |
-| `vignette_check.py --game G --location L` | the game, live | the same patch of scene at the centre of a held view and with the camera turned so it lands near each corner (`live_ratio`, 1.0 = same) | vignettes and any other darkening or brightening by position on screen |
-| `exposure_check.py --game G --location L` | the game, live | a target view after holding the camera on bright and dark views | auto-exposure that re-adapts per view |
-| `clip_strip.py <take> <camera> <out.jpg> [--crop x,y,w,h]` | a take's raw frames | one camera's clip frames side by side, a crop of them | looking at what the numbers point to (the pop boxes are crops) |
-| `compare_sheets.py`, `preset_ab.py`, `upscaler_ab.py`, `upscaler_sweep.py`, `dlss5_skin_sweep.py` | the game, live | settings side by side at one frozen instant, with FLIP maps | what a visual setting changes, and whether it differs between views |
-| `frame_report.py` | a job's frames | contact sheet and pairwise differences | a quick look |
+The QC loop's reviewers (`docs/QC_LOOP.md`) run the ones that read a take's files, on the data a
+round sends; the live ones need the game and stay with the capturing machine. The last column says
+which of the loop's six categories each tool serves: geometry, lighting or NPC, each for continuity
+(C) or accuracy (A).
+
+| tool | reads | measures | catches | QC categories |
+|---|---|---|---|---|
+| `hold_step_check.py --game G --location L` | the game, live | (1) each view captured repeatedly in a held world: per-pixel spread (`share_std_over_4/12`, map); (2) 1/fps time steps, each view captured twice per step: flicker over the steps (`roughness`, `share_over_12`, map), change within one step (`within_step_diff`), `exposure_drift`, the game's step sizes; (3) a census of people, animals and vehicles at every step, matched by position (who left or arrived). `--shots <take>/shots.json --cameras ...` uses a take's own cameras; `--key`/`--key-after` press a key first and last (a ReShade preset); `--set k=v` an adapter setting; `--clock`, `--weather` | noise, real-time animation, exposure moving, flicker caused by steps, history settling after a step, people vanishing or popping in | live: lighting C, geometry C, NPC C |
+| `temporal_flicker.py <take>` | a take's raw frames | per camera over its clip frames: `roughness`, `share_over_12`, `brightness_jitter`, `first_step_ratio`, `exposure_drift` (whole-frame brightness against clip frame 1 from the pixels that hardly change), `pops` (a region that jumps in one step while calm before, after and around it), maps; `--size 960x540` finds small pops | flicker in multi-frame takes, exposure drift or a flash at the start, pops (vanishing people, LOD switches, shadows switching), time-lapsing screens | take: lighting C, geometry C, NPC C |
+| `sweep_flicker.py <take>` | a take's raw frames | along a sweep at one instant: each pose against its neighbours' average | exposure re-adapting per view, noise, real-time animation, anything that differs between cameras of one instant | take: lighting C and A (noise), geometry C |
+| `vignette_check.py --game G --location L` | the game, live | the same patch of scene at the centre of a held view and with the camera turned so it lands near each corner (`live_ratio`, 1.0 = same) | vignettes and any other darkening or brightening by position on screen | live: lighting A |
+| `exposure_check.py --game G --location L` | the game, live | a target view after holding the camera on bright and dark views | auto-exposure that re-adapts per view | live: lighting C |
+| `clip_strip.py <take> <camera> <out.jpg> [--crop x,y,w,h]` | a take's raw frames | one camera's clip frames side by side, a crop of them | looking at what the numbers point to (the pop boxes are crops) | take: all six (evidence) |
+| `compare_sheets.py`, `preset_ab.py`, `upscaler_ab.py`, `upscaler_sweep.py`, `dlss5_skin_sweep.py` | the game, live | settings side by side at one frozen instant, with FLIP maps | what a visual setting changes, and whether it differs between views | live: lighting A |
+| `frame_report.py` | a job's frames | contact sheet and pairwise differences | a quick look | take: all six (overview) |
 
 Also: every take's `capture_log.jsonl` (each shot's game clock, rendered pose and field of view,
 picture saturation and brightness, health problems), `steps.jsonl` (each time step: world time
@@ -209,7 +214,15 @@ So the adapter now also holds the eye from the hold to the end of the take (`eye
 `r_HDREyeAdaptationSpeed 0`) and lets it adapt ten times faster in the run before
 (`eye_run_speed 30`). At Sasau (`adapters/kcd/probes/eye_run_probe.py`): 2 s at the game's speed
 left a frame 15-25 levels from adapted, 2 s at 30 arrived; at 0 a view stayed within 0.1 levels
-through 30 steps and did not re-adapt after bright or dark views.
+through 30 steps and did not re-adapt after bright or dark views. The three node takes retaken with
+the lock (2026-11-24/25, fixed cameras 00 and 16):
+- Sasau: 1.0033 and 1.0064 (were 1.0275 and 1.0177).
+- Rattay: 0.9984 and 1.0009.
+- Talmberg: 1.0302 and 1.0254 (were 1.0019 and 1.0007). This is not the eye: the frame brightens
+  by a nearly constant +2.5 levels at every brightness, shadows included, smoothly over the clip.
+  That looks like light added in the scene (voxel GI or ambient light still settling while the
+  world runs during the steps), which the eye's adaptation hid before the lock. Open (CoreWeave,
+  with the KCD look).
 
 **B3. An exposure lock with a floor.** Cyberpunk's forced exposure stops at about 61-64 whatever
 the value, so places that auto-exposure makes darker come out 9-14 levels too bright (Kabuki,
