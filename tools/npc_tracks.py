@@ -21,7 +21,10 @@ track:
   reach of the obstacle list (the take's cameras' reach around the rig centre + 6 m, as the take loop
   asks for); at the edge it is someone walking in or out, listed in events but not flagged;
 - player: coming within 2 m of the hidden player's parked spot (take.json subject_position), and
-  how its path bends there: people must not react to the player (step aside, stop, turn).
+  how its path bends there: people must not react to the player (step aside, stop, turn);
+- overlap: two people (or animals) whose centres stand under OVERLAP_M apart in a clip frame, bodies
+  inside each other (The Witcher 3's crowd spawned stacked with the player parked away, QC round 6);
+  every such pair and frame is listed in overlaps.
 
 Per track also headings_deg (from the box's forward axis, per clip frame) and facing_off_player_deg
 (0 = facing the hidden player's spot): people turning toward an empty spot show there.
@@ -56,6 +59,7 @@ GATE = {"human": 0.5, "animal": 1.0, "vehicle": 3.0}   # metres per step: linked
 JUMP_M = 15.0     # a track ending and one starting this near in the same step: one thing that jumped
 CLOSE_M = 1.5     # a thing nearer than this to a camera, in its view, is listed
 EDGE_M = 1.0      # appearing or vanishing this near the reach's edge: walking in or out, not a pop
+OVERLAP_M = 0.5   # two people's centres nearer than this (horizontally, at similar heights): inside each other
 REACH_PAD_M = 6.0 # the take loop's reach: its cameras' reach around the rig centre + this (capture/runner.py)
 
 
@@ -183,7 +187,26 @@ def analyse(take, fps=None):
         return round(d, 2), ("edge" if d > reach - EDGE_M else "inside")
 
     out = []
-    for key, pts in link(rows).items():
+    linked = link(rows)
+    name_of = {}
+    for key, pts in linked.items():
+        for fr_i, th in pts:
+            name_of[(fr_i, tuple(round(float(v), 3) for v in th["center"]))] = "%s:%s" % key
+    overlaps = []
+    for r in rows:
+        bodies = [th for th in r["things"] if th.get("kind") in ("human", "animal")]
+        for i in range(len(bodies)):
+            for j in range(i + 1, len(bodies)):
+                a, b = np.asarray(bodies[i]["center"], float), np.asarray(bodies[j]["center"], float)
+                dh = float(np.linalg.norm(a[:2] - b[:2]))
+                if dh < OVERLAP_M and abs(a[2] - b[2]) < 1.0:
+                    overlaps.append({"frame": r["frame"], "distance_m": round(dh, 3), "tracks": [
+                        name_of.get((r["frame"], tuple(round(float(v), 3) for v in x["center"])), "?") for x in (bodies[i], bodies[j])]})
+    first_overlap = {}
+    for o in overlaps:
+        for t_ in o["tracks"]:
+            first_overlap.setdefault(t_, o)
+    for key, pts in linked.items():
         kind = pts[0][1].get("kind", "human")
         vmax, dvmax, rise = LIMITS.get(kind, LIMITS["human"])
         c = np.array([p[1]["center"] for p in pts], float)
@@ -238,6 +261,11 @@ def analyse(take, fps=None):
                     if np.linalg.norm(to) > 1e-6 and math.hypot(fx, fy) > 1e-6:
                         cosv = (fx * to[0] + fy * to[1]) / (math.hypot(fx, fy) * np.linalg.norm(to))
                         off_player.append(round(math.degrees(math.acos(max(-1.0, min(1.0, cosv)))), 1))
+        ov = first_overlap.get("%s:%s" % key)
+        if ov:
+            flags.append({"flag": "overlap", "frame": ov["frame"], "with": [t_ for t_ in ov["tracks"] if t_ != "%s:%s" % key],
+                          "distance_m": ov["distance_m"],
+                          "frames": sorted({o["frame"] for o in overlaps if "%s:%s" % key in o["tracks"]})})
         near = None
         if player:
             d = np.linalg.norm(c[:, :2] - np.asarray(player[:2], float), axis=1)
@@ -261,6 +289,7 @@ def analyse(take, fps=None):
     return {"take": os.path.basename(os.path.normpath(take)), "clip_frames": [first, lastf], "fps": fps,
             "player": player, "centre": centre, "reach_m": round(reach, 2) if reach else None, "tracks": len(out),
             "flag_counts": counts, "close_to_camera": close, "events": sorted(events, key=lambda e: (e["frame"], e["track"])),
+            "overlaps": overlaps,
             "by_track": sorted(out, key=lambda tr: -len(tr["flags"]))}
 
 

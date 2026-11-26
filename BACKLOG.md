@@ -330,6 +330,11 @@ Set up on 2026-11-23 (README: The Witcher 3 adapter). Left:
   getters and setters by name) would let an agent try more without a restart.
 - **The player's horse** is hidden with the player when ridden; a horse standing near the rig is
   an ordinary animal (the obstacle check sees it).
+- **Ambient animals spawning in view** (QC round 5, witcher3-031): two small white animals on the
+  docks' cobbles from clip frame 9, none in flight before; the obstacle list does not hold them, so
+  neither the clear nor npc_tracks sees them. With the player parked 30 m away the game spawned a
+  whole crowd at the rig, stacked (round 6; adapter docstring, Player). Left: list ambient animals in
+  `cm_obstacles`, and see whether spawning near an unseen rig can be switched off.
 - **A texture overhaul.** The visual set is the game's own path tracing, DLAA with Ray
   Reconstruction, and DLSS 5. The community's texture pack, HD Reworked Project NextGen Edition
   (Nexus Mods, about 11 GB, made for the 2024 build 4.04), was not tried: nothing says it works with

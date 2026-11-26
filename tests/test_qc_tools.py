@@ -32,6 +32,8 @@ def main():
         things.append(thing(5, "vehicle", -10.0, 10.0, 0.0 if f < 25 else 1.2))   # a cart lifting off
         if f >= 10:
             things.append(thing(6, "human", 0.0, -7.6 + 0.05 * (f - 10)))  # walks in at the reach's edge (7.85 m)
+        things.append(thing(7, "human", -3.0, -3.0))                     # two standing inside each other
+        things.append(thing(8, "human", -3.1, -3.0))
         rows.append({"frame": f, "instant": 100 + f / 30.0, "things": things})
     with open(os.path.join(take, "npc_tracks.jsonl"), "w") as fh:
         fh.write("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -43,8 +45,9 @@ def main():
         {"name": "t%03d_near_temporal_16_000" % f, "pos": [0.6, -1.5, 0.9], "fwd": [0.0, -1.0, 0.0], "vfov_deg": 60}]}
         for f in range(1, 31)]}, open(os.path.join(take, "shots.json"), "w"))
     rep = npc_tracks.analyse(take)
-    assert rep["tracks"] == 6, rep["tracks"]      # linked by position (ids are not trusted): one track each
-    starts = {1: (0.05, 0.0), 2: (5.0, 5.0), 3: (-5.0, 0.0), 4: (10.05, 0.0), 5: (-10.0, 10.0), 6: (0.0, -7.6)}
+    assert rep["tracks"] == 8, rep["tracks"]      # linked by position (ids are not trusted): one track each
+    starts = {1: (0.05, 0.0), 2: (5.0, 5.0), 3: (-5.0, 0.0), 4: (10.05, 0.0), 5: (-10.0, 10.0), 6: (0.0, -7.6),
+              7: (-3.0, -3.0), 8: (-3.1, -3.0)}
     by = {}
     for tr in rep["by_track"]:
         x, y = tr["path"][0]
@@ -55,6 +58,8 @@ def main():
     assert "pop" in by[3], by
     assert {"stop", "player"} <= by[4], by
     assert "lift" in by[5], by
+    assert by[7] == {"overlap"} and by[8] == {"overlap"}, by
+    assert len(rep["overlaps"]) == 30, len(rep["overlaps"])     # the one pair, every clip frame
     assert by[6] == set(), by                     # entering at the edge is not a pop ...
     ev = {(e["frame"], e["what"], e["at"]) for e in rep["events"]}
     assert (10, "enters", "edge") in ev and (20, "vanishes", "inside") in ev, rep["events"]   # ... but an event
@@ -65,7 +70,7 @@ def main():
     assert os.path.getsize(os.path.join(tmp, "map.png")) > 1000
     print("1 ok: npc_tracks flags a teleport, a vanishing person, a dead stop at the hidden player, a lift; "
           "a steady walker unflagged; the walker close in front of one camera, not the one looking away; one walking in at "
-          "the reach's edge listed, not flagged (%s)" % rep["flag_counts"])
+          "the reach's edge listed, not flagged; two people inside each other flagged (%s)" % rep["flag_counts"])
 
 
 if __name__ == "__main__":

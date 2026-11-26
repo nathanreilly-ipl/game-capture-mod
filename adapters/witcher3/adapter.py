@@ -84,7 +84,13 @@ were before), no walker came within 1.05 m of him (1.05, 1.20, 1.74 m; two walke
 1.25 m to the side), and in a looser probe four of four stopped dead 2 m short. As a ghost, one
 walked straight through his spot (0.13 m) and on, one turned off and one stopped; with him away,
 the walkers wandered as much (strays up to 3 m: a market crowd). Few trials (8); people's own
-wandering hides small effects.
+wandering hides small effects. Parked 30 m south of the rig instead (setting park_offset_m, Novigrad
+Docks, 2026-11-26, QC round 6): nobody turned to his spot (closest 21.5 m), but the rig's crowd was
+different: 10 people tracked within the reach against 3 with him at the rig, three of them starting
+within 5 cm of each other and the group walking with bodies inside each other for the whole clip
+(npc_tracks overlaps: 188 pairs under 0.5 m against none), four of them jumping 0.2-0.35 m on the
+first step. Most likely the game spawning people where the player cannot see them, which then
+includes the rig: the ghost at the rig stays the default.
 
 Frames. ReShade (dxgi.dll beside the exe) and our capture add-on; since the script cannot write
 the add-on's request file, the adapter asks for each frame itself (adapters/common/frames.py),
