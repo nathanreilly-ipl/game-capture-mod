@@ -68,7 +68,18 @@ def load(take):
     with open(os.path.join(take, "npc_tracks.jsonl"), encoding="utf-8") as f:
         for line in f:
             if line.strip():
-                rows.append(json.loads(line))
+                r = json.loads(line)
+                # one thing listed twice in a frame (same kind, same centre to the millimetre: GTA V,
+                # 2026-11-26) is one thing, not two people inside each other
+                seen, things = set(), []
+                for th in r.get("things", []):
+                    k = (th.get("kind"), tuple(round(float(v), 3) for v in th["center"]))
+                    if k not in seen:
+                        seen.add(k)
+                        things.append(th)
+                r["duplicates"] = len(r.get("things", [])) - len(things)
+                r["things"] = things
+                rows.append(r)
     rows.sort(key=lambda r: r["frame"])
     t = {}
     p = os.path.join(take, "take.json")

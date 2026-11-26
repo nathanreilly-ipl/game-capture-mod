@@ -125,6 +125,8 @@ Settings (job settings "adapter"):
                     against its neighbours in a sweep, most in reflections. 8 instead of 4 (2026-11-24,
                     tools/hold_step_check.py at Badlands, 10 steps): roughness between clip frames
                     0.54/0.44 to 0.46/0.30, brightness jitter 0.05 to 0.02, 12% more frames per shot
+    engine_options  engine options set while a session runs, {"Category/Path Key": value} (the names
+                    GameOptions.Dump lists), given back when it ends (none)
     devices_off_m   devices within this many metres are switched off while the subject is hidden
                     (60; 0 leaves them on): their screens, holograms and blinking lights run on
                     real time and would differ from shot to shot
@@ -205,6 +207,7 @@ class CyberpunkAdapter(Adapter):
         self._last_scale = None    # the crop scale of the last frame finished
         self.devices = None        # what the last "devices off" answered
         self.exposure = None       # the exposure lock of the take, if any
+        self.engine_options = {}   # engine options set for the session (setting engine_options), as the game reads them back
         self._pose_fix = np.zeros(3)   # a steady offset of the rendered camera, made up for (recover)
         self.clock_held = False    # the real-time clock held by our clock plug-in
         self.clock = None          # what the clock plug-in last answered
@@ -263,6 +266,12 @@ class CyberpunkAdapter(Adapter):
                     raise AdapterError("the game is not on the capture settings (%s); close it and run: capture install "
                                        "cyberpunk --only settings" % ", ".join(
                                            "%s is %s, not %s" % (n, has, want) for _, n, want, has in self.applied["different"]))
+            # engine options for this session (setting engine_options, "Category/Path Key": value), given back
+            # when the session ends (the session job's option command)
+            self.engine_options = {}
+            for name, value in (self.settings.get("engine_options") or {}).items():
+                cat, key = name.split(" ", 1)
+                self.engine_options[name] = self.sess.cmd("option", "set %s %s %s" % (cat, key, value)).get("option")
         if self.hwnd and not window.set_client_size(self.hwnd, *render):
             raise AdapterError("the game window is %s, not %s" % (window.client_size(self.hwnd), render))
         self._close_menus()
@@ -350,6 +359,8 @@ class CyberpunkAdapter(Adapter):
             out["devices_switched_off"] = int(self.devices.get("devices_off", 0))
         if self.exposure:
             out["exposure_lock"] = dict(self.exposure)
+        if self.engine_options:
+            out["engine_options"] = dict(self.engine_options)
         out["frames_per_shot"] = int(self.settings.get("accumulate") or 1)
         if self.clock_held and self.clock:
             out["realtime_clock"] = {"held_by": "capture_clock.asi", "scale": float(self.clock.get("scale", 0)),

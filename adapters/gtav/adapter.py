@@ -120,6 +120,7 @@ class GTAVAdapter(Adapter):
         self.dlss5 = OptiScalerLive(game_dir(self.name))   # DLSS 5, if installed there
         self.white_point = None    # DLSS 5's white point held for the take, if any
         self.kept = None           # what `keep` answered when the world was first held
+        self.crowd = None          # how many of our walkers `crowd` placed, and how many found no walkable ground
         self.wind = None           # the wind speed (m/s) when the world was first held
 
     # --- lifecycle -------------------------------------------------------------------------
@@ -178,6 +179,8 @@ class GTAVAdapter(Adapter):
             out["kept"]["radius_m"] = float(self.settings["keep_radius"])
         if self.wind is not None:
             out["wind_speed_ms"] = self.wind
+        if self.crowd:
+            out["crowd"] = dict(self.crowd, radius_m=float(self.settings.get("crowd_radius") or 12))
         return out
 
     def _lock_white_point(self):
@@ -228,8 +231,9 @@ class GTAVAdapter(Adapter):
         self.sess.cmd("populate")
         n = int(self.settings.get("crowd") or 0)
         if n:
-            self.sess.cmd("crowd", "%d %.3f %.3f %.3f %.1f" % (n, position[0], position[1], position[2],
-                                                               float(self.settings.get("crowd_radius") or 12)), timeout=60)
+            r = self.sess.cmd("crowd", "%d %.3f %.3f %.3f %.1f" % (n, position[0], position[1], position[2],
+                                                                   float(self.settings.get("crowd_radius") or 12)), timeout=60)
+            self.crowd = {"asked": n, "placed": int(r.get("crowd") or 0), "no_walkable_ground": int(r.get("crowd_off_mesh") or 0)}
         time.sleep(float(self.settings.get("populate_s") or 0))
 
     def ground_point(self, position):
