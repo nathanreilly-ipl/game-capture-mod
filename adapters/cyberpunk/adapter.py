@@ -181,6 +181,15 @@ class CyberpunkAdapter(Adapter):
     # clip frame 1, showing the take's cameras in turn during them (preroll_views; capture/runner.py)
     preroll_steps = 12
     preroll_views = True
+    # ... and 30 s of real time held at the first pose before the last pre-roll steps (capture/runner.py):
+    # QC round 3 saw one change to every camera mid-clip (Kabuki: a banner's texture between clip frames
+    # 14 and 15; Badlands: grass and foliage between 25 and 26), at no fixed game time, so most likely
+    # streaming that runs on real time while the world is held and shows at the next step
+    preroll_wait_s = 30
+    # At the start of a take, people standing within 1.5 m in front of a camera, inside its view, are
+    # deleted too (capture/runner.py; QC round 3, cyberpunk-021: a walker 1.0-1.5 m in front of two
+    # Kabuki cameras for half the clip)
+    obstacle_front_m = 1.5
 
     def __init__(self, settings=None):
         super().__init__(dict(DEFAULTS, **(settings or {})))

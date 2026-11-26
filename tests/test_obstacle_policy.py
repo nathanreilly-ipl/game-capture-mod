@@ -104,6 +104,13 @@ class FakeGame(Adapter):
             out.append(self._box_at(s["start_on_cam"], "start", owned=s.get("owned", False)))
         if s.get("walk_in_frame") and self.frame >= s["walk_in_frame"]:
             out.append(self._box_at(2, "walker"))
+        if s.get("front") and "front" not in self.deleted:
+            # 1.6 m in front of camera 0 (world (3, 0, 1.5), looking at the centre): past the clear margin,
+            # inside the front distance and the view; the same distance behind camera 3 stays
+            out.append({"id": "front", "kind": "human", "owned": False, "center": [1.4, 0, 1.2],
+                        "axes": np.eye(3).tolist(), "half": [0.3, 0.3, 0.9], "approx": "obb"})
+            out.append({"id": "behind", "kind": "human", "owned": False, "center": [-4.6, 0, 1.2],
+                        "axes": np.eye(3).tolist(), "half": [0.3, 0.3, 0.9], "approx": "obb"})
         # something nearby but clear of every camera
         out.append({"id": "bystander", "kind": "human", "owned": False, "center": [0, 0, 1.0],
                     "axes": np.eye(3).tolist(), "half": [0.3, 0.3, 0.9], "approx": "obb"})
@@ -154,6 +161,12 @@ def main():
     assert take["status"] == "captured" and not take["obstructions"]
     print("5 ok: --no-obstacle-check ignores it")
 
+    take, game = run({"front": True}, obstacle_front_m=1.5)
+    assert "front" in game.deleted and "behind" not in game.deleted and take["cleared"]["front_m"] == 1.5, take["cleared"]
+    take, game = run({"front": True})      # off by default (the adapter has no obstacle_front_m)
+    assert not game.deleted, take["cleared"]
+    print("6 ok: a person 1.6 m in front of a camera deleted at the start, one behind a camera kept")
+
     worker_restarts_a_game_that_stopped()
 
 
@@ -203,7 +216,7 @@ def worker_restarts_a_game_that_stopped():
             worker.run_worker("fake", q.root, os.path.join(d, "takes"), once=True, log=lambda *a: None)
             assert q.find(job_id) == "done", q.find(job_id)
             assert game.restarts == 1
-            print("6 ok: the game stopped mid-take; the worker restarted it once and took again; job done")
+            print("7 ok: the game stopped mid-take; the worker restarted it once and took again; job done")
         finally:
             adapters_registry.get, worker.resolve, worker.package, worker.make_sheets = saved
 

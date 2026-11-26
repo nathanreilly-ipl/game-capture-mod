@@ -52,6 +52,9 @@ DEFAULT_SETTINGS = {
     "keep_raw": True,        # keep raw frames after packaging
     "obstacle_check": True,  # clear and check moving things in the cameras (adapter capability)
     "obstacle_margin": 0.15, # metres around a person/animal/vehicle box that count as inside
+    "obstacle_front_m": None,  # ... and what stands this near in front of a camera, inside its view; None: the adapter's
+                             # attribute obstacle_front_m, 0 by default (Cyberpunk 1.5: QC round 3, a walker filling a
+                             # third of the frame at 1.0-1.5 m for a whole clip)
     "obstacle_clear_margin": 1.0,  # at the start of a take, what is this near a camera is deleted (where the game
                              # allows): someone a metre away walks into the lens within a second (QC round 1, GTA V)
     "retake_before": 2 / 3,  # a camera inside something before this share of shots: retake
@@ -149,7 +152,10 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
             pass
         if use_obstacles:
             _clear_cameras(adapter, all_pos, centre, reach_m, margin, log, take,
-                           max(margin, float(settings.get("obstacle_clear_margin") or 0.0)))
+                           max(margin, float(settings.get("obstacle_clear_margin") or 0.0)),
+                           [s for st in shots["steps"] for s in st["shots"]],
+                           float(settings.get("obstacle_front_m") if settings.get("obstacle_front_m") is not None
+                                 else getattr(adapter, "obstacle_front_m", 0) or 0))
         # Optional (adapter attribute preroll_steps, 0 by default, so other games are unchanged):
         # time steps between holding the world and clip frame 1, for a game whose picture changes
         # once on its first steps (RDR2's shadows, docs/VISUAL_CHECKS.md D3)
@@ -168,9 +174,18 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
                         seen.add(cam)
                         views.append(sh)
             views = views[:max(0, preroll - 2)]
+        # Optional (adapter attribute preroll_wait_s, 0 by default): once the views are done, the world held
+        # at the first pose this many seconds of real time before the last pre-roll steps, so what loads
+        # while the world is held (and shows at the next step) arrives before clip frame 1 (Cyberpunk, QC
+        # round 3: a banner's texture and a grass patch changing once mid-clip, not at a fixed game time)
+        wait_s = float(getattr(adapter, "preroll_wait_s", 0) or 0) if preroll else 0.0
         for i in range(preroll):
             if views:
                 adapter.set_camera(views[i] if i < len(views) else first)
+            if wait_s and i == min(len(views), preroll - 1):
+                adapter.set_camera(first)
+                time.sleep(wait_s)
+                take["preroll_wait_s"] = wait_s
             adapter.advance(1.0 / fps)
         if views:
             adapter.set_camera(first)
@@ -241,7 +256,20 @@ def run_take(adapter, job, rig, rig_path, take_dir, log=print):
     return take
 
 
-def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take, clear_margin=None):
+def _in_front(o, shots, front_m):
+    """Indices of the shots a box stands within front_m of, inside the camera's view (the horizontal
+    half angle of a 16:9 picture and 10 degrees more)."""
+    pos = np.array([s["pos"] for s in shots], float)
+    fwd = np.array([s["fwd"] for s in shots], float)
+    vfov = np.radians(np.array([float(s.get("vfov_deg") or 60) for s in shots]))
+    v = np.asarray(o["center"], float) - pos
+    d = np.maximum(np.linalg.norm(v, axis=1), 1e-6)
+    half = np.minimum(np.arctan(np.tan(vfov / 2) * 16 / 9) + np.radians(10), np.radians(85))
+    near = d - max(float(h) for h in o["half"][:2]) <= front_m
+    return np.nonzero(near & ((v * fwd).sum(axis=1) / d >= np.cos(half)))[0].tolist()
+
+
+def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take, clear_margin=None, shots=None, front_m=0.0):
     """At the start of a take: deletes everything holding any camera position of the take, or within
     clear_margin of one (default: margin). Something a game script owns is never deleted: inside a
     camera (margin) it makes the take a Retake; only near one, it stays. Records what it found in
@@ -250,11 +278,17 @@ def _clear_cameras(adapter, positions, centre, reach_m, margin, log, take, clear
     clear_margin = margin if clear_margin is None else clear_margin
     hit = obstacles.hits(obs, positions, clear_margin)
     inside = obstacles.hits(obs, positions, margin) if clear_margin != margin else hit
+    if front_m and shots:
+        for k, o in enumerate(obs):
+            if k not in hit:
+                front = _in_front(o, shots, front_m)
+                if front:
+                    hit[k] = front
     ids = [obs[k]["id"] for k in hit]
     res = adapter.remove_obstacles(ids)
     record = {"near": len(obs), "in_cameras": [{"kind": obs[k]["kind"], "cameras": len(v), "box": obs[k]["approx"],
                                                  "inside": k in inside} for k, v in hit.items()],
-              "clear_margin_m": clear_margin, "removed": res["removed"], "skipped": res["skipped"],
+              "clear_margin_m": clear_margin, "front_m": front_m, "removed": res["removed"], "skipped": res["skipped"],
               # what was deleted, for the QC loop's NPC categories (a person missing from the clips)
               "deleted": [{"kind": obs[k]["kind"], "center": [round(float(v), 2) for v in obs[k]["center"]]}
                           for k in hit if obs[k]["id"] not in set(res["skipped"])] if res["removed"] else []}
@@ -300,6 +334,8 @@ def _capture_shot(adapter, shot, frame, raw_dir, take_dir, settle, check, instan
                "attempt": attempt, "accepted": not problems, "problems": problems, "picture": stats}
         if world_t is not None:      # the world time since clip frame 1, from the steps (QC: 1/fps between clip frames)
             rec["world_time_s"] = round(world_t, 6)
+        now = time.time()            # real time (UTC): what loads while the world is held shows against it
+        rec["wall_time"] = time.strftime("%H:%M:%S", time.gmtime(now)) + ".%03d" % int((now % 1) * 1000)
         for k, v in info.items():  # the adapter's fields never replace the take's own ("frame" is the clip frame)
             if k != "health":
                 rec["adapter_" + k if k in rec else k] = v
