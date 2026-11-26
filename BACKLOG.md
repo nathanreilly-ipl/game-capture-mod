@@ -81,6 +81,12 @@ Market, 1.33-1.59 Badlands; pixels over 12: 0.2-0.5%, 0.7-1.0%, 2.2-2.9%):
   2026-11-26). It comes 0.57-1.23 s of game time after the world is first held (17-37 steps), the
   banner going from plain to its full pattern as a detail level arriving would. Being tried: 60
   pre-roll steps (2 s of game time at the rig). Every shot's log line carries `wall_time` (UTC).
+- [ ] **GTA V: loose props held in mid-air, and our walkers in a row** (QC round 3, gtave-023/024/
+  025): a paper cup in the air in Vinewood's sweep (a prop in flight when the world was held stays
+  there); listing loose props with their height above the ground needs the object pool in the
+  session. Our walkers, snapped to the walkable mesh, stood in a row along the kerb and few walked;
+  keep them 2 m apart over the area and nearer the rig for a clip (Legion's clip had none within its
+  8.7 m reach, its sweep had 9).
 - [ ] **A walker 1.0-1.5 m in front of a lens for half a clip** (QC round 3, cyberpunk-021, Kabuki):
   the start-of-take clear deleted only what stood within 1 m of a camera's position. Cyberpunk now
   deletes people within 1.5 m in front of a camera, inside its view, too (`obstacle_front_m`; other

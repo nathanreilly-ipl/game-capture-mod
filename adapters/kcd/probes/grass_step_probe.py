@@ -38,7 +38,7 @@ def main(argv=None):
     os.makedirs(out)
     x, y, w, h = (float(v) for v in a.crop.split(","))
     ad = KcdAdapter()
-    ad.ensure_ready(restart=False)
+    ad.ensure_ready(restart=True)      # starts the game if it is not running
     ad.open()
     report = {"take": a.take, "camera": a.camera, "crop": a.crop, "runs": []}
     try:

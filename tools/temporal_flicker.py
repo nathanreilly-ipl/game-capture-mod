@@ -17,6 +17,10 @@ speed leave only their edges); flicker, which changes and changes back, does not
                      pixels that hardly change (ratio of their means; moving things left out): 1.0 is steady,
                      0.96 is 4% darker. exposure_by_frame has it per clip frame; a drift that settles
                      after a few frames is an eye still adapting, one that goes on is the light changing
+    brightness_blips single clip frames whose whole-frame brightness (over the pixels that hardly
+                     change) is over STEP_FLAG levels off the clip's median while the clip frames on either
+                     side are within half of that: an exposure or light blip of one frame that comes back,
+                     not a switch (GTA V's Vinewood camera 16, QC round 3: +1.2-1.6 at 5, 24, 26, 30)
     pops             things that appear, vanish or change form in one step while the steps before
                      and after are calm there and around it: a person or car popping in or out, a
                      level of detail switching, a shadow or reflection jumping (a moving limb next to
@@ -168,8 +172,15 @@ def measure(shots):
     med = float(np.median(np.abs(dl))) if dl else 0.0
     step_flags = [{"to_clip_frame": frames[i + 1], "levels": round(v, 3)} for i, v in enumerate(dl)
                   if abs(v) > STEP_FLAG and abs(v) > 3 * med]
+    # a single clip frame off the clip's median level while its neighbours are not
+    mid = float(np.median(lv)) if lv else 0.0
+    dev = [v - mid for v in lv]
+    blips = [{"clip_frame": frames[i], "levels_off_median": round(dev[i], 3)} for i in range(len(dev))
+             if abs(dev[i]) > STEP_FLAG
+             and all(abs(dev[j]) < 0.5 * abs(dev[i]) for j in (i - 1, i + 1) if 0 <= j < len(dev))]
     return {"clip_frames": len(fs), "roughness": round(sum(per) / n, 4), "share_over_12": round(over / n, 5),
             "brightness_steps": [round(v, 3) for v in dl], "brightness_step_flags": step_flags,
+            "brightness_blips": blips,
             "brightness_jitter": round(jitter, 4), "brightness_first_last": [round(float(lum[0]), 2), round(float(lum[-1]), 2)],
             "first_step": round(steps[0], 3), "first_step_ratio": round(steps[0] / later, 2) if later else None,
             "worst": [{"clip_frame": frames[i + 1], "roughness": round(per[i], 3)} for i in worst],
