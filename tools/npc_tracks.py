@@ -17,8 +17,9 @@ track:
 - lift: a person or animal rising more than 0.35 m from its lowest height, or a vehicle more than
   0.5 m (flung, flying, a cart lifting off);
 - turn: a moving person turning more than 90 degrees in one step;
-- pop: appearing or vanishing inside the rig's reach between the first and last clip frame (not
-  at the reach's edge);
+- pop: appearing or vanishing between the first and last clip frame more than EDGE_M inside the
+  reach of the obstacle list (the take's cameras' reach around the rig centre + 6 m, as the take loop
+  asks for); at the edge it is someone walking in or out, listed in events but not flagged;
 - player: coming within 2 m of the hidden player's parked spot (take.json subject_position), and
   how its path bends there: people must not react to the player (step aside, stop, turn).
 
@@ -29,8 +30,17 @@ And per shot (with the take's shots.json): the nearest person, animal or vehicle
 camera, inside its view; under CLOSE_M (1.5 m) it is listed in close_to_camera: a stranger filling
 the picture at lens distance (GTA V Alamo Sea, round 1).
 
-Writes <out>/npc_tracks.json (tracks, per-step speeds, flags) and npc_tracks_map.png (a top-down
-map of the paths, flagged steps in red, the rig centre and the player's spot), and prints a summary.
+And per clip frame (events): who entered or left the list, with the distance from the rig centre
+and the reach (QC round 5 asked for it: a walker entering at 8.8 m of an 8.7 m reach is not a spawn).
+
+    --draw near_temporal_00[,near_moving]   the tracks drawn onto those cameras' frames: each box
+        projected into the picture (its corners' outline), the track's name and distance beside it,
+        entering and leaving in yellow, flagged steps in red; one image per clip frame under
+        <out>/npc_tracks_<camera>/ and a contact sheet npc_tracks_<camera>.jpg (--sheet-only: the sheet)
+
+Writes <out>/npc_tracks.json (tracks, per-step speeds, flags, events) and npc_tracks_map.png (a
+top-down map of the paths, flagged steps in red, the rig centre and the player's spot), and prints a
+summary.
 """
 import argparse
 import json
@@ -45,6 +55,8 @@ LIMITS = {  # kind: (max speed m/s, max speed change per step m/s, max rise m)
 GATE = {"human": 0.5, "animal": 1.0, "vehicle": 3.0}   # metres per step: linked as one thing moving
 JUMP_M = 15.0     # a track ending and one starting this near in the same step: one thing that jumped
 CLOSE_M = 1.5     # a thing nearer than this to a camera, in its view, is listed
+EDGE_M = 1.0      # appearing or vanishing this near the reach's edge: walking in or out, not a pop
+REACH_PAD_M = 6.0 # the take loop's reach: its cameras' reach around the rig centre + this (capture/runner.py)
 
 
 def load(take):
@@ -137,6 +149,22 @@ def close_to_cameras(take, rows):
     return out
 
 
+def rig_reach(take):
+    """(rig centre, reach in metres) from the take's shots.json, as the take loop computes them, or
+    (None, None)."""
+    p = os.path.join(take, "shots.json")
+    if not os.path.exists(p):
+        return None, None
+    with open(p, encoding="utf-8") as f:
+        shots = json.load(f)
+    centre = (shots.get("placement") or {}).get("rig_center_world")
+    pos = [s["pos"] for st in shots.get("steps", []) for s in st["shots"]]
+    if centre is None or not pos:
+        return None, None
+    d = np.linalg.norm(np.asarray(pos, float) - np.asarray(centre, float), axis=1)
+    return [float(v) for v in centre], float(d.max()) + REACH_PAD_M
+
+
 def analyse(take, fps=None):
     rows, t = load(take)
     if not rows:
@@ -145,7 +173,15 @@ def analyse(take, fps=None):
     frames = [r["frame"] for r in rows]
     first, lastf = frames[0], frames[-1]
     player = t.get("subject_position")
-    centre = ((t.get("placement") or {}).get("rig_center_world")) if isinstance(t.get("placement"), dict) else None
+    centre, reach = rig_reach(take)
+    events = []
+
+    def where(th):
+        if centre is None:
+            return None, "unknown"
+        d = float(np.linalg.norm(np.asarray(th["center"], float) - np.asarray(centre, float)))
+        return round(d, 2), ("edge" if d > reach - EDGE_M else "inside")
+
     out = []
     for key, pts in link(rows).items():
         kind = pts[0][1].get("kind", "human")
@@ -178,9 +214,17 @@ def analyse(take, fps=None):
                     if ang > 90:
                         flags.append({"flag": "turn", "frame": fr[i], "degrees": round(ang, 1)})
         if fr[0] > first:
-            flags.append({"flag": "pop", "frame": fr[0], "what": "appears"})
+            d, at = where(pts[0][1])
+            events.append({"frame": fr[0], "track": "%s:%s" % key, "kind": kind, "what": "enters" if at == "edge" else "appears",
+                           "distance_m": d, "reach_m": round(reach, 2) if reach else None, "at": at})
+            if at != "edge":
+                flags.append({"flag": "pop", "frame": fr[0], "what": "appears", "distance_m": d})
         if fr[-1] < lastf:
-            flags.append({"flag": "pop", "frame": fr[-1] + 1, "what": "vanishes"})
+            d, at = where(pts[-1][1])
+            events.append({"frame": fr[-1] + 1, "track": "%s:%s" % key, "kind": kind, "what": "leaves" if at == "edge" else "vanishes",
+                           "distance_m": d, "reach_m": round(reach, 2) if reach else None, "at": at})
+            if at != "edge":
+                flags.append({"flag": "pop", "frame": fr[-1] + 1, "what": "vanishes", "distance_m": d})
         # heading per clip frame from the box's forward axis (degrees, counter-clockwise from +x), and
         # how far it is from facing the hidden player's spot
         headings, off_player = [], []
@@ -201,6 +245,7 @@ def analyse(take, fps=None):
             if d.min() < 2.0:
                 flags.append({"flag": "player", "frame": fr[int(np.argmin(d))], "closest_m": near})
         out.append({"track": "%s:%s" % key, "kind": kind, "owned": bool(pts[0][1].get("owned")), "frames": [fr[0], fr[-1]],
+                    "distance_from_centre_m": [where(pts[0][1])[0], where(pts[-1][1])[0]],
                     "path_m": round(float(np.linalg.norm(np.diff(c[:, :2], axis=0), axis=1).sum()) if len(c) > 1 else 0.0, 2),
                     "mean_speed_m_s": round(float(np.mean(speeds)), 2) if speeds else 0.0,
                     "closest_to_player_m": near, "speeds": speeds, "flags": flags,
@@ -214,8 +259,100 @@ def analyse(take, fps=None):
     if close:
         counts["close_to_camera"] = len(close)
     return {"take": os.path.basename(os.path.normpath(take)), "clip_frames": [first, lastf], "fps": fps,
-            "player": player, "centre": centre, "tracks": len(out), "flag_counts": counts, "close_to_camera": close,
+            "player": player, "centre": centre, "reach_m": round(reach, 2) if reach else None, "tracks": len(out),
+            "flag_counts": counts, "close_to_camera": close, "events": sorted(events, key=lambda e: (e["frame"], e["track"])),
             "by_track": sorted(out, key=lambda tr: -len(tr["flags"]))}
+
+
+def keys_by_thing(rows):
+    """{(clip frame, rounded centre): track name} for drawing."""
+    out = {}
+    for key, pts in link(rows).items():
+        for fr, th in pts:
+            out[(fr, tuple(round(float(v), 3) for v in th["center"]))] = "%s:%s" % key
+    return out
+
+
+def draw_on_frames(take, rep, camera, out_dir, frames=True):
+    """Each clip frame of one camera with every listed box projected into it (the outline of its
+    corners), the track's name and distance from the lens beside it. Returns the contact sheet's path."""
+    from PIL import Image, ImageDraw, ImageFont
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from take_frames import frame_file
+    rows, _ = load(take)
+    names = keys_by_thing(rows)
+    with open(os.path.join(take, "shots.json"), encoding="utf-8") as f:
+        shots = json.load(f)
+    by_frame = {r["frame"]: r["things"] for r in rows}
+    files = {}
+    with open(os.path.join(take, "capture_log.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            r = json.loads(line)
+            if r.get("accepted"):
+                files[r["id"]] = r["file"]
+    bad = {(tr["track"], fl["frame"]) for tr in rep["by_track"] for fl in tr["flags"]}
+    moving = {(e["track"], e["frame"]) for e in rep.get("events", [])}
+    d = os.path.join(out_dir, "npc_tracks_%s" % camera)
+    if frames:
+        os.makedirs(d, exist_ok=True)
+    thumbs = []
+    for st in shots["steps"]:
+        sh = next((s for s in st["shots"] if s["name"].split("_", 1)[1].rsplit("_", 1)[0] == camera), None)
+        if sh is None or sh["id"] not in files:
+            continue
+        p = frame_file(take, files[sh["id"]])
+        if not p:
+            continue
+        im = Image.open(p).convert("RGB")
+        W, H = im.size
+        dr = ImageDraw.Draw(im)
+        try:
+            font = ImageFont.load_default(size=max(14, H // 36))
+        except TypeError:          # Pillow before 10.1
+            font = ImageFont.load_default()
+        pos = np.asarray(sh["pos"], float)
+        R, U, F = (np.asarray(sh[k], float) for k in ("right", "up", "fwd"))
+        foc = (H / 2) / math.tan(math.radians(float(sh["vfov_deg"]) / 2))
+
+        def proj(q):
+            v = np.asarray(q, float) - pos
+            z = float(v @ F)
+            if z < 0.05:
+                return None
+            return (W / 2 + float(v @ R) / z * foc, H / 2 - float(v @ U) / z * foc)
+
+        fr = st["frame"]
+        for th in by_frame.get(fr, []):
+            ax = np.asarray(th.get("axes") or np.eye(3), float)
+            hf = np.asarray(th.get("half") or [0.3, 0.3, 0.9], float)
+            c = np.asarray(th["center"], float)
+            corners = [c + sum(s * hf[i] * ax[i] for i, s in enumerate(sg)) for sg in
+                       [(a, b, e) for a in (-1, 1) for b in (-1, 1) for e in (-1, 1)]]
+            pts = [q for q in (proj(q) for q in corners) if q]
+            if len(pts) < 8:
+                continue
+            xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+            if max(xs) < 0 or min(xs) > W or max(ys) < 0 or min(ys) > H:
+                continue
+            name = names.get((fr, tuple(round(float(v), 3) for v in th["center"])), "?")
+            col = (255, 60, 60) if (name, fr) in bad else (255, 220, 0) if (name, fr) in moving else (90, 220, 255)
+            dr.rectangle([min(xs), min(ys), max(xs), max(ys)], outline=col, width=max(2, W // 640))
+            dr.text((min(max(min(xs), 0), W - W // 5) + 4, min(max(min(ys) - H // 30, 0), H - H // 20)), "%s %s %.1f m" % (name, th.get("kind", ""), float(np.linalg.norm(c - pos))),
+                    fill=col, font=font)
+        dr.text((8, 8), "%s clip frame %d" % (camera, fr), fill=(255, 255, 0), font=font)
+        if frames:
+            im.save(os.path.join(d, "frame_%02d.jpg" % fr), quality=88)
+        thumbs.append(im.resize((480, int(480 * H / W))))
+    if not thumbs:
+        return None
+    cols = 6
+    tw, th_ = thumbs[0].size
+    sheet = Image.new("RGB", (tw * cols, th_ * ((len(thumbs) + cols - 1) // cols)))
+    for i, t in enumerate(thumbs):
+        sheet.paste(t, ((i % cols) * tw, (i // cols) * th_))
+    path = os.path.join(out_dir, "npc_tracks_%s.jpg" % camera)
+    sheet.save(path, quality=85)
+    return path
 
 
 def draw(rep, path):
@@ -258,6 +395,8 @@ def main(argv=None):
     ap.add_argument("take")
     ap.add_argument("--out")
     ap.add_argument("--fps", type=float, default=30.0)
+    ap.add_argument("--draw", help="cameras to draw the tracks onto, comma-separated (near_temporal_00,near_moving)")
+    ap.add_argument("--sheet-only", action="store_true", help="with --draw: the contact sheet alone, not every frame")
     a = ap.parse_args(argv)
     rep = analyse(a.take, a.fps)
     out = a.out or os.path.join(a.take, "qc")
@@ -272,6 +411,12 @@ def main(argv=None):
                 print("  %-14s %-7s frames %s, %.1f m, mean %.2f m/s: %s" % (
                     tr["track"], tr["kind"], tr["frames"], tr["path_m"], tr["mean_speed_m_s"],
                     "; ".join("%s@%s" % (f["flag"], f["frame"]) for f in tr["flags"][:6])))
+        for e in rep["events"]:
+            print("  clip frame %2d: %-8s %s %-7s at %s m of a %s m reach (%s)" % (
+                e["frame"], e["what"], e["track"], e["kind"], e["distance_m"], e["reach_m"], e["at"]))
+        for cam in (a.draw or "").split(","):
+            if cam:
+                print("drew", draw_on_frames(a.take, rep, cam.strip(), out, frames=not a.sheet_only))
     else:
         print(json.dumps(rep))
     return 0

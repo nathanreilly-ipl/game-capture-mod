@@ -157,7 +157,8 @@ def build_take(take, dest, sweep_every, quality, notes):
     subprocess.run([sys.executable, os.path.join(HERE, "qc_evidence.py"), take, "--out", os.path.join(d, "evidence")],
                    capture_output=True, text=True, cwd=ROOT)
     if os.path.exists(os.path.join(take, "npc_tracks.jsonl")):
-        subprocess.run([sys.executable, os.path.join(HERE, "npc_tracks.py"), take, "--out", os.path.join(d, "metrics")],
+        subprocess.run([sys.executable, os.path.join(HERE, "npc_tracks.py"), take, "--out", os.path.join(d, "metrics"),
+                        "--draw", "near_temporal_00,near_temporal_16,near_moving", "--sheet-only"],
                        capture_output=True, text=True, cwd=ROOT)
     for v in glob.glob(os.path.join(take, "package", "*", "rgb.mp4")):
         video(v, os.path.join(d, "videos", os.path.basename(os.path.dirname(v)) + ".mp4"))
@@ -211,7 +212,9 @@ def main():
                           "videos/: the preview videos (package/*/rgb.mp4, under 10 MB each)",
                           "sheets/: the take's sheets (sweep, time, ring) as JPEG",
                           "metrics/: temporal_flicker.py or sweep_flicker.py on the full take (all poses), with their maps; "
-                          "npc_tracks.json and its map where the take has npc_tracks.jsonl (takes from 2026-11-25)",
+                          "npc_tracks.json and its map where the take has npc_tracks.jsonl (takes from 2026-11-25); with "
+                          "its events (who entered or left the reach, at its edge or inside) and npc_tracks_<camera>.jpg, the "
+                          "tracks drawn onto each clip camera's frames (run npc_tracks.py --draw for full-size frames)",
                           "evidence/: tools/qc_evidence.py on the full take: timestamps.md, per camera a strip of every clip "
                           "frame and the differences between neighbouring clip frames, crops around pops, flagged sweep poses "
                           "with their neighbours (index.md lists them)"],

@@ -72,6 +72,19 @@ Market, 1.33-1.59 Badlands; pixels over 12: 0.2-0.5%, 0.7-1.0%, 2.2-2.9%):
   62.1 to 58.6 for 0.25 to 4; `Developer/FeatureToggles/EyeAdaptation` false drops it to 4.3 (a fixed
   default exposure), so neither helps. That day the floor (63-69) was below auto-exposure (69-77):
   the failing case depends on the light and was not reproduced. Left: `Rendering/ACES/*`.
+- [ ] **One step that changes every camera at once, mid-clip** (QC rounds 2-3, cyberpunk-003/013/
+  016): Kabuki between clip frames 14 and 15 (a banner gets its texture, a puddle's reflection and far
+  windows change), Badlands between 25 and 26 (grass and bush shadows regenerated). Not a game minute
+  passing (`probes/tod_step_probe.py`), not detail first asked for mid-take (12 pre-roll steps showing
+  each of the take's cameras, 2026-11-25), not real time: 30 s held at the first pose inside the
+  pre-roll (`preroll_wait_s`, capture/runner.py) only moved it (Kabuki 15 -> 9, Badlands 26 -> 23,
+  2026-11-26). It comes 0.57-1.23 s of game time after the world is first held (17-37 steps), the
+  banner going from plain to its full pattern as a detail level arriving would. Being tried: 60
+  pre-roll steps (2 s of game time at the rig). Every shot's log line carries `wall_time` (UTC).
+- [ ] **A walker 1.0-1.5 m in front of a lens for half a clip** (QC round 3, cyberpunk-021, Kabuki):
+  the start-of-take clear deleted only what stood within 1 m of a camera's position. Cyberpunk now
+  deletes people within 1.5 m in front of a camera, inside its view, too (`obstacle_front_m`; other
+  games unchanged). Check in round 4; someone who walks in later is left (a real crowd does).
 - [x] **Steps 34.2-34.7 ms instead of 33.3** in 2-3 of 29 steps at Kabuki and Badlands (the
   advance overshot on a slow frame). With `step`: 33.3314-33.3327 ms over the 29 steps of the
   Badlands retake.

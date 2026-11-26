@@ -36,7 +36,7 @@ which of the loop's six categories each tool serves: geometry, lighting or NPC, 
 | `compare_sheets.py`, `preset_ab.py`, `upscaler_ab.py`, `upscaler_sweep.py`, `dlss5_skin_sweep.py` | the game, live | settings side by side at one frozen instant, with FLIP maps | what a visual setting changes, and whether it differs between views | live: lighting A |
 | `frame_report.py` | a job's frames | contact sheet and pairwise differences | a quick look | take: all six (overview) |
 | `qc_round.py <game> <round> [--upload]` | the capturing machine's takes | builds a QC round (docs/QC_LOOP.md step 3): per take the logs, full-resolution JPEG frames (every camera at every clip frame; a near sweep's every 6th pose and the poses around flagged ones), preview videos, sheets, temporal/sweep_flicker reports on the full take, and manifest.json | nothing itself: what reviewers get | all six (data) |
-| `npc_tracks.py <take>` | a take's npc_tracks.jsonl (the obstacle list at every clip frame, since 2026-11-25) and take.json | each person, animal and vehicle near the rig linked through the clip frames: speed per step; flags teleports, jerks (speed changing faster than a body can), dead stops, lifts (flung, flying, a cart lifting off), sharp turns, popping in or out inside the reach, and coming within 2 m of the hidden player's parked spot; with shots.json, `close_to_camera`: anything in a camera's view nearer than 1.5 m; a top-down map | NPCs teleporting, gliding, stopping or reacting to the hidden player; things flung by physics | take: NPC C and A, geometry C |
+| `npc_tracks.py <take>` | a take's npc_tracks.jsonl (the obstacle list at every clip frame, since 2026-11-25) and take.json | each person, animal and vehicle near the rig linked through the clip frames: speed per step; flags teleports, jerks (speed changing faster than a body can), dead stops, lifts (flung, flying, a cart lifting off), sharp turns, popping in or out inside the reach, and coming within 2 m of the hidden player's parked spot; with shots.json, `close_to_camera`: anything in a camera's view nearer than 1.5 m; `events`: who entered or left the list per clip frame, at the reach's edge (walking in or out) or inside it (a spawn or despawn: flagged as a pop); a top-down map; `--draw near_temporal_00,...`: every box projected onto that camera's frames with its track's name and distance | NPCs teleporting, gliding, stopping or reacting to the hidden player; things flung by physics | take: NPC C and A, geometry C |
 | `qc_evidence.py <take>` | a take's frames and logs | timestamps.md (game time per shot and per clip frame: still within one, 1/fps between), per camera a strip of every clip frame and of the differences between neighbours (x6), crops around temporal_flicker's pops, a sweep's flagged poses with their neighbours and what neither has | where to look, and the frames that show it | take: all six (evidence) |
 | `take_frames.py` | a take folder | where a logged frame is: the log's file, or the same stem as .jpg/.png (a QC round) | used by the tools above, so they run on a round's JPEG frames | (helper) |
 
@@ -357,7 +357,10 @@ teleport (`populate_s`).
 **E7. People inside cameras, or deleted when a script owns them.** The obstacle policy deletes
 people and vehicles in cameras at the start of a take, never what a game script owns, and retakes
 when a camera ends up inside one (`tests/test_obstacle_policy.py`). RDR2's first sweep passed
-through a horse's neck (2026-11-20).
+through a horse's neck (2026-11-20). Someone close in front of a lens is not inside it but fills the
+picture (`npc_tracks.py`'s close_to_camera: Cyberpunk's Kabuki clip, a walker 1.0-1.5 m from two
+cameras for half the clip, QC round 3): an adapter may set `obstacle_front_m` (Cyberpunk 1.5) to
+delete people standing that near in front of a camera, inside its view, at the start of a take.
 
 **E8. The player in the picture, or affecting the scene.** Visible, its collision or AI still
 active. Parked out of sight with streaming kept at the spot; check the "subject visible" health

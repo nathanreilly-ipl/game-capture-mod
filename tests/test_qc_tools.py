@@ -30,19 +30,21 @@ def main():
         x4 = 10.0 + 0.05 * min(f, 10)                                        # walks, then stops dead at the player
         things.append(thing(4, "human", x4, 0.0))
         things.append(thing(5, "vehicle", -10.0, 10.0, 0.0 if f < 25 else 1.2))   # a cart lifting off
+        if f >= 10:
+            things.append(thing(6, "human", 0.0, -7.6 + 0.05 * (f - 10)))  # walks in at the reach's edge (7.85 m)
         rows.append({"frame": f, "instant": 100 + f / 30.0, "things": things})
     with open(os.path.join(take, "npc_tracks.jsonl"), "w") as fh:
         fh.write("\n".join(json.dumps(r) for r in rows) + "\n")
     json.dump({"subject_position": [10.6, 0.5, 0.0]}, open(os.path.join(take, "take.json"), "w"))
     # a camera at (0.6, -1.5) looking +y at the walker id 1 (at about 0.6, 0 around clip frame 12), and one
     # looking away
-    json.dump({"steps": [{"frame": f, "shots": [
+    json.dump({"placement": {"rig_center_world": [0.0, 0.0, 0.0]}, "steps": [{"frame": f, "shots": [
         {"name": "t%03d_near_temporal_00_000" % f, "pos": [0.6, -1.5, 0.9], "fwd": [0.0, 1.0, 0.0], "vfov_deg": 60},
         {"name": "t%03d_near_temporal_16_000" % f, "pos": [0.6, -1.5, 0.9], "fwd": [0.0, -1.0, 0.0], "vfov_deg": 60}]}
         for f in range(1, 31)]}, open(os.path.join(take, "shots.json"), "w"))
     rep = npc_tracks.analyse(take)
-    assert rep["tracks"] == 5, rep["tracks"]      # linked by position (ids are not trusted): one track each
-    starts = {1: (0.05, 0.0), 2: (5.0, 5.0), 3: (-5.0, 0.0), 4: (10.05, 0.0), 5: (-10.0, 10.0)}
+    assert rep["tracks"] == 6, rep["tracks"]      # linked by position (ids are not trusted): one track each
+    starts = {1: (0.05, 0.0), 2: (5.0, 5.0), 3: (-5.0, 0.0), 4: (10.05, 0.0), 5: (-10.0, 10.0), 6: (0.0, -7.6)}
     by = {}
     for tr in rep["by_track"]:
         x, y = tr["path"][0]
@@ -53,13 +55,17 @@ def main():
     assert "pop" in by[3], by
     assert {"stop", "player"} <= by[4], by
     assert "lift" in by[5], by
+    assert by[6] == set(), by                     # entering at the edge is not a pop ...
+    ev = {(e["frame"], e["what"], e["at"]) for e in rep["events"]}
+    assert (10, "enters", "edge") in ev and (20, "vanishes", "inside") in ev, rep["events"]   # ... but an event
     close = rep["close_to_camera"]
     assert close and all(c["camera"] == "near_temporal_00" and c["id"] == 1 for c in close), close   # id: the list position
     assert 12 in {c["clip_frame"] for c in close}, close
     npc_tracks.draw(rep, os.path.join(tmp, "map.png"))
     assert os.path.getsize(os.path.join(tmp, "map.png")) > 1000
     print("1 ok: npc_tracks flags a teleport, a vanishing person, a dead stop at the hidden player, a lift; "
-          "a steady walker unflagged; the walker close in front of one camera, not the one looking away (%s)" % rep["flag_counts"])
+          "a steady walker unflagged; the walker close in front of one camera, not the one looking away; one walking in at "
+          "the reach's edge listed, not flagged (%s)" % rep["flag_counts"])
 
 
 if __name__ == "__main__":

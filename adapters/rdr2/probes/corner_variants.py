@@ -5,7 +5,11 @@ the game started, tools/vignette_check.py run live (the same patch at the centre
 corner, exposure held), the game closed again. system.xml is put back as it was at the end.
 
     uv run --project . python -m adapters.rdr2.probes.corner_variants --location rdr2-lakeshore-001
-        [--variants base,ssdo_off,dss_off,probe_relight,ssao_full] [--view wide]
+        [--variants base,ssdo_off,dss_off,probe_relight,ssao_full] [--view wide] [--weather SUNNY] [--clock 12:00]
+
+The weather and the clock are set at every start (the first run, 2026-11-26, left them free: base
+and dss_off ran under clear sky with clouds, ssdo_off and probe_relight in haze, and the corners
+grouped by weather, 0.64-0.66 against 0.77-0.81 at the top, not by setting).
 
 Writes out/probes/rdr2_corner_variants/<stamp>/report.json: per variant the four corners' live_ratio.
 """
@@ -32,6 +36,8 @@ VARIANTS = {
     "ssao_full": {"ssaoFullScreenEnabled": "true"},
     "height_shadow_off": {"worldHeightShadowQuality": "0.000000"},
     "ssro_off": {"ssroSampleCount": "0"},
+    "filmic_off": {"hdrFilmicMode": "false"},                   # the HDR output's filmic tone curve
+    "hdr_off": {"hdr": "false", "hdrFilmicMode": "false"},
 }
 
 
@@ -51,6 +57,8 @@ def main(argv=None):
     ap.add_argument("--location", default="rdr2-lakeshore-001")
     ap.add_argument("--variants", default="base,ssdo_off,dss_off,probe_relight,ssao_full")
     ap.add_argument("--view", default="wide")
+    ap.add_argument("--weather", default="SUNNY")
+    ap.add_argument("--clock", default="12:00")
     a = ap.parse_args(argv)
     out = os.path.join(capture_paths.OUT, "probes", "rdr2_corner_variants", time.strftime("%Y%m%d_%H%M%S"))
     os.makedirs(out)
@@ -58,7 +66,7 @@ def main(argv=None):
     backup = os.path.join(out, "system.xml.before")
     shutil.copyfile(xml, backup)
     game_dir = install.find_game_dir()
-    report = {"location": a.location, "view": a.view, "variants": {}}
+    report = {"location": a.location, "view": a.view, "weather": a.weather, "clock": a.clock, "variants": {}}
     try:
         for name in a.variants.split(","):
             launch.close_game()
@@ -66,7 +74,8 @@ def main(argv=None):
             set_values(xml, VARIANTS[name])
             launch.start(game_dir)
             vout = os.path.join(out, name)
-            vignette_check.main(["--game", "rdr2", "--location", a.location, "--view", a.view, "--out", vout])
+            vignette_check.main(["--game", "rdr2", "--location", a.location, "--view", a.view, "--out", vout]
+                                + (["--weather", a.weather] if a.weather else []) + (["--clock", a.clock] if a.clock else []))
             rep = json.load(open(os.path.join(vout, "report.json"), encoding="utf-8"))
             report["variants"][name] = {"values": VARIANTS[name],
                                         "live_ratio": {k: v["live_ratio"] for k, v in rep.get("corners", {}).items()}}

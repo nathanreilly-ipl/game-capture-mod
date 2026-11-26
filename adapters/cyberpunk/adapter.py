@@ -179,13 +179,13 @@ class CyberpunkAdapter(Adapter):
     # still +0.65 levels at the first step, QC round 2), and a banner's texture and a shadow arrived at
     # clip frame 14 at Kabuki (round 2, cyberpunk-013/016): the take loop steps this many times before
     # clip frame 1, showing the take's cameras in turn during them (preroll_views; capture/runner.py)
-    preroll_steps = 12
+    # One change to every camera mid-clip (QC rounds 2-3; Kabuki: a plain banner gets its full pattern, the
+    # puddle's and cars' reflections of it change; Badlands: grass tufts re-posed, bush shadows redrawn)
+    # came 0.57 to 1.23 s of game time after the world was first held (17 to 37 steps; 2026-11-26). Not
+    # real time: 30 s held at the first pose inside the pre-roll (preroll_wait_s 30) only moved it
+    # (Kabuki 15 -> 9, Badlands 26 -> 23). Being tried: 60 pre-roll steps (2 s of game time at the rig).
+    preroll_steps = 60
     preroll_views = True
-    # ... and 30 s of real time held at the first pose before the last pre-roll steps (capture/runner.py):
-    # QC round 3 saw one change to every camera mid-clip (Kabuki: a banner's texture between clip frames
-    # 14 and 15; Badlands: grass and foliage between 25 and 26), at no fixed game time, so most likely
-    # streaming that runs on real time while the world is held and shows at the next step
-    preroll_wait_s = 30
     # At the start of a take, people standing within 1.5 m in front of a camera, inside its view, are
     # deleted too (capture/runner.py; QC round 3, cyberpunk-021: a walker 1.0-1.5 m in front of two
     # Kabuki cameras for half the clip)
