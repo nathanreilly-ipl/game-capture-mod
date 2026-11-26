@@ -176,6 +176,7 @@ git pull origin master                 # the manifest's commit: the new tools
 
 ```powershell
 .\capture.ps1 qc run                   # reviewers for the queue, first in first out, max_agents at once
+.\capture.ps1 qc continue <game> <round>   # a reviewed round's reviewer resumed where its coverage is thin
 ```
 
 When a slot is free, the game at the head of the queue gets a reviewer. A game queued while `run`
@@ -205,13 +206,20 @@ feedback. It runs with no MCP servers (`--strict-mcp-config`). The tools it may 
 machine's setting `allowed_tools`.
 
 **Passes.** A reviewer writes, per category and take, what it did (`coverage`). When it stops while
-a take is missing there or marked "not checked", `qc` resumes the same Claude session
+a take is missing there or its note is thin, `qc` resumes the same Claude session
 (`claude -p --resume`) with the list of what is left, up to `max_passes` passes (6). Only then does
-the review end.
+the review end. A note is thin when it says "not checked" or "not examined", that only a sheet, a
+strip or metrics were looked at, or that flagged poses, cameras or full-size frames were not opened
+(`THIN` in `capture/qc.py`); "other poses not opened" is not thin, since a sweep's minimum is ten
+poses and the flagged ones. `capture qc continue <game> <round>` gives a round that is already
+reviewed the passes it is owed, for instance after the rule changed.
 
 Each pass's output is kept: `agent_output.json`, then `agent_output_pass2.json` and so on. The first
 reviews of 2026-11-25 stopped after 1.2 to 1.7 minutes and 22 to 37 turns, even with the coverage
 minimum in the prompt, and said themselves what they had skipped. That is why the passes exist.
+Until the thin-note rule (2026-11-25 evening), only a missing take or a note starting "not checked"
+counted: 44 of the 360 notes of the first ten rounds were thin and went back to CoreWeave as they
+were (GTA V's round 2: 6 of 36, in one pass of 40 turns).
 
 ### 6. Feedback (Windows, as soon as the game's QC ends)
 
@@ -294,8 +302,8 @@ whose reviewer writes no usable `findings.json` is marked failed. `capture qc en
 <round>` queues it again.
 
 A review that stopped short is caught before its feedback goes back. Its `coverage` must name, for
-each category, every take of the round (or say "all takes"), and `report.md` lists every category
-that does not as a problem. `capture qc enqueue <game> <round> --redo` reviews the round again:
+each category, every take of the round (or say "all takes") with a note that is not thin, and
+`report.md` lists every category that does not as a problem. `capture qc enqueue <game> <round> --redo` reviews the round again:
 - the first try is kept as `feedback.try1`;
 - the round's ids are given out again from the same number.
 

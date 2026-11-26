@@ -116,7 +116,9 @@ The least that every review covers:
 - People, animals and vehicles: each one you can see in a clip take followed through its clip
   frames (where it is, which way it faces, what it does), to judge both NPC categories.
 - In `coverage`, for every category, every take by its folder name with what you did for it, or
-  "not checked" and why.
+  "not checked" and why. A note that says only a sheet, a strip or metrics were looked at, or that
+  something was not checked or examined, or that flagged poses, cameras or full-size frames were not
+  opened, counts as not done yet.
 
 1. Read `docs/VISUAL_CHECKS.md`, the manifest and the earlier findings.
 2. Go through the six categories one at a time, each over every take of the round. Start from what
@@ -175,7 +177,9 @@ category), so that work is not lost if you stop early. Its form:
 ```
 
 `coverage` names every take under every category, by its folder name. A take you have not done
-yet is missing or "not checked": when you stop, the orchestrator sends you back to those.
+yet is missing, "not checked", or has a note short of the minimum above (a sheet, strip or metrics
+only; flagged poses, cameras or full-size frames not opened): when you stop, the orchestrator sends
+you back to those. Write what you did plainly; do not hide what you left out.
 
 Categories are written as: {{categories}}. A finding can carry more than one. Do not give findings
 an id: the orchestrator does (ids stay the same across the game's rounds). When you have finished

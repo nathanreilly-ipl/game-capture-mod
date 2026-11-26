@@ -318,6 +318,8 @@ def cmd_qc(a):
         qc.run(**over)
     elif a.qc_cmd == "review":
         qc.review(a.game, a.round, **over)
+    elif a.qc_cmd == "continue":
+        qc.resume(a.game, a.round, **over)
     elif a.qc_cmd == "prompt":
         print(qc.prompt(a.game, a.round))
     elif a.qc_cmd == "report":
@@ -518,6 +520,10 @@ def main(argv=None):
     p = qs.add_parser("run", help="reviewers for the queue, first in first out, --max-agents at once")
     agent_opts(p)
     p = qs.add_parser("review", help="one reviewer for one game's round now")
+    p.add_argument("game")
+    p.add_argument("round", type=int)
+    agent_opts(p)
+    p = qs.add_parser("continue", help="more passes of a reviewed round's reviewer while its coverage has gaps")
     p.add_argument("game")
     p.add_argument("round", type=int)
     agent_opts(p)

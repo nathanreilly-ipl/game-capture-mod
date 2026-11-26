@@ -6,6 +6,7 @@ their findings sent back. Game-agnostic: nothing here knows a game.
     capture qc pull <game> <round> [--src DIR] [--keep-s3]   a round in from S3 (or a folder); the game queues
     capture qc run [--max-agents N] [--model M]              reviewers for the queue, first in first out
     capture qc review <game> <round>                         one reviewer for one game now
+    capture qc continue <game> <round>                       more passes of a reviewed round's reviewer
     capture qc report <game> <round>                         findings.json: ids, order, report.md
     capture qc push <game> <round> [--dest DIR]              the feedback out to S3 (or a folder); the game is in fixes
     capture qc status
@@ -20,6 +21,7 @@ import contextlib
 import datetime
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -269,7 +271,8 @@ def prompt(game, rnd, s=None):
 
 
 CONTINUE = """Your review of {game}, round {round}, is not finished. findings.json's coverage does not yet show
-these takes as checked:
+these takes as checked (missing, "not checked", or only a sheet, a strip or metrics, or flagged
+poses, cameras or full-size frames not opened):
 {gaps}
 Continue now. For each of them do the least the review covers (the evidence tool's output, the
 strips, full frames at the first, middle and last clip frames and wherever a metric points, ten
@@ -406,6 +409,32 @@ def review(game, rnd, **over):
         r = done
 
 
+def resume(game, rnd, **over):
+    """More passes of a reviewed round's reviewer while its coverage has gaps, as `run` gives by itself:
+    its Claude session resumed with what is left, up to max_passes. For a review whose gaps were
+    found by a later rule, or that hit the timeout."""
+    s = settings(**over)
+    st = game_state(game)
+    if int(st.get("round") or 0) != int(rnd) or st.get("state") != "reviewed":
+        raise SystemExit("%s %s is not a reviewed round here (state %s, round %s)"
+                         % (game, round_name(rnd), st.get("state"), st.get("round")))
+    n = int(st.get("passes") or 1)
+    fb = feedback_dir(game, rnd)
+    r = {"rnd": int(rnd), "pass": n, "t0": time.time(),
+         "out_path": os.path.join(fb, "agent_output.json" if n == 1 else "agent_output_pass%d.json" % n)}
+    r = next_pass(game, r, s)
+    if r is None:
+        print("%s %s: nothing to continue (coverage complete, pass %d of %s, or not a Claude reviewer)"
+              % (game, round_name(rnd), n, s.get("max_passes")))
+        return
+    while True:
+        r["p"].wait()
+        done = _poll(game, r, s)
+        if done is True:
+            return
+        r = done
+
+
 # --- findings ---------------------------------------------------------------------------------
 def _extent(f):
     return max(1, len(f.get("cameras") or [])) * max(1, len(f.get("clip_frames") or []))
@@ -417,15 +446,14 @@ def takes(game, rnd):
 
 
 def uncovered(data, take_names):
-    """The categories whose coverage note names neither every take nor "all takes": a review that
-    stopped short."""
+    """The categories whose coverage note names neither every take nor "all takes", or says a take
+    was only partly looked at: a review that stopped short."""
     cov = data.get("coverage") or {}
     out = {}
     for c in CATEGORIES:
         v = cov.get(c)
-        if isinstance(v, dict):          # {take: what was done}: a take missing or "not checked" is a gap
-            missing = [t for t in take_names
-                       if not str(v.get(t, "")).strip() or str(v.get(t, "")).strip().lower().startswith(NOT_DONE)]
+        if isinstance(v, dict):          # {take: what was done}: a take missing, "not checked" or thin is a gap
+            missing = [t for t in take_names if not _done(v.get(t))]
         else:                            # free text: every take named, or "all takes"
             text = str(v or "")
             if "all takes" in text.lower() or "every take" in text.lower():
@@ -437,12 +465,28 @@ def uncovered(data, take_names):
 
 
 NOT_DONE = ("not checked", "not examined", "not done", "skipped", "todo", "to do", "none", "n/a")
+# a note saying the take was only partly looked at, short of the prompt's minimum: a sheet, a strip or
+# metrics alone, something not checked, flagged poses, cameras or full-size frames not opened. "Other
+# poses not opened" is not thin: a sweep's minimum is ten poses and the flagged ones. (2026-11-25: 44 of
+# the 360 notes of the first ten rounds were thin, 6 of 36 in GTA V's round 2, none in RDR2's round 1.)
+THIN = re.compile(r"\b(?:sheets?|strips?|metrics|logs?)\s+only\b"
+                  r"|\bonly\s+(?:the|a)\s+(?:\w+\s+)?(?:sheet|strip|metrics)\b"
+                  r"|\bnot (?:checked|examined)\b"
+                  r"|\bnot opened at full size|\bfull(?:[- ]size)? frames not opened"
+                  r"|\bflagged poses?\b[^;.]*\bnot opened"
+                  r"|\b(?:cameras?|moving|temporal_?\d+|near_\w+)\b[^;.]{0,30}\bnot opened", re.I)
+
+
+def _done(note):
+    note = str(note or "").strip()
+    return bool(note) and not note.lower().startswith(NOT_DONE) and not THIN.search(note)
 
 
 def validate(data, take_names=()):
     problems = []
     for c, missing in uncovered(data, take_names).items():
-        problems.append("coverage of %s does not name %d of %d takes" % (c, len(missing), len(take_names)))
+        problems.append("coverage of %s leaves %d of %d takes unnamed, not checked or thin: %s"
+                        % (c, len(missing), len(take_names), ", ".join(missing)))
     for i, f in enumerate(data.get("findings", [])):
         bad = [c for c in f.get("categories", []) if c not in CATEGORIES]
         if not f.get("categories") or bad:

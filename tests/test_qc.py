@@ -107,6 +107,25 @@ try:
     check("a repeated earlier id becomes a new id, marked the same fault", pairs == [("alpha-002", None), ("alpha-004", "alpha-002")],
           pairs)
 
+    # a note saying a take was only partly looked at is a gap, as a missing one is
+    cov = {c: {"t1": "strips of every camera, full frames at clip frames 1, 15 and 30",
+               "t2": "ten poses and the flagged ones at full size; other poses not opened"} for c in qc.CATEGORIES}
+    full = qc.uncovered({"coverage": cov}, ["t1", "t2"])
+    cov["geometry_accuracy"]["t1"] = "strip only"
+    cov["lighting_continuity"]["t2"] = "metrics only (jitter 0.06)"
+    cov["npc_accuracy"]["t1"] = "npc_tracks; not checked against the player's spot"
+    cov["npc_continuity"]["t1"] = "strip of camera 00; near_moving not opened"
+    cov["lighting_accuracy"]["t2"] = "sweep sheet; flagged poses 175-179 not opened at full size"
+    thin = qc.uncovered({"coverage": cov}, ["t1", "t2"])
+    check("thin notes are gaps, other poses not opened is not", full == {} and thin == {
+        "geometry_accuracy": ["t1"], "lighting_continuity": ["t2"], "npc_accuracy": ["t1"], "npc_continuity": ["t1"],
+        "lighting_accuracy": ["t2"]}, (full, thin))
+    try:
+        qc.resume("alpha", 1)
+        check("continue refuses a round that is not reviewed", False)
+    except SystemExit:
+        check("continue refuses a round that is not reviewed", True)
+
     # one state at a time: no new round while one is being reviewed
     qc._update("beta", state="reviewing")
     try:

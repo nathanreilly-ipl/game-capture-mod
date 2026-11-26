@@ -446,6 +446,7 @@ mediates: it runs the transfers on its side and messages the CoreWeave session.
 .\capture.ps1 qc config --max-agents 2 --model sonnet   # this machine's reviewer settings
 .\capture.ps1 qc pull rdr2 1                            # a round in from S3 (deleted there), queued
 .\capture.ps1 qc run                                    # reviewers for the queue, first in first out
+.\capture.ps1 qc continue rdr2 1                        # more passes where a review's coverage is thin
 .\capture.ps1 qc status                                 # each game: queued, reviewing, reviewed, fixes
 .\capture.ps1 qc push rdr2 1                            # findings.json and report.md back to S3
 ```
