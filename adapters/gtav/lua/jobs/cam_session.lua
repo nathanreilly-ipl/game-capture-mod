@@ -565,7 +565,8 @@ return function(ctx)
 		local a = numbers(args)
 		local n, x, y, z, r = math.floor(a[1] or 8), a[2], a[3], a[4], a[5] or 12
 		local gz = native.new('float', 1)
-		local made = 0
+		local safe = native.new('Vector3', 1)
+		local made, off = 0, 0
 		for i = 1, n do
 			local ang = 2 * math.pi * (i + math.random()) / n
 			local d = 2.5 + (r - 2.5) * math.random()
@@ -574,16 +575,26 @@ return function(ctx)
 			if ctx.call('MISC', 'GET_GROUND_Z_FOR_3D_COORD', px, py, z + 3.0, gz, false, false) then
 				pz = gz[0]
 			end
-			local ok, p = ctx.try('PED', 'CREATE_RANDOM_PED', px, py, pz + 1.0)
-			if ok and p and p ~= 0 then
-				ctx.try('TASK', 'TASK_WANDER_IN_AREA', p, x, y, z, r, 2.0, 2.0)
-				ctx.try('PED', 'SET_PED_KEEP_TASK', p, true)
-				spawned[handle_of(p, 'ped')] = p
-				made = made + 1
+			-- on the game's walkable navigation mesh, out of the water (flag 8), or not at all: at the
+			-- Alamo Sea walkers put at ground height stood on a sheer cliff and chest-deep in the sea
+			-- (QC round 2, gtave-015/018)
+			local oks, found = ctx.try('PATHFIND', 'GET_SAFE_COORD_FOR_PED', px, py, pz + 1.0, true, safe, 8)
+			local ok_place = oks and found and ((safe[0].x - x) ^ 2 + (safe[0].y - y) ^ 2) <= r * r
+				and math.abs(safe[0].z - z) < 6.0
+			if ok_place then
+				local ok, p = ctx.try('PED', 'CREATE_RANDOM_PED', safe[0].x, safe[0].y, safe[0].z + 1.0)
+				if ok and p and p ~= 0 then
+					ctx.try('TASK', 'TASK_WANDER_IN_AREA', p, x, y, z, r, 2.0, 2.0)
+					ctx.try('PED', 'SET_PED_KEEP_TASK', p, true)
+					spawned[handle_of(p, 'ped')] = p
+					made = made + 1
+				end
+			else
+				off = off + 1
 			end
 			ctx.wait(1)
 		end
-		return { 'crowd=' .. made }
+		return { 'crowd=' .. made, 'crowd_off_mesh=' .. off }
 	end
 
 	-- entities x y z radius: every ped (not the player) and vehicle within radius, one answer line
