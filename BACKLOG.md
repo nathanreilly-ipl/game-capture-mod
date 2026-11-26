@@ -118,8 +118,17 @@ RDR2 (fixed cameras before: roughness 0.33-0.64, pixels over 12 at most 0.35%):
   edges depending on what surrounds it, a per-camera difference. It acts like a local tone mapper
   (the whole frame darker when bright sky or sunlit road fills it; `exposure_check.py` shows the
   exposure itself held). Not the game's HDR setting (`hdr` false: the same 0.45-0.73 on the
-  landscape view, 2026-11-24). Next: ambient occlusion (`ssao`, `ssdo...`), volumetrics,
-  screen-space shadows in system.xml, one at a time, game closed, with this test.
+  landscape view, 2026-11-24). Not a setting in system.xml either (`probes/corner_variants.py`,
+  Lakeshore, wide view, 2026-11-26, each written with the game closed and the game started again):
+  SSDO off, screen-space sun shadows off, probes relit every frame, full-screen SSAO, the filmic
+  curve off and HDR off all leave the four corners where they were (within 0.02). What moves them is
+  the scene: with the weather left free the runs split by weather (clear sky with clouds: top
+  corners 0.64-0.66, bottom 0.34-0.35; haze: 0.77-0.81 and 0.29-0.31), and with the weather held
+  sunny at noon top 0.33-0.34, bottom 0.60-0.64. The patch is the same bush tip in every view, so
+  the darkening follows what fills the rest of the picture (a view turned down onto sunlit sand
+  darkens it most): an exposure or tone mapping keyed to each view's content, not a fixed vignette.
+  Next: whether the photo-mode exposure lock holds in vignette_check's views (the same patch with a
+  bright and a dark object brought into the frame's far side).
 - [x] **Motion blur is on in RDR2** (`<motionBlur value="true" />` in system.xml, from the PC's
   profile). A per-camera effect AGENTS.md wants off: moving people were blurred along their 1/30 s
   motion. The install now writes `motionBlur` false (XmlSet, 2026-11-24; in the retakes).

@@ -142,6 +142,8 @@ Settings (job settings "adapter"):
                     people and has no collisions (cm_park in place; True). `submit --park-height` has
                     no effect here: the game puts a teleported player on the ground.
     step_frames     frames each time step is spread over, each covering the same game time (32)
+    park_offset_m   [dx, dy]: the ghost player parked this far from his spot (on the ground there) instead
+                    of at it, for comparing people with the player at the rig and away (None)
 
 Places. The game loads one world at a time (Velen and Novigrad, Skellige, Kaer Morhen, White
 Orchard, Vizima, Toussaint); a scouted location carries its world ("place") and a take loads it
@@ -476,7 +478,11 @@ class Witcher3Adapter(Adapter):
                 st = self.sess.state()
                 p = vec(st["player"])
                 self._parked_from = (p, float(st.get("heading", 0.0)))
-                self.sess.cmd("park", p[0], p[1], p[2])
+                q = p
+                off = self.settings.get("park_offset_m")
+                if off:      # elsewhere, for a comparison of people with the player at the rig and away from it
+                    q = self.ground_point([p[0] + float(off[0]), p[1] + float(off[1]), p[2]])
+                self.sess.cmd("park", q[0], q[1], q[2])
             self.sess.cmd("freeze")
             frames.wait(self.exchange, 5)
             self.frozen = True

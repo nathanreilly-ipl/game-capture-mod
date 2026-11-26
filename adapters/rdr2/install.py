@@ -243,6 +243,9 @@ def steps(ctx):
     # the PC's profile had it on (2026-11-24): moving people blurred along their 1/30 s motion, a
     # per-camera effect (AGENTS.md section 1, docs/VISUAL_CHECKS.md C)
     out.append(XmlSet(xml, "motionBlur", "false", why="no motion blur"))
+    # the game relights its light probes only now and then: a gable switched between lit and shaded at
+    # single clip frames (QC round 1, rdr2-001/006); every frame, a step's light follows the step
+    out.append(XmlSet(xml, "probeRelightEveryFrame", "true", why="light probes relit every frame (no light switching at one step)"))
     if opt.get("resolution"):
         w, h = (int(v) for v in opt["resolution"].lower().split("x"))
         if abs(w / h - 16 / 9) > 0.01:
