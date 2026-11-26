@@ -21,8 +21,11 @@ KEYS = {"Enter": "Return", "Esc": "Escape", "Space": "space", "Back": "BackSpace
 # a caller may pass a keyboard scan code where window_win32.SCAN has no name for the key
 SCAN_KEYS = {0x1C: "Return", 0x01: "Escape", 0x39: "space", 0x0E: "BackSpace", 0x10: "q", 0x12: "e", 0x48: "Up", 0x50: "Down",
              0x4B: "Left", 0x4D: "Right", 0x3D: "F3", 0x3E: "F4", 0x3F: "F5", 0x40: "F6", 0x29: "grave"}
+SCAN_KEYS.update({0x3B + i: "F%d" % (i + 1) for i in range(10)})     # F1..F10 (Death Stranding's photo mode: F8)
+SCAN_KEYS.update({0x57: "F11", 0x58: "F12"})
 # Windows virtual-key codes -> X key names, for press_vk (the function keys F1..F24 and letters, digits)
-VK = {0x0D: "Return", 0x1B: "Escape", 0x20: "space", 0x08: "BackSpace"}
+VK = {0x0D: "Return", 0x1B: "Escape", 0x20: "space", 0x08: "BackSpace",
+      0x10: "Shift_L", 0x11: "Control_L", 0x12: "Alt_L"}           # Alt: Death Stranding's photo mode controls
 VK.update({0x70 + i: "F%d" % (i + 1) for i in range(24)})
 VK.update({c: chr(c).lower() for c in range(0x41, 0x5B)})
 VK.update({c: chr(c) for c in range(0x30, 0x3A)})
