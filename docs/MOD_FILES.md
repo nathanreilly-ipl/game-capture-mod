@@ -279,6 +279,24 @@ The lockfiles pin the versions this repository was tested with:
 | `r6/scripts/RemoveModsMenu/RemoveModsMenu.reds` | 1,135 | `59243dbd582f81602c3457aeb03f749d94e2208423811ac7bdd113c0c723f55d` |
 | `r6/scripts/RemoveModsMenu/RemoveModVerification.reds` | 7,061 | `d65794f0dbcfb867632d94dad20b517332ea99d3e7d7e1051d717b2f20f1cb9c` |
 
+## Death Stranding Director's Cut (Steam)
+
+### Ultimate ASI Loader 10.0.4 (x64)
+
+**Required.** Loads our plug-in capture_ds.asi (the script layer this game lacks) into Death Stranding Director's Cut, installed as winhttp.dll: ds.exe imports winhttp.dll at start (and nothing UAL also proxies that ReShade takes, dxgi.dll).
+
+| | |
+|---|---|
+| How to get it | **Download**: https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/tag/v10.0.4 |
+| File as downloaded | `Ultimate-ASI-Loader-NoPDB_x64.zip`, 897,014 bytes, SHA-256 `aed4a9ed3fe76cbd5ae7e62a25eccafdd05e0b5b585ff1995e51455ff387a4fb` |
+| Direct link | https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/v10.0.4/Ultimate-ASI-Loader-NoPDB_x64.zip |
+| Licence | MIT (may be redistributed) |
+| Lockfile | `adapters/deathstranding/mods.lock.json`, id `ultimate_asi_loader` |
+
+| File used | Size | SHA-256 |
+|---|---|---|
+| `dinput8.dll` | 2,437,352 | `aefcb1f8f74bf998c3f0ccf1576174da31bdb07ee37fb332aca184842bb97ffb` |
+
 ## Grand Theft Auto V Legacy (story mode, Steam)
 
 ### Script Hook V 3889.0 / 1158.13 (with its ASI loader and Native Trainer)

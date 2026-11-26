@@ -18,6 +18,8 @@ returned (an HWND, or an X window id); adapters only pass it back.
     move(handle, x, y)                              its top left corner to a point of the screen
     rect(handle) -> (left, top, right, bottom) on the screen; window_pid(handle) -> pid
     click(handle, x, y) at a point of the client area; click_screen(x, y) at a point of the screen
+    middle_click(handle)                            the middle button where the pointer is, the window in
+                                                    front (Death Stranding's photo mode hides its menu so)
     keep_awake()
 """
 import os

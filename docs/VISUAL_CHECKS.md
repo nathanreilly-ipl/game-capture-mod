@@ -22,7 +22,7 @@ adapter (`capture/adapter.py`). Run them with `uv run --project . python tools/<
 
 The QC loop's reviewers (`docs/QC_LOOP.md`) run the ones that read a take's files, on the data a
 round sends; the live ones need the game and stay with the capturing machine. The last column says
-which of the loop's six categories each tool serves: geometry, lighting or NPC, each for continuity
+which of the loop's categories each tool serves: geometry, lighting or NPC, each for continuity
 (C) or accuracy (A).
 
 | tool | reads | measures | catches | QC categories |

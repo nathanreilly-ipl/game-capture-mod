@@ -267,6 +267,9 @@ def cmd_mods(a):
                 extra += [(folder + part.NAME, part.BUILT), (folder + part.STAMP, part.BUILT_STAMP)]
             else:
                 print("the %s is not built here from the current sources, so the bundle will not include it" % what)
+        # a game's own built files (Death Stranding's plug-in), if its install module lists them
+        if hasattr(mod, "bundle_extra"):
+            extra += mod.bundle_extra(log=print)
         sources.bundle(ctx.files, out, with_supplied=a.with_supplied, extra=extra)
     else:
         print("looking in: %s" % ", ".join(ctx.files.roots + ["the existing install"]))

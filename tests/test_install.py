@@ -681,6 +681,69 @@ def part_h(tmp, mods, system_class, label):
           "it all back; the game's own mod_status.xml kept" % (label, n))
 
 
+def part_i(tmp, mods, system_class, label):
+    """The Death Stranding Director's Cut plan in a sandbox: our plug-in, the ASI loader as
+    winhttp.dll, ReShade and the add-on, game_settings.cfg; install, again (nothing to do), uninstall."""
+    from capture.install.plan import kv_get
+    lines = []
+    root = os.path.join(tmp, "deathstranding_" + label)
+    game = os.path.join(root, "game")
+    os.makedirs(game)
+    open(os.path.join(game, "ds.exe"), "wb").write(b"not the real game")
+    cfg = os.path.join(root, "user", "profile", "game_settings.cfg")
+    os.makedirs(os.path.dirname(cfg))
+    open(cfg, "w", encoding="utf-8", newline="").write('"GameDifficulty" "3"\n"AutoLogin" "1"\n"PhotoModeKeepParams" "0"\n')
+    cfg_before = open(cfg, "rb").read()
+    exchange = os.path.join(root, "user", "exchange")
+    opts = {"exchange_dir": exchange, "settings_files": [cfg]}
+    system, work = system_class(root), os.path.join(root, "work")
+    before = tree(game)
+    n = inst.install("deathstranding", game, opts, mods, system=system, work=work, log=lines.append)
+    for rel in ("winhttp.dll", "capture_ds.asi", "capture_ds.ini", "dxgi.dll", "ReShade.ini", addon.NAME):
+        assert os.path.exists(os.path.join(game, rel)), rel
+    ini = plan.Ini(os.path.join(game, "capture_ds.ini"))
+    assert ini.get("capture", "Control") == system.game_path(os.path.join(exchange, "capture.txt"))
+    text = open(cfg, encoding="utf-8").read()
+    assert kv_get(text, "AutoLogin") == "0" and kv_get(text, "PhotoModeKeepParams") == "1" and kv_get(text, "GameDifficulty") == "3"
+    assert inst.install("deathstranding", game, opts, mods, system=system, work=work, log=lines.append) == 0
+    inst.uninstall("deathstranding", work=work, log=lines.append)
+    after = tree(game)
+    assert after == before, (sorted(set(after) ^ set(before))[:10], [k for k in before if after.get(k) != before[k]])
+    assert open(cfg, "rb").read() == cfg_before, "game_settings.cfg put back as it was"
+    print("I ok (%s): the Death Stranding plan in a sandbox: %d steps, then nothing to do; uninstall put it all back, "
+          "game_settings.cfg included" % (label, n))
+
+
+def part_i_bundle(tmp, mods):
+    """A machine that cannot build capture_ds.asi (Linux) installs it from a bundle: the files
+    `capture mods bundle` adds for the game (bundle_extra), found by name with their stamp."""
+    ds = inst.installer("deathstranding")
+    os.makedirs(tmp)
+    zpath = os.path.join(tmp, "capture-mods-deathstranding.zip")
+    with zipfile.ZipFile(zpath, "w") as z:
+        for arc, path in ds.bundle_extra(log=lambda *_: None):
+            z.write(path, arc)
+    game = os.path.join(tmp, "game")
+    os.makedirs(game)
+    open(os.path.join(game, "ds.exe"), "wb").write(b"not the real game")
+    cfg = os.path.join(tmp, "user", "profile", "game_settings.cfg")
+    os.makedirs(os.path.dirname(cfg))
+    open(cfg, "w", encoding="utf-8").write('"AutoLogin" "1"\n')
+    opts = {"exchange_dir": os.path.join(tmp, "user", "exchange"), "settings_files": [cfg]}
+    lines = []
+    real = ds.plugin_built, ds.find_cmake
+    ds.plugin_built, ds.find_cmake = (lambda: False), (lambda: None)
+    try:
+        inst.install("deathstranding", game, opts, list(mods) + [zpath], system=FakeProton(tmp),
+                     work=os.path.join(tmp, "work"), log=lines.append)
+    finally:
+        ds.plugin_built, ds.find_cmake = real
+    assert open(os.path.join(game, "capture_ds.asi"), "rb").read() == open(ds.PLUGIN_BUILT, "rb").read()
+    cache = os.path.join("prebuilt", "capture_ds.asi")      # where addon.prebuilt keeps a copy from a bundle
+    assert any("capture_ds.asi -> <game>" in l and l.rstrip().endswith(cache) for l in lines), lines
+    print("I ok (bundle): with no build tools, capture_ds.asi is installed from a bundle's capture_ds/ folder")
+
+
 def ours_ready(probe, part):
     """Our built file (part: addon or clock) built here from these sources, or a copy in the mods
     folders whose stamp beside it says so: what the install itself takes (addon.find_prebuilt). A
@@ -778,6 +841,17 @@ def main():
             part_h(tmp, a.mods, FakeProton, "paths as under Proton")
         else:
             print("H skipped: ReShade is not in out/mods, or our add-on is neither built nor in a bundle there")
+    with tempfile.TemporaryDirectory() as tmp:
+        ds = inst.installer("deathstranding")
+        probe = sources.Files(sources.load_locks(sources.SHARED_LOCK, ds.LOCK), roots=a.mods,
+                              extra_names=addon.EXTRA_NAMES + ds.EXTRA_NAMES)
+        if (probe.ref("reshade", "ReShade64.dll").found and probe.ref("ultimate_asi_loader", "dinput8.dll").found
+                and ours_ready(probe, addon) and ds.plugin_built()):
+            part_i(tmp, a.mods, FakeSystem, "paths as they are")
+            part_i(tmp, a.mods, FakeProton, "paths as under Proton")
+            part_i_bundle(os.path.join(tmp, "bundle"), a.mods)
+        else:
+            print("I skipped: ReShade or Ultimate ASI Loader is not in out/mods, or our add-on or capture_ds.asi is not built")
 
 
 if __name__ == "__main__":

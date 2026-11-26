@@ -209,6 +209,14 @@ def click(win, x, y):
         click_screen(r[0] + x, r[1] + y)
 
 
+def middle_click(win, hold_s=0.1):
+    """A middle click where the pointer is, with the window brought to the front first."""
+    focus(win)
+    _xdo("mousedown", 2)
+    time.sleep(hold_s)
+    _xdo("mouseup", 2)
+
+
 def window_pid(win):
     """The process a window belongs to (0 if unknown)."""
     out = _xdo("getwindowpid", win)

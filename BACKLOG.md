@@ -415,6 +415,39 @@ Set up on 2026-11-23 (README: Kingdom Come: Deliverance adapter). Left:
   - The start takes about 2 minutes to the menu (most of it the runtime container and the
     network folder); not measured further.
 
+## Death Stranding Director's Cut: what is left
+
+Brought in on 2026-11-25 (README, Death Stranding): our plug-in holds and steps time exactly and
+places the render camera, photo mode hides Sam and the HUD, Sam is moved through his physics shape,
+`verify` and a worker take pass. What is not done:
+
+- **Rays (`raycast`).** Without line probes, rings and the camera-rig repository's solvers cannot fit
+  a location; only fixed rig files run. Candidates: call the game's physics ray cast from the plug-in
+  (find it as the camera code was found: data breakpoints on something it writes, then disassembly),
+  or depth from ReShade (an add-on that saves the depth buffer with the frame).
+- **A save lock.** Leaving photo mode and teleports can autosave into the rotating slots (three of the
+  player's own autosaves from May 2026 were overwritten on 2026-11-25; all are backed up in
+  `out/deathstranding/save_backup/`). Find the save function and hold it in the plug-in while a
+  session is open.
+- **The method's numbers not yet measured:** the projection of known world points (within 1 px in the
+  other games), the settle after a camera cut (30 frames assumed), exposure between poses in a held
+  world (`tools/exposure_check.py`), renderer noise, cloth through 30 steps.
+- **People and the hidden Sam.** Porters, MULEs and BTs: none near the places scouted so far; the
+  parked/unparked comparison of AGENTS.md section 1 is not done. No `obstacles`.
+- **Plausibility** (AGENTS.md section 1). Show Signs and Show Odradek Scan off hide the game's signs and
+  markers; the light beams over lost cargo, the chiral growths and the Bridges structures stay. Find
+  what draws them (entity types, a render flag) and cut them in the plug-in, or prefer places with
+  none in view.
+- **Photorealism.** The graphics options are in `profile.dat` (binary); the install does not write
+  them. Read its layout and add a step for the game's maximum; try DLSS 5 through OptiScaler (the game
+  ships DLSS 2.3.7, `nvngx_dlss.dll`, and XeSS); a display mode of 2560x1440 like the other games.
+- **Scouting.** Place names (the facility names from the game's map, `place_title`), an overlay,
+  heights for `--at` (with rays: the ground under a point).
+- **Clean-slate install** from the CLI (installed part by part on 2026-11-25), and a bundle for
+  another machine; Linux untried.
+- **Version.** Every hook is found by byte pattern, so a patch that changes those functions breaks the
+  plug-in: it logs which pattern failed (`capture_ds.log` in the game folder).
+
 ## Every game: cloth through time steps
 
 Found in The Witcher 3 (2026-11-23): steps whose frames shrink towards the end (each frame covering
@@ -434,7 +467,8 @@ known, not checked:
 - **Kingdom Come: Deliverance II** (Warhorse, CryEngine like the first). The first game's route is
   likely to carry over: the console with `-devmode`, Lua through `#`, and `t_Scale` (`adapters/kcd`).
 - **Death Stranding 2: On the Beach** (Kojima Productions, Decima). Check first that a PC version
-  exists and how it is sold. No known script layer.
+  exists and how it is sold. No known script layer; the first game's route (our own plug-in, hooks
+  found by pattern: `adapters/deathstranding`) is likely to carry over to the same engine.
 - **S.T.A.L.K.E.R. 2: Heart of Chornobyl** (GSC, Unreal Engine 5). Likely UE4SS (Lua and the console
   unlocked) or the official mod kit.
 - **Assassin's Creed Shadows** (Ubisoft, Anvil). Check for anti-tamper and the Ubisoft launcher

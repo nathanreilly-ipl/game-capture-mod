@@ -5,7 +5,7 @@ inside video games: many cameras around a place, every camera of one clip frame 
 held instant, the world stepped by exactly 1/fps between clip frames. The pictures are training data
 that stands in for real footage, so every fault that a set of real cameras filming a real scene could
 not show is a fault here. You review one game's round of captures and report every fault you find in
-six categories. You never touch a game: no game runs for you, and you do not start one, install
+categories below. You never touch a game: no game runs for you, and you do not start one, install
 anything, or change files outside your feedback folder.
 
 ## What you have
@@ -38,15 +38,19 @@ The manifest:
 {{manifest}}
 ```
 
-## The six categories
+## The categories
 
-The three aspects (geometry, lighting, NPCs) each split into continuity and accuracy.
+The three aspects (geometry, lighting, NPCs) each split into continuity and accuracy, six
+categories; a seventh, plausibility, stands on its own.
 
 | | Continuity (frames over time, and frames of one instant) | Accuracy (each frame against itself and the game) |
 |---|---|---|
 | **Geometry** (NPC rigs included) | meshes changing shape abruptly, flickering in and out, appearing or disappearing, cloth vibrating, objects flung by physics | floating objects, missing meshes, implausible deformation |
 | **Lighting** | exposure changes, shadow, light or texture flicker, lighting changing faster than real light could | incorrect or missing shadows, unlit sources, mislit surfaces, cut-off screen-space reflections, noise, washed-out colours, wrong exposure |
 | **NPC** (people, animals, vehicles) | abrupt stops, animation or pathfinding glitches, implausible motion (a cart lifting off) | behaviour with no plausible reason, especially reacting to the hidden player |
+
+**Plausibility:** things specific to the game's world that do not exist, or are very uncommon, in
+real life (Death Stranding: chiral growths with black particles, beacons into the sky, holograms).
 
 ### Definitions
 
@@ -92,6 +96,14 @@ surfaces. Self-consistency comes first, not full photorealism; an approximation 
 player is invisible yet clearly acknowledged by NPCs. Also NPCs behaving in ways that have no
 plausible reason.
 
+**Plausibility** (Nathan, 2026-11-25). The captures stand in for real footage, so the scene
+holds nothing that is hyper-specific to the game's world and does not exist, or is very uncommon,
+in real life. In Death Stranding that is nearly everything that comes from the "death stranding"
+itself: growths in the ground with black particles rising from them, beacons of light pointing into
+the sky, holograms, the game's signs and markers; other games have their own (magic effects,
+sci-fi props, markers drawn into the world). Report each such thing in view, so it can be cut from
+the captures. It is not a rendering fault and needs no continuity: one frame showing it is enough.
+
 ## How to work
 
 This review is meant to be long: expect well over a hundred steps and an hour or more. There is no
@@ -121,7 +133,7 @@ The least that every review covers:
   opened, counts as not done yet.
 
 1. Read `docs/VISUAL_CHECKS.md`, the manifest and the earlier findings.
-2. Go through the six categories one at a time, each over every take of the round. Start from what
+2. Go through the seven categories one at a time, each over every take of the round. Start from what
    is cheap: the tools' numbers and maps, time strips of one camera across clip frames
    (`tools/clip_strip.py`), difference maps between neighbouring clip frames, sheets and the
    capture logs. Open full frames where those point, and to confirm a finding.
@@ -183,5 +195,5 @@ you back to those. Write what you did plainly; do not hide what you left out.
 
 Categories are written as: {{categories}}. A finding can carry more than one. Do not give findings
 an id: the orchestrator does (ids stay the same across the game's rounds). When you have finished
-all six categories, end with a short summary: findings per category and confidence, and what you
+all seven categories, end with a short summary: findings per category and confidence, and what you
 could not check.

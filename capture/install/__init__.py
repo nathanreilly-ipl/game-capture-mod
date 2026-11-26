@@ -21,7 +21,8 @@ from .sources import SHARED_LOCK, Files, load_locks
 
 INSTALLERS = {"rdr2": "adapters.rdr2.install", "gtav": "adapters.gtav.install",
               "gtave": "adapters.gtav.install_enhanced", "cyberpunk": "adapters.cyberpunk.install",
-              "witcher3": "adapters.witcher3.install", "kcd": "adapters.kcd.install"}
+              "witcher3": "adapters.witcher3.install", "kcd": "adapters.kcd.install",
+              "deathstranding": "adapters.deathstranding.install"}
 
 
 def installer(game):
@@ -52,7 +53,7 @@ def context(game, game_dir=None, options=None, mods=(), system=None, work=None, 
         options = {k: v for k, v in record.data.get("options", {}).items() if k in mod.OPTIONS}
     opts = dict(mod.OPTIONS, **{k: v for k, v in options.items() if v is not None})
     files = Files(load_locks(SHARED_LOCK, mod.LOCK), roots=mods, installed=mod.installed_dirs(game_dir, system),
-                  extra_names=addon.EXTRA_NAMES + clock.EXTRA_NAMES)
+                  extra_names=addon.EXTRA_NAMES + clock.EXTRA_NAMES + tuple(getattr(mod, "EXTRA_NAMES", ())))
     return Ctx(game, game_dir, mod.EXE, opts, files, record, system, log), mod
 
 

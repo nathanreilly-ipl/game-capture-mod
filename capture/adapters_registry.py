@@ -9,7 +9,8 @@ GAMES = {"rdr2": ("adapters.rdr2.adapter", "RDR2Adapter"), "gtav": ("adapters.gt
          "gtave": ("adapters.gtav.adapter", "GTAVEnhancedAdapter"),
          "cyberpunk": ("adapters.cyberpunk.adapter", "CyberpunkAdapter"),
          "witcher3": ("adapters.witcher3.adapter", "Witcher3Adapter"),
-         "kcd": ("adapters.kcd.adapter", "KcdAdapter")}
+         "kcd": ("adapters.kcd.adapter", "KcdAdapter"),
+         "deathstranding": ("adapters.deathstranding.adapter", "DeathStrandingAdapter")}
 
 
 def get(game):

@@ -17,7 +17,8 @@ game.
 - The **CoreWeave** session owns visual iteration from there, for every game: look settings,
   consistency fixes, retakes.
 - The two meet in the **QC loop** (`docs/QC_LOOP.md`, section 6). CoreWeave sends a game's previews
-  and QC data over S3, reviewer agents on Windows (`capture qc`) report faults in six categories, and
+  and QC data over S3, reviewer agents on Windows (`capture qc`) report faults in six categories and
+  game-specific things with no real counterpart (plausibility), and
   CoreWeave triages and fixes.
 - For now the Windows session mediates: it runs its side's transfers, commits and pushes its own
   work, and messages the CoreWeave session.
@@ -74,6 +75,16 @@ reflections, shadows) over screen-space ones, and never grade twice (an overhaul
 tonemapping replaces a ReShade grade, it does not stack with it). Judge every visual change with
 `tools/preset_ab.py` / `tools/compare_sheets.py` (side-by-side sheets with FLIP maps at one frozen
 instant), and check its consistency between views before it becomes a default.
+
+**Plausible** (Nathan, 2026-11-25). The pictures stand in for real footage, so remove as far as
+possible anything in the environment that is hyper-specific to the game's world and does not
+exist, or is very uncommon, in real life. In Death Stranding that is nearly everything that comes
+from the "death stranding" itself: the growths in the ground with black particles rising from them,
+the beacons of light pointing into the sky, holograms, the game's signs and markers. Other games
+have their own (magic effects, sci-fi props, game markers drawn into the world). Cut them by the
+game's own settings and photo-mode switches first, then by mods or by removing the entities, and
+list in the adapter's docstring what each game removes and what it cannot. Prefer locations where
+little of it is in view. QC reviews this as its own category, `plausibility` (`docs/QC_LOOP.md`).
 
 ## 2. What "done" means for a game
 
@@ -172,8 +183,8 @@ tools/                   game-agnostic comparison tools: preset_ab, upscaler_ab/
                          hold_step_check (live), temporal_flicker, vignette_check, clip_strip
 docs/VISUAL_CHECKS.md    every visual and scene-consistency fault found so far, how to check it
                          (tool and number), how each game fixed it: the list for every new game
-docs/QC_LOOP.md          the QC loop: six categories, roles, per-game rounds, S3 layout, findings
-docs/qc/reviewer.md      the reviewer agents' prompt (the six definitions word for word)
+docs/QC_LOOP.md          the QC loop: six categories and plausibility, roles, per-game rounds, S3 layout, findings
+docs/qc/reviewer.md      the reviewer agents' prompt (the category definitions word for word)
 tests/                   no-game tests: test_install.py (sandboxed plans), test_obstacle_policy.py,
                          test_providers.py, test_qc.py (the QC loop with a stand-in reviewer);
                          run each with `uv run --project . python tests/<file>`
@@ -257,6 +268,14 @@ down every number you measure (README and the adapter's docstring), with the dat
   a save loads crashed the game.
 - Lock saving while a session can move the player (Cyberpunk's loader adds a save lock whenever a
   world is loaded), so nothing reaches the player's own save slots.
+- No script layer at all (Death Stranding): write a plug-in of our own (C++, loaded by Ultimate
+  ASI Loader under a DLL name the exe imports) that hooks the engine where the game has no command:
+  its clocks and its render camera, found by byte pattern so a patch fails loudly. Find the places
+  with `adapters/deathstranding/probes`: memory scans for a value that follows a key or the clock,
+  a data breakpoint in the CPU's debug registers for what writes it (`watch_probe.py`, a debugger
+  of a hundred lines; disarm every thread before letting go, or the game crashes on the next hit),
+  and disassembly of the exe (`disasm_probe.py`). A file-driven command loop and a status file
+  take the place of the loader and the session job.
 - Check: a smoke job runs and its result comes back; an `eval`/REPL command runs arbitrary script
   code in the game and returns output (Cyberpunk: `python -m adapters.cyberpunk.probes.repl
   "<lua>"`; RDR2: `scripts/run_job.ps1 <job>`). This is the agent's main research tool: use it to
@@ -326,6 +345,10 @@ and saves pictures under `out/probes/`. They are how the method was found, so ke
    Then measure that people ignore the parked player over time steps (section 1, "The player does
    not exist for the scene"): a few seconds of 1/30 s steps near people with the player at the rig
    and with him parked, each person's path and heading logged per step and compared.
+9. **Plausibility** (section 1, "Plausible"): list what in the game's world has no real
+   counterpart (Death Stranding: chiral growths, sky beacons, holograms, signs), then for each the
+   way to cut it (a setting, a photo-mode switch, a mod, removing the entity) or that it cannot be
+   cut, with before/after pictures of one held instant.
 
 ### 5.5 The adapter
 
@@ -355,6 +378,10 @@ and saves pictures under `out/probes/`. They are how the method was found, so ke
   closed (setting them live crashed Cyberpunk; games rewrite some on first start, so verify by
   reading back). Options turn parts on and off; turning one off removes its files (backed up;
   a pack's files are removed outright, since its archive installs them again).
+- A game's own built files (Death Stranding's plug-in `capture_ds.asi`) travel like the add-on: the
+  install module lists their names and stamps in `EXTRA_NAMES` (found by name in a bundle, taken
+  only when the stamp matches the sources) and returns them from `bundle_extra()` for
+  `capture mods bundle`, so a machine without the C++ build tools (Linux) installs them prebuilt.
 - Everything is recorded for `capture uninstall`; `--dry-run` shows every step; `--only <tag>`
   re-runs one part while iterating.
 - Check: `install` twice in a row does nothing the second time; `tests/test_install.py` covers the
@@ -403,7 +430,8 @@ affect them. Keep the reports under `out/probes/` or `out/checks/`.
 
 Beyond the numbers, every game in the QC loop (`docs/QC_LOOP.md`) is reviewed by agents in rounds:
 each round's previews and QC data go through six categories (geometry, lighting and NPCs, each for
-continuity and accuracy), and the findings go back for fixes. A tool that reads a take's files and
+continuity and accuracy) and plausibility (game-specific things with no real counterpart), and the
+findings go back for fixes. A tool that reads a take's files and
 helps find a fault belongs under `tools/`, with its line in VISUAL_CHECKS.md's table of tools, so
 that reviewers can run it.
 
@@ -481,6 +509,10 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
   what a game script owns (the obstacle policy retakes instead).
 - **Settings**: games rewrite settings on first start or reject live changes; write them with the
   game closed and verify by reading them back when a session opens (refuse to capture otherwise).
+- **Writing a derived copy**: engines copy positions and cameras into per-frame buffers and
+  physics bodies; a write to a copy is undone the next frame (Death Stranding: Sam's entity
+  transform snapped back from his physics shape, the camera's job copies changed nothing). Find
+  the source by what writes the copy, and write there or hook the code that builds the copy.
 - **Script-layer quirks**: RedLua passes numbers through a float (hashes above 2^24 need
   `hash_arg`), faults when collecting finished jobs; CET has no coroutines and no files outside its
   mod folder; raw memory reads from Lua crashed GTA V.
@@ -519,18 +551,18 @@ uv run --project . python -m adapters.cyberpunk.probes.clock_probe --location <i
 
 ## 9. Where each game stands
 
-| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 | The Witcher 3 (`witcher3`) | Kingdom Come: Deliverance (`kcd`) |
-|---|---|---|---|---|---|
-| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware | the game's own WitcherScript, a loose script mod compiled at start; no extender | the game's own Lua: our script as a mod run at start; console lines in (about 250 characters; long inputs as Lua files in `Data\capture_mod_in`), `kcd.log` out |
-| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` | none: commands pasted into the debug console, answers read from the scripts log (`adapters/witcher3/session.py`) | none: `#CaptureMod.cmd(...)` typed into the console; an eval and a reload without restart (`probes/repl.py`) |
-| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 | a pause of our own (exact); even time steps | `t_Scale 0` (exact); steps by `t_FixedStep` in 8 even frames |
-| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under | the photo mode's camera without the photo mode, player invisible | `CryAction.SetViewCameraByAngles` (degrees), player a ghost (hidden, not perceived, no physics) |
-| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot | does not re-adapt | does not re-adapt |
-| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged | 60 frames | 20 frames, 2 frames averaged (SMAA 2TX) |
-| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried | the game's path tracing, DLSS 5 (skin 2, OptiScaler as `winmm.dll`) over the game's DLAA + ray reconstruction | the game's Ultra High, SMAA 2TX, distances at maximum; no upscaler, so no DLSS 5 |
-| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part | yes (2026-11-23: every mod file moved out, 45 steps, again nothing to do, `verify --launch` passed but the machine step); on Linux 2026-11-24: from the PC's bundle on a fresh game download (`--no-optiscaler`), verify passed but the install check (OptiScaler's steps) | yes (2026-11-23: every mod file moved out, 22 steps from the bundle, `verify --launch` passed but the machine step); on Linux 2026-11-24: from the PC's bundle on a fresh game download, beside the prefix's Steam client, verify passed |
-| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) | no (fast-travel scouting helper) | no (named-places scouting helper) |
-| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only | a ring over 30 clip frames and near sweeps (2026-11-23) | a ring over 30 clip frames and a near sweep (2026-11-23) |
+| | RDR2 | GTA V Enhanced (`gtave`) | Cyberpunk 2077 | The Witcher 3 (`witcher3`) | Kingdom Come: Deliverance (`kcd`) | Death Stranding DC (`deathstranding`) |
+|---|---|---|---|---|---|---|
+| script layer | Script Hook RDR2 + RedLua | Script Hook V + RedLua (Ultimate ASI Loader as `xinput1_4.dll`) | Cyber Engine Tweaks + RED4ext, redscript, Codeware | the game's own WitcherScript, a loose script mod compiled at start; no extender | the game's own Lua: our script as a mod run at start; console lines in (about 250 characters; long inputs as Lua files in `Data\capture_mod_in`), `kcd.log` out | none exists: our plug-in `capture_ds.asi` (C++, hooks found by byte pattern), loaded by Ultimate ASI Loader as `winhttp.dll` |
+| loader | `adapters/common/lua/capture_loader.lua` | same | `adapters/cyberpunk/lua/capture_mod/init.lua` | none: commands pasted into the debug console, answers read from the scripts log (`adapters/witcher3/session.py`) | none: `#CaptureMod.cmd(...)` typed into the console; an eval and a reload without restart (`probes/repl.py`) | none: one-line commands in a control file, a status file out (`adapters/deathstranding/plugin.py`) |
+| freeze | photo-mode freeze (exact) | minimum time step written to 1e-7 s (`timestep.py`) | time dilation 1e-7 + clock plug-in at 1/5,000 | a pause of our own (exact); even time steps | `t_Scale 0` (exact); steps by `t_FixedStep` in 8 even frames | every game timer ticks a step of 0 (exact); exact 32.32 fixed-point steps in 8 even frames |
+| camera | render camera in memory (`render_camera.py`) | script camera | first-person camera component, player parked 12 m under | the photo mode's camera without the photo mode, player invisible | `CryAction.SetViewCameraByAngles` (degrees), player a ghost (hidden, not perceived, no physics) | the render camera written by the plug-in before the view matrices; takes inside photo mode (Show Sam off) |
+| exposure | photo-mode lock | does not re-adapt | forced average luminance, bisected to the first shot | does not re-adapt | does not re-adapt | not measured yet |
+| settle | 40 ticks | 40 frames | 120 frames, 4 frames averaged | 60 frames | 20 frames, 2 frames averaged (SMAA 2TX) | 30 frames (not measured yet) |
+| visuals | ReShade preset, Reality Redemption 2 ray tracing, DLSS 5 (skin 2) over DLAA (OptiScaler's ratio override) | NaturalVision Enhanced, game ray tracing, DLSS 5 (skin 2) over the game's DLAA | path tracing, DLAA + ray reconstruction; Ultra Plus / Nova LUT optional; DLSS 5 untried | the game's path tracing, DLSS 5 (skin 2, OptiScaler as `winmm.dll`) over the game's DLAA + ray reconstruction | the game's Ultra High, SMAA 2TX, distances at maximum; no upscaler, so no DLSS 5 | the game's own settings; no overhaul or DLSS 5 yet |
+| clean-slate install from the CLI | yes (2026-11-20: 148 steps, verify passed); on Linux 2026-11-23: 127 steps from the PC's bundle on a fresh game download, verify passed | on Linux yes (2026-11-23: from the PC's bundle and NaturalVision's archive on a fresh game download, verify passed); on the PC not yet: installed part by part (`--only`) | on Linux yes (2026-11-23: 50 steps from the PC's bundle on a fresh game download, verify passed); on the PC not yet: installed part by part | yes (2026-11-23: every mod file moved out, 45 steps, again nothing to do, `verify --launch` passed but the machine step); on Linux 2026-11-24: from the PC's bundle on a fresh game download (`--no-optiscaler`), verify passed but the install check (OptiScaler's steps) | yes (2026-11-23: every mod file moved out, 22 steps from the bundle, `verify --launch` passed but the machine step); on Linux 2026-11-24: from the PC's bundle on a fresh game download, beside the prefix's Steam client, verify passed | yes (2026-11-25: every mod file moved out, 12 steps, again nothing to do, `verify --launch` passed but the machine step) |
+| scout overlay | yes (F8-F11) | no | no (fast-travel scouting helper) | no (fast-travel scouting helper) | no (named-places scouting helper) | no (`scout` where Sam stands, or `--at`) |
+| full take | yes (2026-11-20, before the per-shot checks; spoiled from clip frame 53) | Legacy yes (48 min, QC passed); Enhanced: a 32-camera sample | near sweeps only | a ring over 30 clip frames and near sweeps (2026-11-23) | a ring over 30 clip frames and a near sweep (2026-11-23) | a ring over 30 clip frames (2026-11-25, worker) |
 
 GTA V Legacy (`gtav`) still installs and runs but is dropped. Details and open items per game are
 in README and BACKLOG.

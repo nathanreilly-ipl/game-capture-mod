@@ -3,8 +3,9 @@
 Captures a camera rig (`camrig/v1` cameras around a subject) inside a running game: the world
 is held at exactly one instant across every view, stepped by exactly 1/fps between instants,
 and the result is packaged in the camera-rig repository's delivery layout. Rig formats are
-pluggable providers (`rigs/`). Games: Red Dead Redemption 2, GTA V Enhanced, Cyberpunk 2077 and
-The Witcher 3, all in story mode (GTA V Legacy still works but is dropped: see GTA V adapter).
+pluggable providers (`rigs/`). Games: Red Dead Redemption 2, GTA V Enhanced, Cyberpunk 2077,
+The Witcher 3, Kingdom Come: Deliverance and Death Stranding Director's Cut, all in story mode
+(GTA V Legacy still works but is dropped: see GTA V adapter).
 
 ```
 capture/            game-agnostic: rig sources, the scene, placement, shot lists, the take loop,
@@ -27,6 +28,9 @@ adapters/cyberpunk/ everything Cyberpunk 2077: the adapter, the loader mod for C
                     session job, install plan and lockfile, game settings, launcher, probes
 adapters/witcher3/  everything The Witcher 3: the adapter, the session script (WitcherScript) and its
                     console client, install plan, game settings, launcher, probes
+adapters/deathstranding/  everything Death Stranding Director's Cut: the adapter, our in-game plug-in
+                    (capture_ds.asi, C++: clocks and render camera), Sam's physics shape (teleport),
+                    photo mode by keys, install plan and lockfile, launcher, memory and code probes
 docs/MOD_FILES.md   the third-party files an install needs and where to get them (generated)
 tools/              comparison tools (DLSS 5, ray tracing, sheets with FLIP maps), frame reports,
                     documentation media
@@ -1444,6 +1448,104 @@ check does not separate there either (34.1 against 35.9). What it took, each in 
   - The first attempt failed after one shot: probes typed into the game while the worker ran and put
     the console out of step. The session now looks at a frame to tell whether the console is open
     (the solid black line at its bottom edge).
+
+## Death Stranding Director's Cut adapter
+
+Death Stranding Director's Cut (`deathstranding`: Kojima Productions, Decima, Direct3D 12; Steam app
+1850570, ds.exe 1.004, built 2024-01-28). Brought in on 2026-11-25 on the Windows PC (RTX 5090), in
+the open land below the Distribution Center West of Capital Knot City; `adapters/deathstranding/
+adapter.py` has every number and `probes/` how each was found.
+
+### Setup
+
+```powershell
+.\capture.ps1 install deathstranding        # game closed: our plug-in (built), the ASI loader, ReShade + add-on, game_settings.cfg (every part but machine)
+.\capture.ps1 verify deathstranding --launch
+.\capture.ps1 scout --game deathstranding --name <name>                       # where Sam stands
+.\capture.ps1 scout --game deathstranding --name <name> '--at=x,y,z'          # Sam moved there first (he drops onto the ground)
+.\capture.ps1 submit --game deathstranding --location <id> --rig <a fixed rig file>   # ring/solved rigs need rays, not yet
+.\capture.ps1 worker --game deathstranding --once
+python -m adapters.deathstranding.plugin hold "step 143165577 8" run      # any plug-in command; prints its status
+python -m adapters.deathstranding.probes.watch_probe <address> [--access rw|x]   # what writes, reads or runs an address
+python -m adapters.deathstranding.probes.disasm_probe <rva>                     # ds.exe around an address (no game needed)
+```
+
+- **No script layer exists for this game, so the adapter brings one.** Our plug-in
+  `capture_ds.asi` (`adapters/deathstranding/plugin`, C++, built by the install) is loaded by
+  Ultimate ASI Loader as `winhttp.dll` (ds.exe imports it at start). It finds four places in ds.exe
+  by byte pattern and hooks them: the timers' tick, the clocks' advance, the frame's clock update,
+  and the render camera's view setup. It takes one-line commands from a file (`run`, `hold`,
+  `step <ticks> <frames> [force]`, `cam <pose>`, `cam off`) and writes a status file every 250 ms
+  (state, frame count, the game clock in ticks, the game's and the rendered camera). Python talks to
+  it through `plugin.py`. Found with memory scans, data breakpoints set in the CPU's debug registers
+  (`probes/watch_probe.py`, a small debugger) and disassembly of ds.exe (`probes/disasm_probe.py`).
+- **Iterating.** There is no script language to send code in, so iterating is the plug-in's commands
+  (`python -m adapters.deathstranding.plugin`), the memory probes (`probes/scan_probe.py` finds a
+  value by how it follows a key or the clock, `transform_probe.py` the world transforms near the
+  camera, `watch_probe.py` what writes it), and an edit to the plug-in rebuilt and deployed by
+  `capture install deathstranding --only scripts` with the game closed (a loaded ASI cannot be
+  replaced), about 30 s plus a 30 s start.
+- **Freeze: exact.** Every timer ticks a step of 0 while held: 0 ticks of game time over 240 frames,
+  and Sam held mid-animation (mean change between frames 0.089, renderer noise; no pixel over 12
+  levels in 3.5 s; 1.09 and 3.6% with the world running).
+- **Time steps: exact.** The game's clock is 32.32 fixed point; a 1/30 s step is 143,165,577 ticks
+  spread evenly over 8 frames. The game's tick rounds each share through a float; the plug-in
+  carries what the clock did not get into the next frames, so a step lands within 1 tick (0.23 ns;
+  exactly over 30 frames). `verify`'s steps: worst error 0.00 ms.
+- **Camera.** The plug-in writes our pose (world position, rotation rows, vertical FOV) into the
+  render camera after the game has filled it and before its view matrices are built: everything
+  rendered follows, and the status file reports the camera each frame was rendered with.
+- **Sam and the HUD.** Takes run inside photo mode (the game's own pause), opened by keys with Show
+  Sam, Show Signs and Show Odradek Scan off and its menu hidden (`photo.py`); its defaults already
+  have depth of field, vignette, lens distortion, chromatic aberration and colour filters off.
+  `game_settings.cfg`'s `PhotoModeKeepParams 1` (install) keeps those choices. Steps go through photo
+  mode's pause (`step ... force`): 15 steps advanced the clock by exactly 0.500000 s and the world
+  moved.
+- **Moving Sam** (no command for it in the game): his physics shape keeps his position as three
+  floats, found each session by its capsule's signature (`player.py`); writing it moves him (3 m
+  written, 3.17 m after he settled on a slope, the world running).
+- **Unattended start** (`launch.py`): through Steam; Enter answers the logos and the main menu's
+  Continue (the latest save). With `AutoLogin 0` (install) the game starts offline without its two
+  notices. 26-30 s from a closed game to a loaded save (five starts on 2026-11-25).
+- **Frames**: ReShade 6 as `dxgi.dll` and our add-on, 3840x2160 (the game's display mode), 57-60
+  frames/s (the game's cap), colours matching the screen.
+- **Scouting**: `capture scout` where Sam stands, or `--at` (he is dropped there: give a height at
+  or above the ground; at a guessed height he slid 3.9 m down a slope, and fell 13 m to the valley
+  floor once). No place names yet (`place_title` gives none) and no overlay (BACKLOG).
+- **Saves.** Leaving photo mode and teleports can make the game autosave into its rotating slots; on
+  2026-11-25 three of the player's own autosaves (the oldest, from May 2026) were overwritten (all saves
+  were backed up first to `out/deathstranding/save_backup/`). No save lock yet (BACKLOG).
+
+### Takes (2026-11-25, queued and run by `capture worker` with no one at the keyboard)
+
+- `verify`: 8 cameras, 3 clip frames, 24 shots in 42 s, none retaken; packaged. Again after a
+  clean-slate install (every mod file moved out, `capture install` of every part but machine: 12
+  steps, a second run nothing to do), from a closed game with `verify --launch`: passed but the
+  machine step. Its colour check is weak here: the screen grab it compares with is taken after
+  photo mode closed, so it shows another picture (30.6 against 32.2 with red and blue swapped).
+- `deathstranding-dc-west-valley-001` (open land below the distribution center, next to a Bridges
+  post box): a fixed ring of 8 over 30 clip frames (`out/rigs/deathstranding_ring8_30.json`), the
+  worker teleporting Sam back from 35 m away: 240 shots in 3.3 min (0.70 s each), none retaken;
+  one game clock in every clip frame; every step 143,165,570 ticks (7 ticks, 1.6 ns, short of
+  1/30 s, from the float in the game's tick: the plug-in carries it since, within 1 tick). Particles
+  in the sky move between clip frames.
+- `deathstranding-valley-path-001` (the valley floor 35 m below, scouted after an `--at` teleport):
+  the same ring, the worker teleporting Sam down from the first location: 240 shots in 3.3 min, none
+  retaken, every step within 1 tick of 1/30 s (with the carry). Natural ground, rocks and plants; one
+  camera looks through a plant (a fixed rig fits nothing), and a piece of cargo Sam dropped in his
+  fall lies in the middle. Contact sheet: `out/takes/deathstranding-valley-path-001/contact_sheet.jpg`.
+
+### Open
+
+- No rays (`raycast`), so rings and solved rigs, which fit the scene, are not available; fixed rig
+  files are, and nothing stops one of their cameras standing inside a rock (one of `verify`'s eight
+  stood inside a post box).
+- Not yet measured: the projection against known points, the settle after a camera cut, exposure
+  between poses in a held world, renderer noise, NPCs (porters, MULEs, BTs) and the hidden Sam.
+- Plausibility (AGENTS.md section 1): Show Signs and Show Odradek Scan hide the game's signs and
+  markers; the light beams over lost cargo and the chiral growths stay in the pictures.
+- Photorealism: the game's own settings as found on the PC (profile.dat is binary and not written by
+  the install); no overhaul or DLSS 5 yet. The display mode, 3840x2160, sets the frame size.
 
 ## Known gaps
 

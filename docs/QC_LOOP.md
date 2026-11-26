@@ -20,7 +20,7 @@ Automatic back-and-forth, with no session in the middle, is in BACKLOG.
 Each game Nathan picks goes through its own loop:
 1. The CoreWeave session fixes faults in the game's captures and sends their previews and QC data
    over S3.
-2. A reviewer agent on Windows goes through them for every fault in six categories, using the
+2. A reviewer agent on Windows goes through them for every fault in six categories, and for plausibility, using the
    repository's QC tools, and its findings go back over S3.
 3. CoreWeave fixes, retakes and sends new previews.
 
@@ -28,9 +28,10 @@ Each game repeats this for the number of rounds Nathan sets for it, independentl
 games. Round 1 of every game is its state when the loop started: the previews of the takes that
 existed then.
 
-## The six categories
+## The categories
 
-The three aspects (geometry, lighting, NPCs) each split into continuity and accuracy.
+The three aspects (geometry, lighting, NPCs) each split into continuity and accuracy; a seventh
+category, plausibility, stands on its own.
 
 | | Continuity (frames over time, and frames of one instant) | Accuracy (each frame against itself and the game) |
 |---|---|---|
@@ -41,7 +42,13 @@ The three aspects (geometry, lighting, NPCs) each split into continuity and accu
 The full definitions, which every reviewer gets word for word, are in `docs/qc/reviewer.md` (the
 reviewer's prompt), the one place they are kept. In findings the categories are written
 `geometry_continuity`, `geometry_accuracy`, `lighting_continuity`, `lighting_accuracy`,
-`npc_continuity`, `npc_accuracy`.
+`npc_continuity`, `npc_accuracy`, `plausibility`.
+
+**Plausibility** (Nathan, 2026-11-25): anything in the scene hyper-specific to the game's world
+that does not exist, or is very uncommon, in real life (Death Stranding: chiral growths with black
+particles, beacons of light into the sky, holograms, the game's signs). The captures stand in for
+real footage, so such things are cut from them where the game allows (AGENTS.md section 1,
+"Plausible"); reviewers report what is still in view.
 
 ## Roles
 
@@ -60,7 +67,7 @@ reviewer's prompt), the one place they are kept. In findings the categories are 
 - **Reviewers:** agents started by `capture qc` as separate processes, one per game QC.
   - By default headless Claude Code (`claude -p`) on Sonnet, at most two at once. The model, the
     number at once and the command are this machine's settings (`capture qc config`).
-  - Each covers all six categories over every previewed take of its game in that round, and all the
+  - Each covers all seven categories over every previewed take of its game in that round, and all the
     QC data sent for it.
   - They read images and logs and run the QC tools under `tools/` on that data. They never touch a
     game.
@@ -117,7 +124,7 @@ tools under `tools/`, or improvements to existing ones (`temporal_flicker.py`, `
 - an **evidence tool**: time strips of one camera across clip frames, difference maps between
   neighbouring clip frames, same-instant pairs from the near sweep, crops where metrics flag
   something, and a timestamp table per take;
-- whatever else the survey finds useful for the six categories.
+- whatever else the survey finds useful for the categories.
 
 Every QC tool must run on a take's transferred data alone, with no game, on Windows as well as
 Linux. Each has a one-line entry in `docs/VISUAL_CHECKS.md` ("The tools") saying what it finds and
@@ -184,7 +191,7 @@ is going (a pull in another terminal) is picked up, and `run` returns once the q
 every reviewer has finished. The reviewer's prompt is `docs/qc/reviewer.md` with the game's round
 filled in (`capture qc prompt <game> <round>` prints it). It gets:
 
-- all six category definitions;
+- all seven category definitions;
 - `docs/VISUAL_CHECKS.md`, as "known faults: check whether they're still there";
 - every take of its game in the round, with all the QC data sent for them, and the manifest;
 - the list of QC tools and what each finds, with permission to run them on the data;
@@ -192,7 +199,7 @@ filled in (`capture qc prompt <game> <round>` prints it). It gets:
   present or gone.
 
 The reviewer is told to:
-- go through all six categories, one at a time, over every take of the game;
+- go through all seven categories, one at a time, over every take of the game;
 - report every possible fault (a missed fault is worse than a false one);
 - report lower-confidence suspicions too (guessing is allowed);
 - rate each finding's confidence from 1 to 3:
@@ -316,7 +323,7 @@ also tells the reviewer to expect a long review, and the passes above see it thr
 ## Cost
 
 - One reviewer per game per round, at most `max_agents` at a time.
-- A reviewer covers six categories over every take of its game, so images are the main cost. It
+- A reviewer covers seven categories over every take of its game, so images are the main cost. It
   starts from the tools' outputs, strips and difference maps, and opens full frames only where
   those point.
 - If a game's data is too much for one reviewer, CoreWeave can send less per round (its choice in

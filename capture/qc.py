@@ -36,7 +36,8 @@ STATE = os.path.join(ROOT, "state.json")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT = os.path.join(REPO, "docs", "qc", "reviewer.md")
 CATEGORIES = ["geometry_continuity", "geometry_accuracy", "lighting_continuity", "lighting_accuracy",
-              "npc_continuity", "npc_accuracy"]
+              "npc_continuity", "npc_accuracy",
+              "plausibility"]   # game-specific things with no real counterpart (Nathan, 2026-11-25)
 # what a reviewer may do: read anything, write its feedback, run the repository's tools through uv
 ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit", "Bash(uv run *)", "PowerShell(uv run *)"]
 DEFAULTS = {"max_agents": 2, "model": "sonnet", "claude": None, "agent_cmd": None, "allowed_tools": ALLOWED_TOOLS,

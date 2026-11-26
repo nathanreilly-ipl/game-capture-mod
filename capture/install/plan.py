@@ -630,6 +630,47 @@ class XmlAttrSet(Step):
             f.write(xml_attr_set(text, self.name, self.value, self.element))
 
 
+def kv_get(text, key):
+    """The value of a `"Key" "Value"` line (Decima's settings files, e.g. Death Stranding's
+    game_settings.cfg), or None."""
+    m = re.search(r'^"%s"\s+"([^"]*)"' % re.escape(key), text, re.M)
+    return m.group(1) if m else None
+
+
+def kv_set(text, key, value):
+    line = '"%s" "%s"' % (key, value)
+    pat = re.compile(r'^"%s"\s+"[^"]*"' % re.escape(key), re.M)
+    if pat.search(text):
+        return pat.sub(line.replace("\\", "\\\\"), text, count=1)
+    nl = "\r\n" if "\r\n" in text else "\n"
+    return text + ("" if text.endswith(nl) or not text else nl) + line + nl
+
+
+class KvSet(Step):
+    """Sets `"Key" "Value"` in a settings file made of such lines (Decima's .cfg files); skipped if
+    the file does not exist yet (the game writes it on first launch). files: one path or several
+    (one per game account)."""
+
+    def __init__(self, path, key, value, tag="settings", closed=True, why=""):
+        self.path, self.key, self.value = path, key, value
+        self.tag, self.needs_game_closed, self.why = tag, closed, why
+
+    def describe(self):
+        return "%s %s=%s%s" % (os.path.basename(self.path), self.key, self.value, "  (%s)" % self.why if self.why else "")
+
+    def status(self, ctx):
+        if not os.path.exists(self.path):
+            return "ok", "skipped: no settings file yet (start the game once, then run install again)"
+        cur = kv_get(open(self.path, encoding="utf-8", errors="replace", newline="").read(), self.key)
+        return ("ok", "set") if cur == self.value else ("todo", "was %s" % cur)
+
+    def apply(self, ctx):
+        text = open(self.path, encoding="utf-8", errors="replace", newline="").read()
+        ctx.record.setting("kv", self.path, self.key, kv_get(text, self.key), self.value)
+        with open(self.path, "w", encoding="utf-8", newline="") as f:
+            f.write(kv_set(text, self.key, self.value))
+
+
 class Call(Step):
     """A step given as functions: status_fn(ctx) -> (state, note), apply_fn(ctx)."""
 
@@ -735,6 +776,12 @@ def uninstall(record, log=print):
                 with open(path, "w", encoding="utf-8", newline="") as f:
                     f.write(xml_set(text, e["key"], e["old"]))
                 log("  reset   %s <%s>" % (os.path.basename(path), e["key"]))
+        elif kind == "kv" and os.path.exists(path):
+            text = open(path, encoding="utf-8", errors="replace", newline="").read()
+            if kv_get(text, e["key"]) == e["new"] and e["old"] is not None:
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    f.write(kv_set(text, e["key"], e["old"]))
+                log("  reset   %s %s" % (os.path.basename(path), e["key"]))
         elif kind == "xmlattr" and os.path.exists(path):
             element, _, name = e["key"].partition("|")
             text = open(path, encoding="utf-8", errors="replace", newline="").read()

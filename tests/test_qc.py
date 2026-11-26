@@ -83,7 +83,7 @@ try:
 
     # a review with no coverage note is flagged; a redo moves the feedback aside and gives the ids again
     fb1 = read_json(os.path.join(qc.feedback_dir("beta", 1), "findings.json"))
-    check("missing coverage flagged for all six categories", sum("coverage of" in p for p in fb1["problems"]) == 6,
+    check("missing coverage flagged for every category", sum("coverage of" in p for p in fb1["problems"]) == len(qc.CATEGORIES),
           fb1["problems"])
     try:
         qc.enqueue("beta", 1)

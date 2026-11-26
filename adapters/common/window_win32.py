@@ -240,6 +240,14 @@ def click(hwnd, x, y):
     click_screen(pt.x, pt.y)
 
 
+def middle_click(hwnd, hold_s=0.1):
+    """A middle click where the pointer is, with the window brought to the front first."""
+    focus(hwnd)
+    user32.mouse_event(0x0020, 0, 0, 0, 0)
+    time.sleep(hold_s)
+    user32.mouse_event(0x0040, 0, 0, 0, 0)
+
+
 def window_pid(hwnd):
     """The process a window belongs to (0 if unknown)."""
     pid = wt.DWORD()
